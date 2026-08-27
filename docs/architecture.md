@@ -227,7 +227,9 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
 1. **Chunk granularity per host.** Everything in §3 assumes hosts send roughly
    sentence-to-paragraph chunks. If NeoReader sends whole pages, or splits mid-sentence at
    the 4000-character API limit, the matcher needs prefix matching rather than whole-chunk
-   matching. Settled by observation in QUI-020.
+   matching. Still open; needs QUI-020's logging spike. **Interception itself is no longer
+   in question** — verified on device 2026-08-27, see
+   [ADR-0004](adr/0004-interception-viability.md).
 2. **Editions.** Two EPUBs of the same novel differ in whitespace, hyphenation and
    footnotes. How far normalisation carries across editions is unmeasured; worst case the
    user must index the exact file they read.

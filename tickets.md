@@ -1880,7 +1880,7 @@ Scenario: A failing app is demoted, not hidden
 
 ## QUI-020 — TTS service registration and NeoReader binding
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §1, §2 Phase 2, §3 · **Timebox:** 2 days
 
 ### User story
@@ -1962,4 +1962,25 @@ Scenario: A negative result is reported plainly
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-27 — manual verification by dylangrowcoot, written up by claude-opus-5.**
+Question 1 answered without writing any code, by using an existing engine as the probe.
+
+Reproduce: install eSpeak NG from the Play Store (chosen because its output is
+unmistakably synthetic, so which engine is speaking is never ambiguous). Settings →
+Text-to-speech → preferred engine → eSpeak NG. Open a book in NeoReader, tap the centre of
+the screen, tap the headphone icon.
+
+*Result:* the engine picker lists third-party engines once installed, and **switching it
+changes the voice NeoReader produces** — both eSpeak NG and Google TTS were heard through
+NeoReader's own Read Aloud. NeoReader uses the Android TTS API rather than a proprietary
+Boox engine, so Quire can sit in that path. Recorded as `docs/adr/0004-interception-viability.md`.
+
+*What surprised us:* the engine list initially showing only Google looked like a blocker
+and was not one — it lists installed engines, and only one was installed. The picker
+existing at all was the signal.
+
+*Still open:* questions 2–6 (chunk size and alignment, text cleanliness, `rangeStart`
+highlighting, `onStop` frequency, rate/pitch pass-through). Questions 3–6 are observable by
+ear and eye on device; question 2 needs the logging spike, which needs an APK and therefore
+an Android SDK. Ticket stays `In progress`.
