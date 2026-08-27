@@ -91,6 +91,9 @@ because it does.
 /docs/PRD.md          ← the product requirement document
 /docs/adr/            ← architecture decision records (one file per decision)
 /docs/architecture.md ← how the pipeline actually fits together (kept in sync with code)
+/docs/device-profile.md ← the reference device and what it forces on the design
+/fixtures/            ← labelled test data shared across tickets (attribution golds)
+/spike/               ← timeboxed throwaway harnesses; never shipped, never depended on
 ```
 
 Application code directories are created by the tickets that introduce them; the ticket
