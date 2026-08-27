@@ -24,8 +24,10 @@ on mid-range Android e-ink hardware.
 
 ## 2. Platform & hardware strategy
 
-- **Target OS:** Android (optimising for e-ink Android devices like Onyx Boox, Meebook)
-  and iOS / standard Android.
+- **Target OS:** Android only. iOS is **out of scope** (decided 2026-08-27); the PRD's
+  original cross-platform ambition is dropped rather than deferred.
+- **Reference device:** Onyx Boox Note Air5 C — see [`device-profile.md`](device-profile.md).
+  All SLAs are measured there. Standard (non e-ink) Android is supported but not tuned for.
 - **Core framework:** Open-source **Readium Engine** (EPUB rendering, DOM handling,
   pagination, bookmarking).
 - **Display optimisation:**

@@ -32,8 +32,9 @@ Rules, enforced by QUI-001:
 - Dependencies point downward only. No `core → core` edges except onto `core:model`.
 - `core:model` holds types and nothing else: no I/O, no Android framework, no Readium.
 - **Keep `core:model` and `core:attribution` free of Android framework dependencies.**
-  iOS is in the PRD's target list; pure-Kotlin cores keep a future Kotlin Multiplatform
-  move cheap. We are not doing KMP now — we are just not making it impossible.
+  iOS is out of scope, so this is no longer about multiplatform — it is about testing.
+  Pure-Kotlin cores run the attribution fixtures on a desktop JVM in seconds instead of
+  on a device in minutes, which is the loop QUI-018 depends on.
 
 The three cores never call each other. Everything is composed in `app`, which owns the
 wiring and the lifecycle. That is what lets three agents work on three cores at once.
@@ -102,9 +103,15 @@ A Q4-quantized 1B SLM resident is roughly 700 MB–1 GB. Kokoro-TTS at 82M is a 
 hundred MB with its ONNX runtime. The reader UI with a paginated publication is not free.
 The PRD's ceiling is 1.2 GB for all of it (PRD §5).
 
-**The SLM and the TTS engine cannot be comfortably co-resident.** Any design where the
-language model runs *during* playback is a design that fails the RAM SLA on the exact
-mid-tier hardware we are targeting.
+**Revised 2026-08-27, once the reference device was fixed.** The Note Air5 C has 6 GB of
+RAM ([`device-profile.md`](device-profile.md)), so co-residency is likely to *fit*. The
+1.2 GB ceiling is now a self-imposed budget for surviving in the background rather than a
+hardware wall, and the argument here is weaker than it was when written.
+
+Two things keep the separation anyway. First, a design that only works with 6 GB narrows
+the product to premium hardware. Second — and this one is not about memory at all — the
+battery budget is ≈1.14 W for the whole device during playback, which rules out keeping a
+language model warm while audio plays however much RAM is free.
 
 So the architecture forces them apart in time:
 
@@ -126,7 +133,27 @@ reaches it**, at one of three granularities:
 
 **Recommendation: (b), with (a) offered as a "prepare whole book" option.** But this is
 the one decision we should buy with measurements rather than argument — QUI-017 measures
-resident set for both models and settles it as `docs/adr/0003-memory-arbitration.md`.
+resident set *and* power draw for both models and settles it as
+`docs/adr/0003-memory-arbitration.md`.
+
+### 4.1 Throughput is the harder half of the problem
+
+The 750G has ARMv8.2 dot-product but no i8mm, so quantized matmul takes the slower path
+and a 1B Q4 model generates at single-digit to low double-digit tokens/s. Attributing
+~3,000 dialogue lines with a fresh ~300-token context window each re-processes close to a
+million tokens and lands in the **hours**, against QUI-007's 10-minute budget.
+
+That is a structural constraint on the attribution design, not a tuning problem:
+
+- Attribution runs **chapter-at-a-time with KV-cache reuse**, not line-at-a-time. The
+  chapter is fed once as a rolling context and speakers are queried as it advances.
+- Generation is **constrained to a single token** — an index into the candidate speaker
+  list — so a line costs one token, not twenty.
+- **Tier 1 coverage is a performance feature.** Every line the heuristics resolve is a
+  line the model never sees, which is why QUI-018 reports Tier 1 coverage as a headline
+  number rather than a curiosity.
+
+See [`device-profile.md`](device-profile.md) §2.
 
 Note this differs from a literal reading of PRD §3.1, which implies the SLM is consulted
 as reading proceeds. The observable behaviour is identical; only the timing moves. If
@@ -205,8 +232,8 @@ it. Do not start M1 before ADR-0002 names a TTS engine.
 ## 9. Open questions
 
 1. **Memory arbitration** — §4. Settled by QUI-017 → ADR-0003.
-2. **iOS in v1?** PRD §2 lists it; no tickets exist for it. Cheap to keep possible
-   (§1), expensive to actually do. Needs a decision before M2 scope is fixed.
+2. ~~**iOS in v1?**~~ **Closed 2026-08-27: Android only.** Out of scope, not deferred.
+   PRD §2 updated.
 3. **Scene boundaries.** Tier 3 fallback needs a notion of "the current scene". Chapter
    breaks are a crude proxy; section breaks and time-skips are not detectable by regex.
    Deferred until QUI-009 has fixture data showing whether it matters.
