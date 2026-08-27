@@ -13,16 +13,19 @@ already `In progress`.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
+| QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
+| QUI-018 | Headless end-to-end pipeline spike | Spike | Todo | — | QUI-017 |
+| QUI-019 | Vertical slice: one chapter on device | Spike | Todo | — | QUI-018, QUI-002, QUI-010, QUI-012 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-002 | EPUB import and Readium reader shell | Foundations | Todo | — | QUI-001 |
 | QUI-003 | E-ink display mode and hardware keys | Foundations | Todo | — | QUI-002 |
 | QUI-004 | Reading position and progress tracking | Foundations | Todo | — | QUI-002 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
-| QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001 |
+| QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
-| QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001 |
+| QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
 | QUI-011 | Automatic voice casting | Audio | Todo | — | QUI-007, QUI-010 |
 | QUI-012 | Rolling dynamic ring buffer | Audio | Todo | — | QUI-010 |
 | QUI-013 | Playback controls | Audio | Todo | — | QUI-012 |
@@ -30,7 +33,11 @@ already `In progress`.
 | QUI-015 | Character & voice drawer | UI | Todo | — | QUI-011 |
 | QUI-016 | Performance and SLA harness | Quality | Todo | — | QUI-010 |
 
-Next free ID: **QUI-017**
+Next free ID: **QUI-020**
+
+**Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8): **M0 prove the
+stack** — QUI-017, QUI-018 · **M1 vertical slice** — QUI-019 · **M2 prototype** —
+everything else. Start at the top of this table, not the top of the epics.
 
 ---
 
@@ -328,7 +335,7 @@ Scenario: Persistence does not stall rendering
 
 ## QUI-005 — `characters.json` schema and manifest store
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001
+**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.1
 
 ### User story
@@ -665,7 +672,7 @@ Scenario: Accuracy on the fixture set
 
 ## QUI-010 — ONNX TTS engine with boundary timestamps
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-001
+**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.2, §4.2
 
 ### User story
@@ -1115,6 +1122,225 @@ Scenario: Battery procedure is documented
   Given docs/performance.md
   When I read the battery section
   Then it gives a step-by-step procedure another person can repeat
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Spike
+
+> Spike tickets are timeboxed and exist to produce a **decision**, not a feature. Their
+> code may be throwaway; their measurements and ADRs are not. See
+> [`docs/architecture.md`](docs/architecture.md) §8.
+
+## QUI-017 — Model bake-off on target hardware
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**PRD:** §3.1, §3.2, §5 · **Timebox:** 3 days
+
+### User story
+As a team, I want measured numbers for the candidate SLM and TTS models on a real e-ink
+device, so that we choose a stack on evidence instead of picking one and discovering in
+month two that it cannot hit the SLAs.
+
+### Context (why)
+Every performance target in PRD §5 currently rests on an assumption, and two of the
+biggest architectural questions — which runtime, and whether the SLM and TTS can be
+co-resident (`docs/architecture.md` §4) — cannot be answered by reading documentation.
+This is the cheapest possible experiment that can invalidate the product, so it runs
+first and everything else waits on it. Nothing built before this measurement is safe.
+
+### Description (what)
+A throwaway harness, installed on a real mid-tier e-ink Android device, that loads each
+candidate model, runs a fixed workload, and reports latency, throughput and peak
+resident memory. The output is three ADRs and a table of numbers.
+
+### Requirements (how)
+- Owns: `spike/bakeoff/`, `docs/adr/0001-slm-runtime.md`, `docs/adr/0002-tts-engine.md`,
+  `docs/adr/0003-memory-arbitration.md`
+- SLM candidates: Llama 3.2 1B and Qwen 2.5 1.5B, Q4_K_M, via `llama.cpp` JNI and via
+  ExecuTorch. Measure: load time, peak RSS, prompt-eval and generation tokens/s on a
+  fixed 5-line attribution prompt.
+- TTS candidates: Kokoro-TTS (82M ONNX) and Piper C++. Measure: RTF on a fixed 10 s
+  text, peak RSS, on-disk size, number of usable voice variants, and whether word
+  boundary timestamps are obtainable **without** post-hoc alignment.
+- Co-residency: load an SLM and a TTS engine together and record combined peak RSS
+  against the 1.2 GB ceiling. This number decides ADR-0003.
+- Run on at least one true e-ink device (Onyx Boox or Meebook); record exact model, SoC
+  and RAM with every result.
+- Each ADR states the alternatives, the measurements, the choice, and what would make us
+  revisit it.
+- Out of scope: any production code, any UI, cloud engines.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Every candidate is measured
+  Given the bake-off harness on a mid-tier e-ink device
+  When it runs to completion
+  Then it reports load time, peak RSS and throughput for each SLM candidate
+  And RTF, peak RSS, disk size and voice count for each TTS candidate
+
+Scenario: Boundary timestamps are proven, not assumed
+  Given the chosen TTS candidate
+  When a 10 second text is synthesised
+  Then word boundary timestamps are emitted by synthesis itself
+  And a named word's timestamp matches its position in the audio within 50 ms
+
+Scenario: The co-residency question is answered
+  Given an SLM and a TTS engine loaded simultaneously
+  When peak resident memory is measured
+  Then the number is recorded against the 1.2 GB ceiling
+  And ADR-0003 selects whole-book, chapter-ahead or co-resident attribution on that basis
+
+Scenario: Decisions are recorded
+  Given the bake-off has run
+  When I read the three ADRs
+  Then each names its alternatives, its measurements, the decision, and its revisit trigger
+
+Scenario: A candidate that fails is reported, not worked around
+  Given a candidate that misses its SLA on the target device
+  When results are written up
+  Then the ADR states the miss plainly rather than proposing a heavier device
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-018 — Headless end-to-end pipeline spike
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**PRD:** §3 · **Timebox:** 4 days
+
+### User story
+As a team, I want a command-line run that turns an EPUB into a multi-voice wav file, so
+that we can judge whether the attribution is actually any good before spending weeks on
+an app around it.
+
+### Context (why)
+The hardest question in Quire is not "does audio play" — it is "does the system put the
+right voice on the right line often enough that a reader isn't jarred". That is a
+quality question, and quality questions need iteration loops measured in seconds. A
+desktop JVM harness gives us that; an Android build does not. It also produces the
+labelled fixture set that QUI-008, QUI-009 and QUI-016 all need.
+
+### Description (what)
+A JVM command-line tool that takes an EPUB and a chapter number, runs parse → scan →
+Tier 1 → Tier 2/3 → casting → synthesis, and writes a wav file plus a human-readable
+transcript of who was assigned to each line and why. Plus a small labelled fixture set of
+chapters with hand-annotated speakers, and a scoring command that reports attribution
+accuracy against it.
+
+### Requirements (how)
+- Owns: `spike/pipeline/`, `fixtures/attribution/`
+- Runs on desktop JVM against public-domain EPUBs; no Android, no device required.
+- Transcript output per line: text, assigned speaker, confidence, **tier**, and for
+  Tier 2 the context window that was used. Debuggability is the point of this ticket.
+- Fixture set: at least 3 chapters from different books, hand-labelled with the correct
+  speaker per line, including one heavy untagged back-and-forth exchange.
+- `score` command reports overall accuracy plus a breakdown by tier, so we can see
+  whether errors come from heuristics or from the model.
+- Code here is explicitly throwaway; where a component is obviously reusable, extract it
+  into `core:*` under its own ticket rather than growing this one.
+- Out of scope: UI, real-time buffering, on-device execution.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: A chapter becomes audio
+  Given a public-domain EPUB
+  When I run the pipeline for chapter 3
+  Then a wav file is produced in which distinct characters have distinct voices
+
+Scenario: Every decision is explainable
+  Given a completed run
+  When I read the transcript
+  Then each line shows its speaker, confidence and tier
+  And each Tier 2 line shows the context window used
+
+Scenario: Accuracy is scored, not eyeballed
+  Given the labelled fixture set
+  When I run the score command
+  Then it reports overall speaker accuracy and a per-tier breakdown
+
+Scenario: The untagged exchange is the honest test
+  Given the fixture chapter with a long untagged back-and-forth
+  When it is scored
+  Then its accuracy is reported separately from the tagged fixtures
+
+Scenario: Fixtures are reusable downstream
+  Given the fixture set
+  When QUI-008 and QUI-009 run their tests
+  Then they consume these same files without modification
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-019 — Vertical slice: one chapter, three voices, on device
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-018, QUI-002, QUI-010, QUI-012
+**PRD:** §3, §4.2 · **Timebox:** 1 week
+
+### User story
+As a stakeholder, I want to hold an e-ink device, open a book, press Play, and hear a
+chapter performed with the text tracking along, so that we can feel whether Quire is
+actually good before committing to the full build.
+
+### Context (why)
+M0 proves the parts work. This proves the *experience* works — the thing no benchmark
+can tell us. It is also the first time the memory decision from ADR-0003 meets reality
+with a real UI attached. Deliberately narrow: one hardcoded book, one chapter, no
+library, no settings, no recovery.
+
+### Description (what)
+An installable debug build that opens a single bundled EPUB at a single chapter,
+plays it with the narrator plus two character voices using attribution precomputed by
+QUI-018, and highlights the sentence being spoken. Play/pause only.
+
+### Requirements (how)
+- Owns: `app/src/debug/` slice sources; consumes `core:reader`, `core:tts` unchanged
+- Attribution is loaded from a precomputed `attribution.jsonl` shipped with the build —
+  no SLM runs on device in this ticket. That isolates the audio and UI experience from
+  model performance.
+- Must run on a physical e-ink device in monochrome mode, and record measured TTFS and
+  peak RSS in the Worklog against the SLAs.
+- Hardcoding is expected and fine. Anything discovered here that must survive becomes a
+  ticket, not a quiet addition to this one.
+- Delete or fold into production code once M2 begins; this build is not shipped.
+- Out of scope: import, library, settings, drawer, seek, speed, resumability.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Press play, hear a chapter
+  Given the slice build on a physical e-ink device
+  When I press Play
+  Then the chapter is read aloud with the narrator and two distinct character voices
+
+Scenario: The text tracks the audio
+  Given playback is running
+  When a new sentence begins
+  Then that sentence is highlighted and the page follows it
+
+Scenario: It starts fast enough to feel instant
+  Given the slice build on the target device
+  When I press Play
+  Then the first audio frame is emitted within 800 ms
+  And the measured value is recorded in the Worklog
+
+Scenario: It stays inside the memory ceiling
+  Given a full chapter plays to its end
+  When peak resident memory is measured
+  Then it is recorded against the 1.2 GB ceiling
+
+Scenario: Pause is honest
+  Given playback is running
+  When I pause
+  Then audio stops and the highlighted sentence is the one that was being spoken
 ```
 
 ### Worklog
