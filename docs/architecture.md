@@ -1,5 +1,18 @@
 # Quire — Architecture
 
+> ## ⚠ Superseded in part by PRD v1.2
+>
+> This document describes the **v1.1** product: a standalone Readium e-reader that also
+> spoke. PRD v1.2 makes Quire a system `TextToSpeechService` sitting beneath the user's
+> existing reader, which moves the reader shell to V3.0 and removes Quire's ownership of
+> position and playback entirely.
+>
+> **Still valid:** §1 module graph (module names change, the shape does not), §3.1
+> import-time pipeline, §4.1 throughput, §5 data at rest, §6 concurrency.
+> **No longer valid:** §2 locator spine (Quire has no locator under v1.2), §3.2
+> playback-time pipeline, §7 audio/text sync, §8 milestones.
+> **Rewrite pending** the open questions in the v1.2 review.
+
 How the pipeline in [PRD §3](PRD.md#3-system-architecture--ai-pipeline) actually fits
 together. This document is kept in sync with the code: any ticket that changes structure
 updates it in the same PR (CLAUDE.md §5).
