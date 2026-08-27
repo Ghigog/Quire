@@ -13,31 +13,43 @@ already `In progress`.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
+| QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
-| QUI-018 | Headless end-to-end pipeline spike | Spike | In progress | claude-opus-5 | QUI-017 (partial) |
-| QUI-019 | Vertical slice: one chapter on device | Spike | Todo | — | QUI-018, QUI-002, QUI-010, QUI-012 |
+| QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
+| QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
-| QUI-002 | EPUB import and Readium reader shell | Foundations | Todo | — | QUI-001 |
-| QUI-003 | E-ink display mode and hardware keys | Foundations | Todo | — | QUI-002 |
-| QUI-004 | Reading position and progress tracking | Foundations | Todo | — | QUI-002 |
+| QUI-021 | Dialogue index schema and store | Index | Todo | — | QUI-001 |
+| QUI-022 | Text normalisation and cursor matcher | Index | Todo | — | QUI-021 |
+| QUI-023 | Book identification by fingerprint | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
-| QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005 |
+| QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005, QUI-018 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
 | QUI-011 | Automatic voice casting | Audio | Todo | — | QUI-007, QUI-010 |
-| QUI-012 | Rolling dynamic ring buffer | Audio | Todo | — | QUI-010 |
-| QUI-013 | Playback controls | Audio | Todo | — | QUI-012 |
-| QUI-014 | Sentence-level highlighting | Audio | Todo | — | QUI-010, QUI-013 |
-| QUI-015 | Character & voice drawer | UI | Todo | — | QUI-011 |
+| QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
+| QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
+| QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
+| QUI-003 | E-ink display mode and hardware keys | Companion | Todo (reduced) | — | QUI-025 |
+| QUI-026 | E-reader compatibility matrix verification | Quality | Todo | — | QUI-019 |
 | QUI-016 | Performance and SLA harness | Quality | Todo | — | QUI-010 |
+| QUI-002 | EPUB import and Readium reader shell | Reader | **Deferred → V3.0** | — | — |
+| QUI-004 | Reading position and progress tracking | Reader | **Deferred → V3.0** | — | — |
+| QUI-013 | Playback controls | Reader | **Deferred → V3.0** | — | — |
+| QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
+| QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 
-Next free ID: **QUI-020**
+Next free ID: **QUI-027**
 
-**Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8): **M0 prove the
-stack** — QUI-017, QUI-018 · **M1 vertical slice** — QUI-019 · **M2 prototype** —
-everything else. Start at the top of this table, not the top of the epics.
+**Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
+**M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
+**M1 vertical slice** — QUI-019 · **M2 MVP** — the rest. Work down this table, not down
+the epics.
+
+**Deferred tickets stay in this file** with their original text and a banner saying why.
+They were written against PRD v1.1 and are still broadly right for the version that
+revives them; rewriting them now would be guessing.
 
 ---
 
@@ -146,7 +158,13 @@ Scenario: Model weights cannot be committed
 
 ## QUI-002 — EPUB import and Readium reader shell
 
-**Status:** Todo · **Owner:** — · **Epic:** Foundations · **Depends on:** QUI-001
+> **Deferred to V3.0 by PRD v1.2 (2026-08-27).** PRD v1.2 puts Quire beneath the reader the user already has. A built-in Readium
+> reader returns in V3.0 as the standalone fallback and the route to guaranteed
+> word-level highlighting.
+>
+> Text below is the original v1.1 ticket, unedited.
+
+**Status:** Deferred · **Owner:** — · **Epic:** Foundations · **Depends on:** QUI-001
 **PRD:** §2, §4.1
 
 ### User story
@@ -276,7 +294,12 @@ Scenario: Keys behave normally outside the reader
 
 ## QUI-004 — Reading position and progress tracking
 
-**Status:** Todo · **Owner:** — · **Epic:** Foundations · **Depends on:** QUI-002
+> **Deferred to V3.0 by PRD v1.2 (2026-08-27).** The host reader owns position under v1.2 — Quire cannot see it and does not need it.
+> `core:index`'s cursor (QUI-022) replaces this for matching purposes.
+>
+> Text below is the original v1.1 ticket, unedited.
+
+**Status:** Deferred · **Owner:** — · **Epic:** Foundations · **Depends on:** QUI-002
 **PRD:** §4.1
 
 ### User story
@@ -486,8 +509,9 @@ book is readable (though not yet voiced) while it runs.
 - Discard candidates appearing fewer than 3 times unless they carry attributed dialogue.
 - Writes exactly one manifest per book, atomically (temp file then rename).
 - Resumable: a scan interrupted at chunk *n* restarts at chunk *n*, not at zero.
-- Budget: a 100k-word novel scans in under 10 minutes on a mid-tier ARM SoC; record the
-  measured time in the Worklog.
+- Budget: a 100k-word novel scans in **under 30 minutes** on the reference device; record
+  the measured time in the Worklog. (Relaxed from 10 minutes on 2026-08-27: PRD v1.2 moves
+  indexing into the companion app, off any real-time path. See QUI-025.)
 - Out of scope: line-by-line attribution (QUI-008/009), voice assignment (QUI-011).
 
 ### Acceptance criteria (Gherkin)
@@ -868,7 +892,12 @@ Scenario: Crash leaves no orphaned cache
 
 ## QUI-013 — Playback controls
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-012
+> **Deferred to V3.0 by PRD v1.2 (2026-08-27).** The host reader owns the transport under v1.2. Rate and pitch arrive in the
+> `SynthesisRequest` and Quire honours them (QUI-024); it does not present controls.
+>
+> Text below is the original v1.1 ticket, unedited.
+
+**Status:** Deferred · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-012
 **PRD:** §4.2
 
 ### User story
@@ -937,7 +966,13 @@ Scenario: External controls work
 
 ## QUI-014 — Sentence-level highlighting
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-013
+> **Deferred to V3.0 by PRD v1.2 (2026-08-27).** Under v1.2 the host renders the text. Quire's half of highlighting — emitting
+> `rangeStart` from TTS boundary timestamps — moves to QUI-024. Guaranteed word-level
+> highlighting needs Quire's own reader, which is V3.0.
+>
+> Text below is the original v1.1 ticket, unedited.
+
+**Status:** Deferred · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-013
 **PRD:** §4.2
 
 ### User story
@@ -1007,7 +1042,12 @@ Scenario: E-ink refresh cost
 
 ## QUI-015 — Character & voice drawer
 
-**Status:** Todo · **Owner:** — · **Epic:** UI · **Depends on:** QUI-011
+> **Deferred to V2.0 by PRD v1.2 (2026-08-27).** Explicitly scheduled for V2.0 by PRD v1.2 §5. Automatic casting (QUI-011) must be
+> good enough to ship without an override; the override is the V2 escape hatch.
+>
+> Text below is the original v1.1 ticket, unedited.
+
+**Status:** Deferred · **Owner:** — · **Epic:** UI · **Depends on:** QUI-011
 **PRD:** §4.3
 
 ### User story
@@ -1167,16 +1207,17 @@ resident memory. The output is three ADRs and a table of numbers.
   the answer.
 - Measure the **KV-cache reuse factor**: time to attribute 50 consecutive dialogue lines
   with a fresh context window each, versus one rolling chapter context. That ratio decides
-  whether QUI-007's 10-minute scan budget is reachable at all
-  (`docs/architecture.md` §4.1).
+  whether QUI-007's 30-minute scan budget is reachable at all
+  (`docs/architecture.md` §5).
 - Measure **sustained power draw** in mW for each configuration, not only memory. The
   device budget is ≈1.14 W total during playback.
 - TTS candidates: Kokoro-TTS (82M ONNX) and Piper C++. Measure: RTF on a fixed 10 s
   text, peak RSS, on-disk size, number of usable voice variants, and whether word
   boundary timestamps are obtainable **without** post-hoc alignment.
-- Co-residency: load an SLM and a TTS engine together and record combined peak RSS
-  against the 1.2 GB ceiling, plus power draw. With 6 GB on the reference device this is
-  expected to fit; ADR-0003 turns on the power number as much as the memory one.
+- Co-residency: measure each model's peak RSS separately. Under PRD v1.2 the SLM lives in
+  the companion app and the TTS engine in the service process, so they are never resident
+  together and ADR-0003 shrinks to "does each process fit its own budget". Record the
+  combined figure anyway — V3.0's built-in reader would put them back in one process.
 - Run on the Note Air5 C; record Android build and starting battery level with every
   result, and discard runs started below 30% battery.
 - Each ADR states the alternatives, the measurements, the choice, and what would make us
@@ -1207,7 +1248,7 @@ Scenario: KV-cache reuse is quantified
   Given 50 consecutive dialogue lines from one chapter
   When they are attributed with a fresh context window each, and again with one rolling context
   Then both wall-clock times are recorded
-  And the ratio is stated as a projected whole-book scan time against the 10 minute budget
+  And the ratio is stated as a projected whole-book scan time against the 30 minute budget
 
 Scenario: Decisions are recorded
   Given the bake-off has run
@@ -1344,66 +1385,580 @@ ADR-0002. The ticket therefore stays `In progress`.
 
 ---
 
-## QUI-019 — Vertical slice: one chapter, three voices, on device
+## QUI-019 — Vertical slice: NeoReader Read Aloud in three voices
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-018, QUI-002, QUI-010, QUI-012
-**PRD:** §3, §4.2 · **Timebox:** 1 week
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-020, QUI-021, QUI-022, QUI-024
+**PRD:** §1, §2 · **Timebox:** 1 week
+
+> Rewritten for PRD v1.2. The v1.1 version of this ticket was a standalone player on a
+> bundled book; under v1.2 the whole point is that the audio comes out of somebody else's
+> reader.
 
 ### User story
-As a stakeholder, I want to hold an e-ink device, open a book, press Play, and hear a
-chapter performed with the text tracking along, so that we can feel whether Quire is
-actually good before committing to the full build.
+As a stakeholder, I want to open a book in NeoReader, press its own Read Aloud button, and
+hear it performed in three voices, so that we can judge the actual product experience
+before committing to the full build.
 
 ### Context (why)
-M0 proves the parts work. This proves the *experience* works — the thing no benchmark
-can tell us. It is also the first time the memory decision from ADR-0003 meets reality
-with a real UI attached. Deliberately narrow: one hardcoded book, one chapter, no
-library, no settings, no recovery.
+QUI-020 proves the pipe exists and QUI-017 proves the models are fast enough. This is the
+first time they meet, and it is the first moment anyone can tell whether the illusion holds
+— whether multi-voice audio arriving through a reader you did not write feels like a
+feature of that reader or like a hack bolted underneath it. Deliberately narrow: one
+pre-indexed book, no companion UI, no fingerprinting.
 
 ### Description (what)
-An installable debug build that opens a single bundled EPUB at a single chapter,
-plays it with the narrator plus two character voices using attribution precomputed by
-QUI-018, and highlights the sentence being spoken. Play/pause only.
+An installable debug build registering the real TTS service, shipping a pre-built index for
+one book, that plays that book in NeoReader with a narrator and two character voices, with
+the sentence highlighted if NeoReader honours `rangeStart`.
 
 ### Requirements (how)
-- Owns: `app/src/debug/` slice sources; consumes `core:reader`, `core:tts` unchanged
-- Attribution is loaded from a precomputed `attribution.jsonl` shipped with the build —
-  no SLM runs on device in this ticket. That isolates the audio and UI experience from
-  model performance.
-- Must run on a physical e-ink device in monochrome mode, and record measured TTFS and
-  peak RSS in the Worklog against the SLAs.
-- Hardcoding is expected and fine. Anything discovered here that must survive becomes a
-  ticket, not a quiet addition to this one.
-- Delete or fold into production code once M2 begins; this build is not shipped.
-- Out of scope: import, library, settings, drawer, seek, speed, resumability.
+- Owns: `app/ttsservice/src/debug/` slice sources; consumes `core:index`, `core:tts`
+- The index is **pre-built and shipped with the build** — no SLM runs on device in this
+  ticket, and the book is hardcoded rather than fingerprinted. That isolates the listening
+  experience from indexing performance.
+- Must run on the physical Note Air5 C in monochrome mode. Record measured TTFS and peak
+  RSS of the service process in the Worklog, against the 800 ms and 1.2 GB budgets.
+- Hardcoding is expected. Anything discovered here that must survive becomes a ticket, not
+  a quiet addition to this one.
+- Out of scope: the companion app, book identification, indexing, voice overrides.
 
 ### Acceptance criteria (Gherkin)
 ```gherkin
-Scenario: Press play, hear a chapter
-  Given the slice build on a physical e-ink device
-  When I press Play
-  Then the chapter is read aloud with the narrator and two distinct character voices
+Scenario: A chapter performs in NeoReader
+  Given the slice build installed and selected as the TTS engine
+  When I open the indexed book in NeoReader and press Read Aloud
+  Then the chapter is read with a narrator and two distinct character voices
 
-Scenario: The text tracks the audio
-  Given playback is running
-  When a new sentence begins
-  Then that sentence is highlighted and the page follows it
+Scenario: Mixed paragraphs switch voice mid-chunk
+  Given a paragraph containing narration and two speakers
+  When it is read aloud
+  Then the voice changes within that paragraph, in the right order
 
 Scenario: It starts fast enough to feel instant
-  Given the slice build on the target device
-  When I press Play
+  Given the slice build on the reference device
+  When I press Read Aloud
   Then the first audio frame is emitted within 800 ms
   And the measured value is recorded in the Worklog
 
-Scenario: It stays inside the memory ceiling
+Scenario: It stays inside the memory budget
   Given a full chapter plays to its end
-  When peak resident memory is measured
+  When peak resident memory of the service process is measured
   Then it is recorded against the 1.2 GB ceiling
 
-Scenario: Pause is honest
+Scenario: Page turns do not break it
   Given playback is running
-  When I pause
-  Then audio stops and the highlighted sentence is the one that was being spoken
+  When I turn the page in NeoReader
+  Then audio continues from the right place in the right voices
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Index
+
+> The seam between the two processes of PRD v1.2. The companion app writes; the TTS
+> service reads. Freeze this before fanning out — it is to v1.2 what `characters.json`
+> was to v1.1 (`docs/architecture.md` §1).
+
+## QUI-021 — Dialogue index schema and store
+
+**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-001
+**PRD:** §2 Phase 1
+
+### User story
+As a developer, I want a frozen on-disk index format, so that the companion app and the
+TTS service can be built in parallel by different agents without either guessing at the
+other's format.
+
+### Context (why)
+v1.2 splits Quire into two programs that never run together and communicate only through
+files. The index is the whole contract. Four downstream tickets (QUI-022, QUI-023,
+QUI-025, QUI-012) consume it, so it lands early and small, exactly as `characters.json`
+did under v1.1.
+
+### Description (what)
+A SQLite schema holding, per book, the ordered sequence of segments with their normalised
+text, hash, attributed speaker and confidence; a writer used by the companion app; and a
+read-only reader used by the TTS service. Ships with a committed example database and the
+normalisation function both sides share.
+
+### Requirements (how)
+- Owns: `core/index/`, `docs/schema/dialogue-index.md`
+- Table `segments`: `book_id`, `seq` (dense, 0-based, ordered), `kind`
+  (`narration|dialogue`), `text`, `normalized`, `hash`, `speaker_id`, `confidence`,
+  `chapter`. Indexes on `(book_id, seq)` and `(book_id, hash)`.
+- Table `books`: `book_id`, `title`, `author`, `segment_count`, `indexed_at`,
+  `schema_version`, `source_digest` (SHA-256 of the EPUB, so a re-import is detectable).
+- **Normalisation lives here**, used by writer and matcher alike, so the two can never
+  drift: NFKC, lowercase, strip quote marks and footnote markers, collapse whitespace,
+  drop soft hyphens. Changing it bumps `schema_version` and invalidates indexes.
+- The service opens the database **read-only**. One writer, one reader, no locking.
+- Size budget: under 5 MB for a 100k-word novel. Record the measured size.
+- Out of scope: matching (QUI-022), building the content (QUI-025).
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Round-trip through the store
+  Given a sequence of attributed segments
+  When they are written and read back
+  Then the sequence, speakers and confidences are identical and in order
+
+Scenario: Writer and matcher normalise identically
+  Given a paragraph containing typographic quotes, a soft hyphen and a footnote marker
+  When it is normalised by the writer and by the matcher
+  Then both produce the same string
+
+Scenario: The service cannot corrupt the index
+  Given the TTS service has the database open
+  When it attempts a write
+  Then the write fails and the service continues serving audio
+
+Scenario: A re-imported book is detected
+  Given a book indexed from one EPUB file
+  When a different EPUB of the same title is imported
+  Then the differing source digest is reported rather than silently merged
+
+Scenario: Size budget
+  Given a 100,000 word novel
+  When it is indexed
+  Then the database is under 5 MB
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-022 — Text normalisation and cursor matcher
+
+**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021
+**PRD:** §2 Phase 2
+
+### User story
+As a listener, I want the right character's voice on each line even when the same words
+are spoken by different people, so that a rapid exchange does not dissolve into one voice.
+
+### Context (why)
+`onSynthesizeText` hands over a bare string with no book, chapter or position. The PRD
+answers this with `hash(text) -> speaker`, but text → speaker is many-to-many: `"Well,"`
+appears twice with two different speakers in a twenty-line fixture, and novels are dense
+with bare `"Yes."` and `"I know."`. A hash lookup answers confidently and wrongly on
+exactly the back-and-forth this product exists to voice. Reading is sequential, so a
+cursor resolves those collisions for free; the hash becomes the recovery path after a
+seek. Decided 2026-08-27; see `docs/architecture.md` §3.
+
+### Description (what)
+A matcher that takes an incoming text chunk and returns the ordered index entries it
+covers. It tracks a cursor through the book, advances it on each match, tolerates skipped
+headings, and relocates by hash when the reader jumps.
+
+### Requirements (how)
+- Owns: `core/index/match/`
+- State machine: `Unlocated → Locating → Locked ⇄ Relocating`
+  (`docs/architecture.md` §3).
+- Forward match tries `cursor+1 … cursor+5` before falling back to hash lookup; a hash hit
+  with several candidates picks the one nearest the cursor.
+- **A chunk may cover several consecutive segments.** The return type is a list, in order,
+  so a paragraph containing narration and two speakers can be voiced correctly.
+- **A chunk may be a fragment.** Hosts split at the 4000-character API limit; a prefix or
+  suffix match against a segment counts, with the offset returned.
+- A miss returns narrator immediately and never blocks. Matching must add under 10 ms to
+  an utterance on the reference device — measure it.
+- Out of scope: identifying which book (QUI-023), synthesis (QUI-024).
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Sequential reading advances the cursor
+  Given the matcher is locked to a book at segment 40
+  When the text of segment 41 arrives
+  Then it matches segment 41 and the cursor advances
+
+Scenario: Identical text with different speakers resolves by position
+  Given segments 12 and 87 both normalise to "well"
+  And the cursor is at segment 11
+  When "Well," arrives
+  Then segment 12 is returned, not segment 87
+
+Scenario: A skipped heading does not lose the cursor
+  Given the cursor is at segment 40 and the host skips the chapter heading at 41
+  When the text of segment 42 arrives
+  Then it matches segment 42 and the cursor advances to it
+
+Scenario: A jump relocates by hash
+  Given the cursor is at segment 40
+  When text belonging to segment 900 arrives
+  Then the matcher relocates the cursor to 900
+
+Scenario: One chunk covering three segments
+  Given a paragraph of narration, dialogue and narration indexed as segments 10 to 12
+  When the whole paragraph arrives as one chunk
+  Then the matcher returns segments 10, 11 and 12 in order
+
+Scenario: A fragment matches with an offset
+  Given a long segment split by the host at the character limit
+  When the first half arrives
+  Then it matches that segment and reports the offset covered
+
+Scenario: An unmatched chunk falls back at once
+  Given text that appears nowhere in the index
+  When it arrives
+  Then the matcher returns a narrator result without blocking
+
+Scenario: Matching is fast enough to be invisible
+  Given a 100,000 word index on the reference device
+  When 500 chunks are matched
+  Then the mean added latency per chunk is under 10 ms
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-023 — Book identification by fingerprint
+
+**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**PRD:** §2 Phase 2
+
+### User story
+As a reader, I want Quire to work out which book I have opened by itself, so that I can
+just press Read Aloud in NeoReader without telling Quire anything first.
+
+### Context (why)
+The product promise is that nothing changes about how you read. Requiring the user to open
+the companion app and pick a book before every session breaks it, and silently gives wrong
+voices when they forget. The Android TTS API offers no book identity, so it has to be
+inferred from the text itself. Decided 2026-08-27: fingerprint automatically, with a
+manual override for when it fails.
+
+### Description (what)
+On the first chunks of a session, Quire matches incoming text against every indexed book
+and locks on once one book agrees for several consecutive segments. Until then everything
+is read by the narrator. A companion-app override forces a specific book.
+
+### Requirements (how)
+- Owns: `core/index/identify/`, the override setting in `app/companion/`
+- Lock after **3 consecutive** agreeing segments in a single book; below that, narrator.
+- Ambiguity (two indexed editions both agreeing) resolves to the most recently imported,
+  and records that it was ambiguous so the override can be surfaced.
+- Identification must not re-run mid-session unless matching fails for 10 consecutive
+  chunks — a long unmatched passage is not a new book.
+- Budget: locking on adds no more than 3 utterances of narrator voice, and identification
+  across 50 indexed books completes in under 50 ms per chunk. Measure both.
+- Out of scope: automatic import of an unknown book.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Locking on without user input
+  Given three indexed books and Read Aloud started in one of them
+  When the fourth chunk arrives
+  Then the matcher is locked to the correct book
+
+Scenario: Narrator until confident
+  Given a session that has just started
+  When the first chunk arrives
+  Then it is read by the narrator rather than a guessed character voice
+
+Scenario: An unindexed book never locks on
+  Given a book that has not been imported
+  When a chapter is read aloud
+  Then every chunk is read by the narrator and no book is locked
+
+Scenario: A long unmatched passage does not trigger re-identification
+  Given the matcher is locked and the reader enters a nine-chunk quoted letter
+  When those chunks fail to match
+  Then the lock is retained
+
+Scenario: The user can override
+  Given identification picked the wrong edition
+  When the user selects the correct book in the companion app
+  Then the next session uses it without fingerprinting
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Companion
+
+## QUI-025 — Companion app import and indexing flow
+
+**Status:** Todo · **Owner:** — · **Epic:** Companion · **Depends on:** QUI-007, QUI-021
+**PRD:** §2 Phase 1, §5 V1.0
+
+### User story
+As a reader, I want to add a book to Quire once and see it get ready, so that I know when
+I can go and listen to it in my e-reader.
+
+### Description (what)
+The companion app: pick an EPUB, watch it parse, scan and index with visible progress, and
+end with a book listed as ready, showing its detected cast. Indexing survives
+backgrounding and resumes after a kill.
+
+### Context (why)
+This is the only UI Quire has in V1.0 — everything else happens invisibly beneath another
+app. It is also where the one expensive operation lives, so how honestly it reports
+progress is most of the product's felt quality.
+
+### Requirements (how)
+- Owns: `app/companion/`
+- Pipeline: EPUB → segments → Tier 1 → Tier 2/3 → `characters.json` → casting →
+  `dialogue_index.db`, written atomically (temp then rename) so a partial index is never
+  visible to the service.
+- **Budget: a 100k-word novel indexes in ≤30 minutes** in the foreground on the reference
+  device (decided 2026-08-27, relaxed from 10 minutes because indexing left the real-time
+  path). Progress is per stage, not a spinner.
+- Resumable at chapter granularity after process death.
+- Renders correctly in monochrome e-ink mode, no animated progress (CLAUDE.md §7).
+- Out of scope: the voice drawer (QUI-015, V2.0), reading the book.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Import a book end to end
+  Given the companion app
+  When I import a 100,000 word EPUB
+  Then it completes in 30 minutes or less and is listed as ready
+  And its detected characters are shown with their assigned voices
+
+Scenario: Progress is honest
+  Given an import is running
+  When I watch the progress display
+  Then it names the current stage and advances monotonically
+
+Scenario: Interrupted indexing resumes
+  Given indexing was killed at 60%
+  When the app reopens
+  Then it resumes from that chapter rather than restarting
+
+Scenario: A partial index is never visible to the service
+  Given indexing is in progress
+  When the TTS service looks for that book
+  Then the book is absent until indexing completes
+
+Scenario: Usable on e-ink
+  Given the device is in monochrome mode
+  When I run an import
+  Then every element renders in pure black and white with no animation
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Audio (v1.2 additions)
+
+## QUI-024 — Multi-voice utterance and `rangeStart` callbacks
+
+**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-022
+**PRD:** §2 Phase 2, §3
+
+### User story
+As a listener, I want a paragraph that mixes narration and two characters to be read in
+three voices, so that the multi-voice promise survives a reader that hands us the whole
+paragraph at once.
+
+### Context (why)
+The Android TTS contract is one call, one utterance, one voice — but hosts routinely send
+a whole paragraph, and QUI-018 measured that paragraphs regularly contain narration plus
+two speakers. Voicing a mixed chunk in a single voice would silently reduce the product to
+a normal TTS engine on exactly the passages that matter most. Synthesising several voices
+inside one `onSynthesizeText` call is the mechanic that makes multi-voice work through a
+single-voice API.
+
+### Description (what)
+Given the ordered segments a chunk covers, synthesise each in its assigned voice and write
+them to the callback as one continuous stream, honouring the host's rate and pitch and
+emitting `rangeStart` so hosts that highlight can follow along.
+
+### Requirements (how)
+- Owns: `app/ttsservice/synthesis/`
+- One `callback.start()`, several synthesised segments, one `callback.done()` — the host
+  must see a single continuous utterance.
+- Character voices apply pitch/timbre offsets **on top of** the host's requested rate and
+  pitch, never instead of them.
+- `callback.rangeStart(start, end, frame)` emitted per word from the boundary timestamps
+  in `TtsChunk` (QUI-010), with offsets relative to the original incoming string.
+- `onStop()` cancels in-flight synthesis promptly and leaves no partial audio queued.
+- One ONNX session, serialised inference; concurrency buys nothing at RTF 0.15 and doubles
+  peak memory.
+- Out of scope: which voice a character gets (QUI-011), buffering (QUI-012).
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Three voices in one utterance
+  Given a chunk covering narration, a line by Sarah and a line by Thomas
+  When it is synthesised
+  Then the audio uses three distinct voices in that order
+  And the host receives one continuous utterance
+
+Scenario: The host's speech rate is honoured
+  Given the host requests a rate of 1.5
+  When a character line is synthesised
+  Then it plays at 1.5 times, with the character's offset applied on top
+
+Scenario: Ranges point into the original string
+  Given a chunk is synthesised
+  When rangeStart fires for a word
+  Then its offsets select that word in the string the host supplied
+
+Scenario: Stopping is immediate
+  Given synthesis is in progress
+  When the host calls onStop
+  Then synthesis stops promptly and no further audio is written
+
+Scenario: An unmatched chunk still speaks
+  Given a chunk the matcher could not place
+  When it is synthesised
+  Then it is read in the narrator voice with no added delay
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Quality (v1.2 additions)
+
+## QUI-026 — E-reader compatibility matrix verification
+
+**Status:** Todo · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-019
+**PRD:** §3
+
+### User story
+As a developer, I want each Tier 1 reader actually tested, so that the compatibility
+matrix in the PRD is a record of what we ran rather than a list of what we hope.
+
+### Context (why)
+PRD §3 names five Tier 1 apps on the assumption they all use the system TTS engine the
+same way. They will not: chunk sizes, whether `rangeStart` is consumed, whether the engine
+can be selected at all, and how often `onStop` fires will differ per app. Each difference
+is a matcher bug we would otherwise find from a user.
+
+### Description (what)
+A written, repeatable manual procedure run against each Tier 1 reader on the reference
+device, recording chunk sizes, highlighting behaviour, transport behaviour and any
+misbehaviour, and a matrix in the docs stating what was verified and when.
+
+### Requirements (how)
+- Owns: `docs/compatibility.md`
+- Apps: Onyx NeoReader, Moon+ Reader, Librera, Google Play Books, eReader Prestigio.
+- Record per app: can Quire be selected as the engine; typical and maximum chunk size;
+  whether chunks align to sentences or paragraphs; whether `rangeStart` drives
+  highlighting; `onStop` frequency; whether rate and pitch are passed through.
+- Any app that cannot select a third-party engine is **demoted out of Tier 1 in the PRD**
+  in the same PR — the matrix and the PRD must not disagree.
+- Out of scope: Tier 2 accessibility scraping, Tier 3 KOReader plugin.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Every Tier 1 app is tested and recorded
+  Given the five Tier 1 apps installed on the reference device
+  When the procedure is run against each
+  Then docs/compatibility.md records the result per app with the date and app version
+
+Scenario: The procedure is repeatable by someone else
+  Given docs/compatibility.md
+  When a second person follows it
+  Then they can reproduce the recorded observations without asking questions
+
+Scenario: A failing app is demoted, not hidden
+  Given an app that cannot select a third-party TTS engine
+  When the matrix is written
+  Then the PRD's Tier 1 list is corrected in the same change
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+# Epic: Spike (v1.2 additions)
+
+## QUI-020 — TTS service registration and NeoReader binding
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**PRD:** §1, §2 Phase 2, §3 · **Timebox:** 2 days
+
+### User story
+As a team, I want proof that NeoReader will route its Read Aloud text through an engine we
+wrote, so that we find out in two days rather than two months whether PRD v1.2 is buildable
+at all.
+
+### Context (why)
+Every line of v1.2 rests on one unverified assumption: that a third-party
+`TextToSpeechService` can be selected on the reference device and that NeoReader will hand
+it the book's text. If that fails, the product has no V1 and the roadmap inverts — the
+standalone reader currently at V3.0 becomes the only path. This is the cheapest experiment
+that can invalidate the architecture, so it runs **before** the model bake-off, which is
+now the second-biggest risk rather than the first.
+
+Evidence it should work: `mateogon/boox-supertonic-tts` is an unofficial offline TTS engine
+for BOOX NeoReader built on sherpa-onnx. It reports `rangeStart` reaching NeoReader's
+highlighting, notes that NeoReader needs its TTS session closed and reopened to pick up a
+new engine, and serialises inference to avoid native concurrency bugs. Read it before
+starting; do not copy from it without checking its licence.
+
+### Description (what)
+A throwaway Android app registering a `TextToSpeechService` that speaks a fixed phrase and
+logs every string, parameter and lifecycle call it receives. Installed on the Note Air5 C,
+selected as the engine, and driven from each Tier 1 reader. The deliverable is a written
+observation log, not a feature.
+
+### Requirements (how)
+- Owns: `spike/ttsbinding/`, `docs/adr/0004-interception-viability.md`
+- Register the service (`android.intent.action.TTS_SERVICE`, engine metadata) and implement
+  `onIsLanguageAvailable`, `onLoadLanguage`, `onGetLanguage`, `onGetVoices`,
+  `onSynthesizeText`, `onStop`. Return a recognisable tone or a canned clip; audio quality
+  is irrelevant here.
+- Log for every call: the exact string, its length, the requested rate/pitch/locale/voice,
+  the calling package, and the wall-clock gap since the previous call.
+- Drive it from **NeoReader first**, then Moon+ Reader and Librera if time allows.
+- Answer explicitly, in the ADR:
+  1. Can Quire be selected as the engine on the Note Air5 C, and through which settings path?
+  2. What are the typical and maximum chunk sizes, and do chunks align to sentences,
+     paragraphs or pages?
+  3. Is the text clean, or does it carry headers, page numbers, footnote markers or
+     hyphenation?
+  4. Does `rangeStart` drive NeoReader's highlighting?
+  5. How often is `onStop` called — per page turn, or only on stop?
+  6. Are rate and pitch passed through from the reader's own controls?
+- Question 2 settles `docs/architecture.md` §9.1, which the matcher (QUI-022) is designed
+  around; question 3 settles how aggressive normalisation has to be.
+- Out of scope: real synthesis, matching, indexing, any production code.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The engine can be selected
+  Given the spike app installed on the Note Air5 C
+  When I open the device text-to-speech settings
+  Then Quire appears as a selectable engine
+  And the settings path taken is written down
+
+Scenario: NeoReader routes text to it
+  Given Quire is the selected engine
+  When I open a book in NeoReader and press Read Aloud
+  Then the spike receives the book's text and logs it
+
+Scenario: Chunking is characterised, not guessed
+  Given a chapter read aloud in NeoReader
+  When the log is reviewed
+  Then typical and maximum chunk sizes are recorded
+  And whether chunks align to sentences, paragraphs or pages is stated
+
+Scenario: The highlighting question is answered
+  Given the spike emits rangeStart callbacks
+  When a chapter is read aloud in NeoReader
+  Then whether NeoReader highlights in response is recorded either way
+
+Scenario: A negative result is reported plainly
+  Given NeoReader cannot use a third-party engine
+  When the ADR is written
+  Then it says so, and states what that means for the V1 roadmap
+  And no work proceeds on QUI-021 through QUI-026 until the roadmap is re-decided
 ```
 
 ### Worklog
