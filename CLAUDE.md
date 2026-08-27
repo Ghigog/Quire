@@ -22,7 +22,9 @@ using on-device AI, optimised for e-ink Android hardware. The product spec lives
    or two sentences, then deliver under a stated assumption.
 5. **The device is the constraint.** Every decision is weighed against the SLAs in
    §5 of the PRD: ≤1.2 GB RAM, ≤450 MB app footprint, RTF ≤0.15, <8%/hr battery.
-   "It works on my laptop" is not evidence.
+   "It works on my laptop" is not evidence. The reference device is an Onyx Boox
+   Note Air5 C — `docs/device-profile.md` says what that implies. Android only;
+   iOS is out of scope.
 
 ---
 
@@ -153,6 +155,9 @@ A ticket is `Done` only when all of the following are true:
 These bite often enough to be written down:
 
 - Pure `#000000` / `#FFFFFF` assets only in monochrome mode; no greys that dither.
+- The reference device's panel *is* colour (Kaleido 3), but colour halves resolution to
+  150 ppi and cuts contrast. Nothing on the reading surface uses it, and colour is never
+  the sole carrier of meaning. See `docs/device-profile.md`.
 - No animation, no cross-fades, no shimmer loaders. State changes are instant.
 - Batch DOM/view mutations into a single frame to avoid partial-refresh ghosting.
 - Hardware page-turn and volume keys are first-class inputs, not accessibility extras.

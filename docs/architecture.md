@@ -62,6 +62,12 @@ re-run independently. Nothing downstream ever parses text again.
 Sentences are a sub-unit, derived once inside a paragraph, used only by synthesis and
 highlighting. Paragraphs are the scheduling atom; sentences are the display atom.
 
+**One exception, found by building it (QUI-018).** A paragraph regularly contains
+narration and two speakers, so the unit that gets *a voice* is finer than the unit that
+gets *scheduled*: attribution and synthesis work on `Segment`s within a paragraph, with
+locators of the form `chapter#p3#s1`. Scheduling, buffering and progress stay at the
+paragraph.
+
 ---
 
 ## 3. Two pipelines, two time budgets

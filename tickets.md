@@ -14,7 +14,7 @@ already `In progress`.
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
-| QUI-018 | Headless end-to-end pipeline spike | Spike | Todo | — | QUI-017 |
+| QUI-018 | Headless end-to-end pipeline spike | Spike | In progress | claude-opus-5 | QUI-017 (partial) |
 | QUI-019 | Vertical slice: one chapter on device | Spike | Todo | — | QUI-018, QUI-002, QUI-010, QUI-012 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-002 | EPUB import and Readium reader shell | Foundations | Todo | — | QUI-001 |
@@ -1160,16 +1160,25 @@ resident memory. The output is three ADRs and a table of numbers.
 ### Requirements (how)
 - Owns: `spike/bakeoff/`, `docs/adr/0001-slm-runtime.md`, `docs/adr/0002-tts-engine.md`,
   `docs/adr/0003-memory-arbitration.md`
+- Target device is the Onyx Boox Note Air5 C (`docs/device-profile.md`).
 - SLM candidates: Llama 3.2 1B and Qwen 2.5 1.5B, Q4_K_M, via `llama.cpp` JNI and via
-  ExecuTorch. Measure: load time, peak RSS, prompt-eval and generation tokens/s on a
-  fixed 5-line attribution prompt.
+  ExecuTorch. Measure: load time, peak RSS, and **prompt-eval tokens/s separately from
+  generation tokens/s** — on this SoC prompt eval dominates, so one blended number hides
+  the answer.
+- Measure the **KV-cache reuse factor**: time to attribute 50 consecutive dialogue lines
+  with a fresh context window each, versus one rolling chapter context. That ratio decides
+  whether QUI-007's 10-minute scan budget is reachable at all
+  (`docs/architecture.md` §4.1).
+- Measure **sustained power draw** in mW for each configuration, not only memory. The
+  device budget is ≈1.14 W total during playback.
 - TTS candidates: Kokoro-TTS (82M ONNX) and Piper C++. Measure: RTF on a fixed 10 s
   text, peak RSS, on-disk size, number of usable voice variants, and whether word
   boundary timestamps are obtainable **without** post-hoc alignment.
 - Co-residency: load an SLM and a TTS engine together and record combined peak RSS
-  against the 1.2 GB ceiling. This number decides ADR-0003.
-- Run on at least one true e-ink device (Onyx Boox or Meebook); record exact model, SoC
-  and RAM with every result.
+  against the 1.2 GB ceiling, plus power draw. With 6 GB on the reference device this is
+  expected to fit; ADR-0003 turns on the power number as much as the memory one.
+- Run on the Note Air5 C; record Android build and starting battery level with every
+  result, and discard runs started below 30% battery.
 - Each ADR states the alternatives, the measurements, the choice, and what would make us
   revisit it.
 - Out of scope: any production code, any UI, cloud engines.
@@ -1190,9 +1199,15 @@ Scenario: Boundary timestamps are proven, not assumed
 
 Scenario: The co-residency question is answered
   Given an SLM and a TTS engine loaded simultaneously
-  When peak resident memory is measured
-  Then the number is recorded against the 1.2 GB ceiling
+  When peak resident memory and sustained power draw are measured
+  Then both are recorded against the 1.2 GB and 1.14 W budgets
   And ADR-0003 selects whole-book, chapter-ahead or co-resident attribution on that basis
+
+Scenario: KV-cache reuse is quantified
+  Given 50 consecutive dialogue lines from one chapter
+  When they are attributed with a fresh context window each, and again with one rolling context
+  Then both wall-clock times are recorded
+  And the ratio is stated as a projected whole-book scan time against the 10 minute budget
 
 Scenario: Decisions are recorded
   Given the bake-off has run
@@ -1212,8 +1227,11 @@ Scenario: A candidate that fails is reported, not worked around
 
 ## QUI-018 — Headless end-to-end pipeline spike
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** QUI-017 (partial)
 **PRD:** §3 · **Timebox:** 4 days
+
+> Started ahead of QUI-017 on the Tier 1 half only, which needs no model and therefore no
+> device. The Tier 2/3 half stays blocked on ADR-0001.
 
 ### User story
 As a team, I want a command-line run that turns an EPUB into a multi-voice wav file, so
@@ -1277,7 +1295,52 @@ Scenario: Fixtures are reusable downstream
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-27 — claude-opus-5.** Landed the Tier 1 half; Tier 2/3 remain blocked on
+ADR-0001. Reproduce with:
+
+```bash
+cd spike/pipeline && gradle installDist test
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike score ../../fixtures/attribution/*.tsv
+```
+
+*Measured, on the hand-written fixtures (36 dialogue spans):*
+
+| | coverage | precision | accuracy |
+| --- | --- | --- | --- |
+| `tagged.tsv` (classic speech tags) | 83.3% | 100% | 83.3% |
+| `beats.tsv` (action beats) | 55.6% | 100% | 55.6% |
+| `untagged.tsv` (bare exchange) | 6.7% | 100% | 6.7% |
+| **total** | **44.4%** | **100%** | **44.4%** |
+
+**QUI-008 throughput SLA: 99,960 words in 693 ms**, against a 2 s budget — but measured
+on an Intel Xeon 2.10 GHz container, *not* the Boox. The reference device is several times
+slower single-threaded, so this passes with far less margin than it looks and must be
+re-measured on device before QUI-008 can be called done.
+
+*What surprised me.* The roster is the bottleneck, not the patterns. Tier 1 originally
+bootstrapped its roster only from explicit speech tags, which meant that in
+`beats.tsv` — modern prose that never writes "said Dana" — Dana never entered the roster
+and every one of her lines was unattributable. Admitting names that stand beside a quote
+at least twice took total coverage 38.9% → 44.4% with precision unchanged. This is direct
+evidence for QUI-007: the SLM scan's real job is supplying a roster Tier 1 cannot infer,
+more than supplying traits.
+
+*Precision held at 100% throughout.* Every rule declines rather than guesses, and
+unresolved spans record *why* (`pronoun speech tag`, `tag names unknown 'Gregor'`), which
+is a better input to Tier 2 than a blank. Worth keeping as a rule: a confidently wrong
+voice is worse for a listener than the narrator taking a line.
+
+*A structural finding for QUI-010/QUI-011.* A paragraph routinely contains narration plus
+two speakers, so the unit that gets a voice must be finer than the paragraph. The spike
+introduces `Segment` with locators of the form `chapter#p3#s1`. `docs/architecture.md` §2
+still holds for scheduling and synthesis; it now names the exception.
+
+*What is left.* Tier 2/3 (blocked on ADR-0001). Real fixtures: these three passages were
+hand-written because the build container cannot reach Project Gutenberg, so the 44.4% is a
+shape, not an accuracy estimate — QUI-018's acceptance criteria ask for three real
+chapters and they are still owed. No wav is produced yet; that needs the TTS engine from
+ADR-0002. The ticket therefore stays `In progress`.
 
 ---
 

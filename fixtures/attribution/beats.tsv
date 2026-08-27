@@ -1,0 +1,15 @@
+# Modern style: action beats instead of speech tags. Tier 1's action-beat rule earns
+# its keep here, and its false positives show up here too.
+NARRATION	The kitchen smelled of burnt sugar.
+Dana	Dana set the pan in the sink and ran the tap over it. "That is the second one this week."
+Marcus	Marcus did not look up from his phone. "Third."
+Dana	"You are not helping."
+NARRATION	The tap hissed against the hot metal and the smell got worse.
+Marcus	He put the phone face down on the counter. "What do you want me to say?"
+Dana	"Something. Anything that is not a number."
+Marcus	Marcus laughed, which was the wrong thing to do, and he knew it before the sound was finished. "Sorry."
+Dana	Dana turned the tap off. "I am going to bed."
+NARRATION	She was at the door before he spoke again, and she stopped without turning around.
+Marcus	"I did not mean third like it mattered," said Marcus.
+Dana	"I know what you meant," she said to Marcus, and went upstairs.
+NARRATION	He stood in the kitchen for a while after that, listening to the pipes cool.

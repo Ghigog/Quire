@@ -1,0 +1,22 @@
+# The honest test: a long exchange that drops speech tags entirely.
+# Tier 1 cannot resolve most of this and should say so rather than guess.
+NARRATION	They walked the length of the platform twice before either of them spoke.
+Ellen	"You will miss it," said Ellen.
+Robert	"There is another at nine."
+Ellen	"There is not."
+Robert	"Then I shall wait for the one at nine tomorrow."
+Ellen	"You are being deliberately obtuse."
+Robert	"I am being deliberately calm. It looks similar from the outside."
+Ellen	"It does not."
+NARRATION	A porter went past with a trolley, and they stood apart to let him through.
+Robert	"You could come."
+Ellen	"We have had this conversation."
+Robert	"We have had it badly. I should like to have it well, once, before I go."
+Ellen	"That is not a thing you get to decide."
+Robert	"No."
+Ellen	"No."
+NARRATION	The guard's whistle went somewhere down the platform.
+Robert	"Well," he said.
+Ellen	"Well," she said.
+UNKNOWN	"Write to me."
+NARRATION	Afterwards she could not remember which of them had said it.
