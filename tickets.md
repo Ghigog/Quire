@@ -15,6 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
 | QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -41,7 +42,7 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 
-Next free ID: **QUI-028**
+Next free ID: **QUI-029**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -1307,7 +1308,10 @@ accuracy against it.
 - Transcript output per line: text, assigned speaker, confidence, **tier**, and for
   Tier 2 the context window that was used. Debuggability is the point of this ticket.
 - Fixture set: at least 3 chapters from different books, hand-labelled with the correct
-  speaker per line, including one heavy untagged back-and-forth exchange.
+  speaker per line, including one heavy untagged back-and-forth exchange. **Prefer PDNC**
+  (35,978 annotated quotations across 22 novels) over hand-labelling — it is the benchmark
+  the field reports against, so our numbers become comparable to published ones. Check its
+  licence first. See `docs/prior-art.md` §3.
 - `score` command reports overall accuracy plus a breakdown by tier, so we can see
   whether errors come from heuristics or from the model.
 - Code here is explicitly throwaway; where a component is obviously reusable, extract it
@@ -2177,6 +2181,85 @@ Scenario: Whole-entry matches are unchanged
   Given a chunk covering an entire entry
   When it is matched
   Then the spans returned are identical to those before this ticket
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-028 — Encoder vs SLM for quotation attribution
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
+
+### User story
+As a team, I want to know whether a small purpose-built encoder attributes dialogue better
+and faster than the 1B SLM we planned on, so that we are not spending our worst constraint
+on a job a much cheaper model does better.
+
+### Context (why)
+The architecture puts a quantized 1B SLM on Tier 2 attribution, and `device-profile.md` §2
+works out that on a Snapdragon 750G without i8mm this lands in the *hours* for a novel.
+Everything in `architecture.md` §5 — KV-cache reuse, single-token generation, Tier 1
+coverage as a performance feature — exists to fight that.
+
+The literature suggests the fight may be unnecessary (`docs/prior-art.md` §3). Encoder
+models built for quotation attribution report **94.5% on PDNC at 20× the speed of standard
+methods and over 1000× the speed of LLM approaches**, against BookNLP's ~63%. A BERT-class
+encoder is roughly 110M parameters — an order of magnitude below the SLM, and squarely in
+what ONNX Runtime Mobile already runs well.
+
+If that transfers to our hardware it removes our worst constraint. If it does not, we have
+lost three days and know the SLM plan is right.
+
+### Description (what)
+A comparison on the same fixtures, on the reference device: a small attribution encoder
+against the planned 1B SLM, measured on accuracy, wall-clock time for a whole novel, peak
+RSS and power. The output is a decision recorded as an ADR, and — if the encoder wins — a
+rewrite of QUI-006 and QUI-009.
+
+### Requirements (how)
+- Owns: `spike/attribution-bakeoff/`, `docs/adr/0005-attribution-model.md`
+- Candidates: an encoder-based attribution model exported to ONNX, BookNLP as the baseline
+  the field reports against, and the 1B SLM prompt from QUI-009.
+- Evaluate on **PDNC** (35,978 quotations, 22 novels) so numbers are comparable to
+  published results. **Confirm the corpus licence before use, and record it in the ADR.**
+- Measure per candidate: accuracy on PDNC, wall-clock to attribute a 100k-word novel on the
+  Note Air5 C, peak RSS, on-disk size, sustained power draw.
+- Report Tier 1 coverage separately, so we can see how much of the book each model is even
+  asked about (QUI-018 measured 44.4% coverage at 100% precision on hand-written fixtures).
+- The ADR must state explicitly what happens to the SLM. Character-manifest generation
+  (names, aliases, gender, age band, traits) is a *different* task an attribution encoder
+  does not do, so a win here narrows the SLM's job rather than removing it.
+- Out of scope: production integration; that is QUI-006 and QUI-009 rewritten afterwards.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Both candidates measured on the same data
+  Given PDNC and the reference device
+  When the bake-off runs
+  Then accuracy, wall-clock time for a novel, peak RSS, disk size and power are recorded for each candidate
+
+Scenario: The indexing budget is answered
+  Given the winning candidate
+  When a 100,000 word novel is attributed end to end on the device
+  Then the elapsed time is stated against QUI-007's 30 minute budget
+
+Scenario: Accuracy is comparable to published work
+  Given results on PDNC
+  When they are written up
+  Then they are stated alongside the published BookNLP and state-of-the-art figures
+
+Scenario: The decision names the consequences
+  Given the ADR
+  When I read it
+  Then it says whether QUI-006 and QUI-009 are rewritten, and what job the SLM keeps
+
+Scenario: A negative result is reported plainly
+  Given the encoder underperforms the SLM on our hardware
+  When the ADR is written
+  Then it says so and the SLM plan stands unchanged
 ```
 
 ### Worklog
