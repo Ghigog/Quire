@@ -49,8 +49,11 @@ The fix is structural, and it is why QUI-017 must measure the right thing:
   ~900k tokens of prompt work into ~130k for the whole book.
 - **Constrain generation to a single token** — an index into the candidate speaker list,
   not free text. Generation then costs ~1 token per line instead of ~20.
-- **Make Tier 1 carry the volume.** Every line the regex resolves is a line the model
-  never sees. On this SoC, Tier 1 coverage is a performance feature, not a nicety.
+- **Make Tier 1 carry what it can.** Every line the regex resolves is a line the model
+  never sees, so coverage is a performance feature and not only an accuracy one.
+  **Do not over-rate it, though:** measured on PDNC, only 30.1% of quotations across 28
+  novels carry an explicit speech tag, and on some books it is 12%. Tier 1 shaves the
+  workload; it cannot avoid the model (`docs/prior-art.md` §3).
 
 So QUI-017 measures **prompt-eval tokens/s and the KV-cache reuse factor** as first-class
 numbers, not just generation speed.

@@ -80,8 +80,42 @@ three hand-*written* passages, which the ticket honestly flags as a weak accurac
 PDNC is that gap closed several hundred times over, and it is the benchmark the whole field
 reports against, so our numbers would be comparable to published ones.
 
-**Check its licence before use**, and note that it is derived from public-domain novels but
-the annotations have their own terms.
+**Licence, checked 2026-08-28: there is none.** The repository carries no `LICENSE` file
+and the ReadMe states no terms; it links [the paper](https://arxiv.org/abs/2204.05836).
+Treat it as evaluation-only: clone it locally, cite the paper, never commit it and never
+redistribute it. A fetch script, like the models.
+
+### What PDNC says about Tier 1 — measured, and it is not what we assumed
+
+PDNC labels every quotation `Explicit`, `Implicit` or `Anaphoric`. Across all 28 novels and
+37,131 quotations:
+
+| Type | Share | What it means for us |
+| --- | --- | --- |
+| **Explicit** | **30.1%** | A named speech tag — Tier 1's regex territory |
+| Implicit | 45.0% | No tag at all — the model's problem |
+| Anaphoric | 24.8% | A pronoun tag (`she said`) — Tier 1 detects it and declines |
+
+**Tier 1's ceiling on real prose is about 30%, not the 44.4% our hand-written fixtures
+suggested.** Those fixtures were written to exercise the rules, so they over-represent the
+cases the rules handle — exactly the bias `fixtures/attribution/README.md` warns about, now
+quantified.
+
+And the spread between books is enormous:
+
+| Novel | Explicit |
+| --- | --- |
+| Alice's Adventures in Wonderland | 81.6% |
+| Oliver Twist | 56.8% |
+| The Sport of the Gods | 15.9% |
+| A Passage to India | 14.6% |
+| The Sign of the Four | 12.7% |
+| **The Gambler** | **11.6%** |
+
+So on a Conan Doyle or a Dostoevsky, heuristics resolve roughly one line in eight and the
+model does everything else. This is the strongest argument yet for QUI-028: if the model
+carries 70–88% of the book, how fast and accurate *that* model is matters far more than any
+amount of Tier 1 tuning.
 
 ### An encoder model may beat the 1B SLM at attribution — and this is the big one
 
