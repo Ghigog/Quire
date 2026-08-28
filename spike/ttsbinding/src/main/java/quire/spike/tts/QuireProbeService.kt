@@ -116,6 +116,8 @@ class QuireProbeService : TextToSpeechService() {
 
     override fun onStop() {
         stopped = true
+        // A new reading session should not inherit the last one's quote state.
+        inQuote = false
         record("onStop")
     }
 
@@ -241,24 +243,39 @@ class QuireProbeService : TextToSpeechService() {
     private fun dialogueVoice(engine: TtsEngine) =
         if (engine.voiceCount > 1) engine.voiceCount / 2 else NARRATOR_VOICE
 
+    /**
+     * Whether we are inside a quotation, carried **across** utterances.
+     *
+     * The host splits at commas, so a line of dialogue arrives as several chunks and only
+     * the first carries the opening quote. Deciding narration-versus-speech per chunk, in
+     * isolation, therefore reverts to the narrator on the second clause and stays
+     * there — observed on device, and the reason this field exists.
+     *
+     * It is a patch on a fundamentally weak signal. Quire proper does not infer speech
+     * from quote marks at all: it looks the speaker up by position in the index, which is
+     * state that survives chunking by construction rather than by a flag like this one.
+     */
+    @Volatile private var inQuote = false
+
     /** Split into runs of narration and quoted speech, preserving every character. */
     private fun splitOnQuotes(text: String): List<Pair<String, Boolean>> {
         val out = mutableListOf<Pair<String, Boolean>>()
         val sb = StringBuilder()
-        var inQuote = false
         for (c in text) {
-            val isQuote = c == '"' || c == '\u201C' || c == '\u201D'
-            if (isQuote) {
-                sb.append(c)
-                if (inQuote) { out += sb.toString() to true; sb.clear(); inQuote = false }
-                else {
-                    val head = sb.dropLast(1).toString()
-                    if (head.isNotEmpty()) out += head to false
+            val opens = c == '\u201C' || (c == '"' && !inQuote)
+            val closes = c == '\u201D' || (c == '"' && inQuote)
+            when {
+                closes && inQuote -> {
+                    sb.append(c)
+                    out += sb.toString() to true
+                    sb.clear(); inQuote = false
+                }
+                opens && !inQuote -> {
+                    if (sb.isNotEmpty()) out += sb.toString() to false
                     sb.clear(); sb.append(c); inQuote = true
                 }
-                continue
+                else -> sb.append(c)
             }
-            sb.append(c)
         }
         if (sb.isNotEmpty()) out += sb.toString() to inQuote
         return out

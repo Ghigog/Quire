@@ -37,8 +37,19 @@ data class Candidate(
                 26_855_312, Kind.KITTEN,
             ),
             Candidate(
-                "piper", "Piper libritts_r (medium, multi-speaker)",
+                "piper", "Piper libritts_r (medium, 904 voices)",
                 "vits-piper-en_US-libritts_r-medium", 82_038_311, Kind.VITS,
+            ),
+            // A single-speaker "low" model. Useless for casting, but it answers the
+            // question the libritts_r number cannot: is RTF 0.35 the SoC's limit, or this
+            // model's size? If this comes in near 0.1 it is the model, and a smaller
+            // multi-speaker model would fix us.
+            Candidate(
+                "alan-low", "Piper alan LOW (speed baseline, 1 voice)",
+                "vits-piper-en_GB-alan-low", 66_000_000, Kind.VITS,
+            ),
+            Candidate(
+                "vctk", "VITS VCTK (109 voices)", "vits-vctk", 151_000_000, Kind.VITS,
             ),
             Candidate(
                 "kokoro-int8", "Kokoro multi-lang v1.1 (int8)",

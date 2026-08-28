@@ -104,10 +104,37 @@ that QUI-017's benchmark reports.
   PRD §4.2's boundary timestamps must be estimated from span positions or bought with a
   forced aligner. Independent of which engine wins. See ADR-0004.
 
+### 5. Threads do not help — measured
+
+| Threads | RTF |
+| --- | --- |
+| 2 | 0.354 |
+| 4 | **0.370** |
+
+Four threads is *slightly worse* than two. The 750G's two performance cores are the whole
+budget; scheduling onto the efficiency cores costs more in coordination than it returns.
+Thread tuning is a closed avenue, and RTF ≈ 0.35 is what this model does on this SoC.
+
+The open question is therefore whether 0.35 is the *SoC's* limit or this *model's*. A
+single-speaker Piper "low" model has been added to the probe purely to answer it: if it
+lands near 0.1, the hardware is fine and we need a smaller multi-speaker model; if it lands
+near 0.3, the hardware is the ceiling and the RTF budget has to be re-derived from power.
+
+### 6. Quote-mark inference cannot survive chunking — and that is the architecture's point
+
+The probe switched voices on the chunk carrying the opening quote and then reverted to the
+narrator for the rest of the line. The cause: it decided narration-versus-speech *per
+chunk*, in isolation, so a continuation clause carrying no opening quote read as narration.
+
+Patched in the probe by carrying quote state across utterances, but the lesson is the
+architectural one. Any approach that infers who is speaking from the text of a single chunk
+is defeated by clause-level chunking, which is exactly what @Voice's "alternating voices"
+does. Quire does not infer: it looks the speaker up by position in the index, which is
+state that survives chunking by construction.
+
 ## Still needed
 
-1. **Thread count.** Measured at 2 threads. The 750G has two performance cores and six
-   efficiency cores; 4 threads may move RTF materially and has not been tried.
+1. ~~**Thread count.**~~ Measured: no help. See §5.
 2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
    for, and it decides whether 0.354 is actually a problem.
 3. **Kokoro int8 (140 MB)** for completeness. Only the 304 MB fp32 build was tried, and it
