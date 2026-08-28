@@ -1233,6 +1233,11 @@ resident memory. The output is three ADRs and a table of numbers.
   result, and discard runs started below 30% battery.
 - Each ADR states the alternatives, the measurements, the choice, and what would make us
   revisit it.
+- **Never hand a native API a path that has not been confirmed to exist.** Model archives
+  name their weights after the voice (`en_GB-alan-low.onnx`), not predictably, and an
+  unfound file becomes an empty string, which sherpa-onnx turns into a SIGSEGV that no
+  `runCatching` can catch. Discover files by scanning; validate before loading; log what
+  was resolved.
 - Out of scope: any production code, any UI, cloud engines.
 
 ### Acceptance criteria (Gherkin)
