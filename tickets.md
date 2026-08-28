@@ -2229,6 +2229,13 @@ rewrite of QUI-006 and QUI-009.
   Note Air5 C, peak RSS, on-disk size, sustained power draw.
 - Report Tier 1 coverage separately, so we can see how much of the book each model is even
   asked about (QUI-018 measured 44.4% coverage at 100% precision on hand-written fixtures).
+- **Measure out-of-domain accuracy, not just PDNC.** PDNC is 22 English novels weighted
+  towards literary fiction; a reader's library is not. Hold out at least three books
+  unlike it — a translated novel, contemporary genre fiction heavy on action beats rather
+  than speech tags, and a first-person narrative — and report their accuracy separately
+  from the headline figure. The published 94.5% is a ceiling on that corpus's home turf,
+  not a promise about a real library, and a model that only works on the benchmark is not
+  a model that ships.
 - The ADR must state explicitly what happens to the SLM. Character-manifest generation
   (names, aliases, gender, age band, traits) is a *different* task an attribution encoder
   does not do, so a win here narrows the SLM's job rather than removing it.
@@ -2250,6 +2257,12 @@ Scenario: Accuracy is comparable to published work
   Given results on PDNC
   When they are written up
   Then they are stated alongside the published BookNLP and state-of-the-art figures
+
+Scenario: Out-of-domain accuracy is reported separately
+  Given held-out books unlike PDNC — a translation, action-beat-heavy genre fiction, first person
+  When each candidate is evaluated on them
+  Then their accuracy is reported apart from the PDNC figure
+  And the gap between the two is stated as the expected real-library degradation
 
 Scenario: The decision names the consequences
   Given the ADR
