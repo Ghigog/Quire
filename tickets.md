@@ -2051,6 +2051,16 @@ Verified in the built APK: the service declares the `TTS_SERVICE` action, the `D
 category, the metadata resource, and `exported=true`. Runtime behaviour on the device is
 still unverified.
 
-*Still open:* exact chunk sizes in characters, whether the host ever splits mid-sentence at
-the 4000-character limit, `onStop` frequency, and whether footnote markers or page numbers
-appear in the stream. All need the probe on the device. Ticket stays `In progress`.
+**2026-08-28 — the probe runs on the device.** Installed, selected as the system engine,
+and driven from NeoReader: beeps play in place of speech, so the engine registers, NeoReader
+binds to it, and the `start` → `audioAvailable` → `done` callback sequence works.
+
+**The text still underlined while the beeps played.** NeoReader honours `rangeStart` from an
+arbitrary third-party engine, not only from Google's, so word-level read-along ships in V1
+instead of waiting for V3.0. Recorded in ADR-0004.
+
+*Still open:* the log itself. The build that ran was v1, which wrote only to the app's
+private external directory — a path scoped storage makes awkward to reach without adb, and
+the reason v2 also writes to Downloads. Exact chunk sizes, mid-sentence splitting at the
+4000-character limit, `onStop` frequency, and whether footnote markers or page numbers
+appear in the stream all still need that TSV. Ticket stays `In progress`.

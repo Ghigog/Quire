@@ -90,6 +90,25 @@ Three design consequences, all of which change tickets:
    index entry is a sentence carrying an ordered list of voiced spans — sentences for
    matching, spans for voicing.
 
+## Confirmed with our own engine (2026-08-28)
+
+The observations above were made with third-party engines (eSpeak NG, Google TTS). They
+have now been repeated against Quire's own probe (`spike/ttsbinding/`, QUI-020), which is
+the case that actually matters — a host might well honour a blessed engine and ignore an
+arbitrary one.
+
+| | Result |
+| --- | --- |
+| Engine registers and is selectable | Yes |
+| NeoReader binds to it and sends text | Yes — audible beeps in place of speech |
+| Our audio callback sequence produces sound | Yes (`start` → `audioAvailable` → `done`) |
+| **NeoReader honours `rangeStart` from a third-party engine** | **Yes — the text still underlined as the beeps played** |
+
+The last row is the significant one. Word-level read-along does not depend on the host
+trusting a particular engine, so it **ships in V1** rather than waiting for V3.0's built-in
+reader. QUI-024 emits ranges from the TTS boundary timestamps and NeoReader will consume
+them.
+
 ## What is still unverified
 
 This ADR is provisional because four of QUI-020's six questions remain open. They need the
