@@ -19,7 +19,7 @@ already `In progress`.
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
-| QUI-021 | Dialogue index schema and store | Index | Todo | — | QUI-001 |
+| QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Todo | — | QUI-021, QUI-022 |
@@ -36,13 +36,14 @@ already `In progress`.
 | QUI-003 | E-ink display mode and hardware keys | Companion | Todo (reduced) | — | QUI-025 |
 | QUI-026 | E-reader compatibility matrix verification | Quality | Todo | — | QUI-019 |
 | QUI-016 | Performance and SLA harness | Quality | Todo | — | QUI-010 |
+| QUI-029 | Unindexed books and non-EPUB formats | Companion | **Deferred → later phase** | — | QUI-025 |
 | QUI-002 | EPUB import and Readium reader shell | Reader | **Deferred → V3.0** | — | — |
 | QUI-004 | Reading position and progress tracking | Reader | **Deferred → V3.0** | — | — |
 | QUI-013 | Playback controls | Reader | **Deferred → V3.0** | — | — |
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 
-Next free ID: **QUI-029**
+Next free ID: **QUI-030**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -1476,7 +1477,7 @@ Scenario: Page turns do not break it
 
 ## QUI-021 — Dialogue index schema and store
 
-**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-001
+**Status:** In review · **Owner:** claude-opus-5 · **Epic:** Index · **Depends on:** QUI-001
 **PRD:** §2 Phase 1
 
 ### User story
@@ -1550,7 +1551,43 @@ Scenario: Size budget
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-28 — claude-opus-5.** Implemented in `core/index/`. Reproduce with
+`gradle :core:index:test` from the repository root. 30 tests pass across the module.
+
+*Measured:* a 100,000-word novel (8,888 sentence entries) indexes to **2,412 KiB**, against
+the 5 MB budget.
+
+It did not start there. The first honest measurement was **7,588 KiB — over budget** — and
+the scenario failing is what found it. Three fixes, in order of how much they bought:
+
+1. **`WITHOUT ROWID` on every table, and delete the redundant index.** Each table has a
+   natural composite key, so the default layout stored the data once in the table and again
+   in the primary-key index — and I had additionally created an index on
+   `(book_id, prefix_hash)`, which the primary key already begins with, storing the prefix
+   data a *third* time. 5,668 → 2,412 KiB.
+2. **Hash the prefixes.** Six overlapping cumulative strings per sentence cost more than
+   the sentences themselves. FNV-1a 64-bit, written by hand rather than `String.hashCode`
+   because the value goes on disk and must be identical on every platform forever.
+   Collisions are harmless: a lookup only proposes candidates that the matcher then
+   verifies against the text. 7,588 → 5,668 KiB.
+3. **Stop storing normalised text**, recomputing it on read. Cheap beside a disk hit, and
+   it makes `Normalizer` part of the on-disk contract — which is what `Schema.VERSION` is
+   for.
+
+*Design note.* `core:index` stays pure Kotlin, so the SQL sits behind a small `Sql`/`Row`
+port: Android supplies its own implementation over the platform's SQLite, and the tests
+supply one over JDBC. The schema and every statement live on this side of the port, so both
+platforms run the same SQL rather than reimplementing it. The JDBC driver is
+`testImplementation` only and never ships, so it costs nothing against the 450 MB footprint.
+
+*The test that matters most* runs the same chunk sequence through the matcher twice — once
+over `InMemoryBookIndex`, once over SQLite — and asserts identical results, cursor and
+offset. That is what makes the in-memory stand-in trustworthy as the reference behaviour.
+
+*What is left before this is Done:* an Android `Sql` implementation, which arrives with the
+Android modules QUI-001 still owes; and the size figure re-measured with real prose rather
+than four repeating sentences, which compress better than a real novel will.
 
 ---
 
@@ -1686,10 +1723,11 @@ One deliberate limitation: a lost cursor cannot anchor on a mid-sentence fragmen
 it shares its prefix with nothing. It falls to the narrator and re-locks on the next
 sentence start — a sentence or two, not a page. Tested.
 
-*What is left before this is Done:* the latency scenario re-measured on device;
-`BookIndex` implemented over SQLite by QUI-021 (`InMemoryBookIndex` stands in and is what
-the tests run against); and QUI-027, without which `spans` on a partial match covers the
-whole entry rather than the part actually spoken.
+*What is left before this is Done:* the latency scenario re-measured on device, and
+QUI-027, without which `spans` on a partial match covers the whole entry rather than the
+part actually spoken. **The SQLite backing landed with QUI-021 on 2026-08-28**, and a test
+now runs the same chunks through both `InMemoryBookIndex` and `SqliteBookIndex` asserting
+identical results, cursor and offset.
 
 ---
 
@@ -2273,6 +2311,67 @@ Scenario: A negative result is reported plainly
   Given the encoder underperforms the SLM on our hardware
   When the ADR is written
   Then it says so and the SLM plan stands unchanged
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-029 — Unindexed books and non-EPUB formats
+
+> **Deferred by decision, 2026-08-28.** Not a V1 blocker: the failure shape is already
+> correct, just silent. Revisit once the main EPUB path works well. Written down now so it
+> is tracked rather than remembered.
+
+**Status:** Deferred · **Owner:** — · **Epic:** Companion · **Depends on:** QUI-025
+**PRD:** §2 Phase 1
+
+### User story
+As a reader, I want to know why a book is being read in a single voice, so that I do not
+assume Quire is broken when it is simply working on a book I never imported.
+
+### Context (why)
+The companion app imports EPUBs. Everything else — a PDF, a `.mobi`, an EPUB the reader
+never imported — produces no index match, so every chunk falls to the narrator and Quire
+behaves as an ordinary TTS engine. That is the right failure: the reader is no worse off
+than before installing Quire.
+
+It is silent, though. Nothing distinguishes "this book has no dialogue" from "you never
+imported this book". PDFs in particular are heavily read on the reference device, and PDF
+text extraction is its own problem — the QUI-020 capture showed words split across line
+breaks and doubled spaces that EPUB never produces (ADR-0004).
+
+### Description (what)
+Some way for the reader to find out that the book they are listening to is not indexed, and
+a decision on whether non-EPUB formats are ever indexed at all.
+
+### Requirements (how)
+- Owns: `app/companion/` unindexed-book surfacing; any format support that follows
+- Decide between: a notification on first unmatched session; a companion-app list of
+  "books heard recently that are not indexed"; or accepting the silence and documenting it.
+- If PDF indexing is ever in scope it needs its own normalisation rules — hyphenation
+  across line breaks, running headers and footers, doubled spaces — and its own ticket.
+- Must not nag: a reader who deliberately listens to unindexed material should not be
+  interrupted repeatedly.
+- Out of scope until this ticket is picked up: everything above.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: An unindexed book still reads aloud
+  Given a book that was never imported
+  When it is read aloud
+  Then every chunk is spoken in the narrator voice with no error and no silence
+
+Scenario: The reader can find out why
+  Given a session on an unindexed book
+  When the reader looks in the companion app
+  Then that book is identifiable as unindexed
+
+Scenario: Quire does not nag
+  Given a reader who listens to unindexed material repeatedly
+  When they do so
+  Then they are not interrupted on every session
 ```
 
 ### Worklog

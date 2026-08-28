@@ -261,13 +261,10 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
 4. **Scene boundaries** for the 0.40–0.64 "most active speaker" band. Chapter breaks are a
    crude proxy. Deferred until QUI-009 has fixture data.
 5. **RTF and battery SLAs** are retained in PRD §4 but not restated by v1.2 — confirm.
-6. **What happens to a book we never indexed?** The companion app imports EPUBs (PRD §2
-   Phase 1). A reader opening a PDF, a `.mobi`, or an EPUB they never imported gets no
-   index match, so every chunk falls to the narrator and Quire behaves as an ordinary TTS
-   engine. That is the correct *failure* mode, but it is silent: nothing tells the reader
-   why their book has one voice. Needs a decision — a notification, a companion-app
-   "unindexed books seen recently" list, or accepting the silence. PDFs are common on the
-   reference device, so this is not an edge case.
+6. ~~**What happens to a book we never indexed?**~~ **Deferred 2026-08-28 — QUI-029.**
+   Unindexed books, PDFs included, fall through to the narrator and Quire behaves as an
+   ordinary TTS engine. Correct failure shape, silent about it. Explicitly out of scope
+   until the main path works well.
 7. **How far does attribution generalise?** Accuracy figures in the literature are on
    PDNC's domain — 22 English novels, mostly literary fiction. Translated prose,
    action-beat-heavy genre fiction and first-person narration are all under-represented,

@@ -84,4 +84,25 @@ object Normalizer {
      * it starts on. Writer and matcher agree on this constant.
      */
     const val HEAD_WORDS = 6
+
+    /**
+     * FNV-1a, 64-bit. Used to key prefix lookups.
+     *
+     * Storing prefixes as text costs more than the entries themselves: six overlapping,
+     * cumulative strings per sentence. Hashing them removes that. Its own implementation
+     * rather than [String.hashCode] because this value goes on disk, so it must be
+     * identical on every platform and stable across releases forever — 32 bits is also
+     * uncomfortably narrow at ~50,000 keys per book.
+     *
+     * Collisions are harmless: a lookup only ever *proposes* candidate positions, and the
+     * matcher then verifies the text.
+     */
+    fun hash(text: String): Long {
+        var h = -0x340d631b7bdddcdbL // FNV offset basis
+        for (c in text) {
+            h = h xor c.code.toLong()
+            h *= 0x100000001b3L // FNV prime
+        }
+        return h
+    }
 }
