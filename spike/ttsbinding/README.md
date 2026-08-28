@@ -31,6 +31,13 @@ hear alternating tones, one per word, instead of speech.
 
 ## Collect
 
+The log is written twice. **The Downloads copy needs no cable**: open the device's
+Downloads folder and you will find `quire-probe-<timestamp>.tsv`, one file per service
+start. Open it, share it, or email it off the device.
+
+The private copy under the app's own directory is written regardless, as a fallback if
+the Downloads write fails, and needs adb:
+
 ```bash
 adb logcat -s QuireProbe
 adb pull /sdcard/Android/data/quire.spike.tts/files/quire-probe.tsv

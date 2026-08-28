@@ -1,6 +1,10 @@
 package quire.spike.tts
 
+import android.content.ContentValues
 import android.media.AudioFormat
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.speech.tts.SynthesisCallback
 import android.speech.tts.SynthesisRequest
 import android.speech.tts.TextToSpeech
@@ -31,17 +35,54 @@ class QuireProbeService : TextToSpeechService() {
     private var lastCallAt = 0L
     private var utterance = 0
 
+    private val header = listOf(
+        "wall", "utterance", "gapMs", "chars", "rate", "pitch",
+        "locale", "voice", "callerUid", "text",
+    ).joinToString("\t") + "\n"
+
+    /** Private copy, always written. Reachable only over adb. */
     private val logFile: File by lazy {
         File(getExternalFilesDir(null), "quire-probe.tsv").also { f ->
-            if (!f.exists()) {
-                f.appendText(
-                    listOf(
-                        "wall", "utterance", "gapMs", "chars", "rate", "pitch",
-                        "locale", "voice", "callerUid", "text",
-                    ).joinToString("\t") + "\n",
-                )
-            }
+            if (!f.exists()) f.appendText(header)
         }
+    }
+
+    /**
+     * Public copy in the device's Downloads folder, so the log can be collected from the
+     * device itself — opened, shared or emailed — without a cable and without adb. Best
+     * effort: every failure here is swallowed, because losing the convenient copy must
+     * never cost us the run.
+     */
+    private var downloadsUri: Uri? = null
+
+    private fun downloadsFile(): Uri? {
+        downloadsUri?.let { return it }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        return runCatching {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, "quire-probe-${startedAt}.tsv")
+                put(MediaStore.Downloads.MIME_TYPE, "text/tab-separated-values")
+            }
+            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            uri?.also {
+                contentResolver.openOutputStream(it, "wa")?.use { out ->
+                    out.write(header.toByteArray())
+                }
+            }
+        }.getOrNull()?.also { downloadsUri = it }
+    }
+
+    private val startedAt = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+
+    /** Write one row to both copies. Neither failure stops the probe. */
+    private fun append(line: String) {
+        runCatching { logFile.appendText(line) }
+            .onFailure { Log.w(TAG, "private log: ${it.message}") }
+        runCatching {
+            downloadsFile()?.let { uri ->
+                contentResolver.openOutputStream(uri, "wa")?.use { it.write(line.toByteArray()) }
+            }
+        }.onFailure { Log.w(TAG, "downloads log: ${it.message}") }
     }
 
     // ---- Language plumbing. A host will not use an engine that claims nothing. ----
@@ -93,8 +134,7 @@ class QuireProbeService : TextToSpeechService() {
         ).joinToString("\t")
 
         Log.i(TAG, "chars=${text.length} gap=${gap}ms rate=${request.speechRate} :: $text")
-        runCatching { logFile.appendText(line + "\n") }
-            .onFailure { Log.w(TAG, "could not write log: ${it.message}") }
+        append(line + "\n")
 
         speakTone(text, callback)
     }
@@ -160,7 +200,7 @@ class QuireProbeService : TextToSpeechService() {
 
     private fun record(event: String) {
         Log.i(TAG, event)
-        runCatching { logFile.appendText("${stamp(System.currentTimeMillis())}\t$event\n") }
+        append("${stamp(System.currentTimeMillis())}\t$event\n")
     }
 
     private fun stamp(millis: Long) =
