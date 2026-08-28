@@ -166,6 +166,80 @@ class MatcherTest {
         assertEquals("\"Well,\" said Sarah.", chunk.substring(second.start, second.end))
     }
 
+
+    // ---- Behaviour measured from NeoReader reading an EPUB (ADR-0004) ----
+
+    /**
+     * The dominant real case: the host splits a sentence at its commas and delivers the
+     * clauses as separate chunks, each with a leading space.
+     */
+    @Test
+    fun `a sentence delivered clause by clause matches throughout`() {
+        val index = indexOf(
+            "She came to him toward morning." to null,
+            "She entered very carefully, moving silently, floating through the chamber." to null,
+            "He did not move." to null,
+        )
+        val m = Matcher(index)
+        assertEquals(How.RELOCATED, m.match("She came to him toward morning.").how)
+
+        // One sentence, three chunks.
+        val a = m.match("She entered very carefully,")
+        assertEquals(1, a.entries.single().seq)
+        assertTrue(a.partial)
+        assertEquals(1, m.cursor)
+
+        val b = m.match(" moving silently,")
+        assertEquals(1, b.entries.single().seq)
+        assertTrue(b.partial)
+
+        val c = m.match(" floating through the chamber.")
+        assertEquals(1, c.entries.single().seq)
+        assertFalse(c.partial, "the last clause completes the entry")
+
+        // And the next sentence carries on normally.
+        assertEquals(2, m.match("He did not move.").entries.single().seq)
+    }
+
+    /**
+     * Comma splitting often lands exactly on the dialogue/narration seam, so the host
+     * hands us the two voices already separated.
+     */
+    @Test
+    fun `a speech tag split at its comma matches both halves of one entry`() {
+        val index = indexOf("\"I know,\" said Sarah." to "Sarah")
+        val m = Matcher(index)
+        assertTrue(m.match("\"I know,\"").matched)
+        assertTrue(m.match(" said Sarah.").matched)
+        assertFalse(m.match(" said Sarah.").matched, "the entry is spent; this is not a re-read")
+    }
+
+    /** Headings arrive as their own chunk in EPUB, trailing space and all. */
+    @Test
+    fun `a heading arrives as its own chunk`() {
+        val index = indexOf("THE VOICE OF REASON" to null, "She came to him toward morning." to null)
+        val m = Matcher(index)
+        assertEquals(0, m.match("THE VOICE OF REASON ").entries.single().seq)
+        assertEquals(1, m.match("She came to him toward morning.").entries.single().seq)
+    }
+
+    /**
+     * A mid-sentence fragment shares its head with no entry, so a lost cursor cannot
+     * anchor on it. It must fall to the narrator and re-lock on the next sentence start
+     * rather than guess.
+     */
+    @Test
+    fun `a lost cursor cannot anchor mid-sentence but re-locks on the next sentence`() {
+        val index = indexOf(
+            "She entered very carefully, moving silently, floating through the chamber." to null,
+            "He did not move." to null,
+        )
+        val m = Matcher(index)
+        assertEquals(How.NONE, m.match(" moving silently,").how)
+        assertEquals(-1, m.cursor, "an unmatched chunk must not move the cursor")
+        assertEquals(How.RELOCATED, m.match("He did not move.").how)
+    }
+
     // Scenario: Matching is fast enough to be invisible
     @Test
     fun `matching a hundred thousand word index stays well under the budget`() {

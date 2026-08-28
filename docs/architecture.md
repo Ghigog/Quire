@@ -105,8 +105,11 @@ stateDiagram-v2
     Relocating --> Unlocated: no hit at all — narrator, keep trying
 ```
 
-- **The index is addressed by sentence.** Hosts segment on terminal punctuation, so an
-  index addressable only by paragraph would never line up (ADR-0004).
+- **The index is addressed by sentence, and matched at finer granularity than that.**
+  Measured on NeoReader reading an EPUB: hosts split at commas as well as full stops, so
+  42 of 73 chunks were interior fragments of a sentence. The matcher carries an
+  intra-entry offset beside the cursor; entries stay whole sentences so the index is not
+  shaped around one reader's splitting rule (ADR-0004).
 - **Normalisation** before any comparison: NFKC, lowercase, strip quote marks and
   footnote markers, drop punctuation, collapse whitespace, keep apostrophes so
   contractions survive. Both sides run the identical function — it lives in `core:index`
@@ -119,10 +122,13 @@ stateDiagram-v2
 - **A window, not an increment.** The matcher tries `cursor … cursor+5` — starting *at*
   the cursor, which costs nothing and absorbs a host that re-reads a sentence after a page
   turn.
-- **Relocation is keyed on the head** — the first six normalised words — probed at
-  progressively shorter prefixes so short entries (a heading, a bare `"Yes."`) are still
-  findable. An implementation needs only exact equality on a stored key, never a range
-  scan.
+- **Relocation is keyed on word prefixes.** Every entry is indexed under each of its
+  leading one-to-six-word prefixes, probed longest-first. A single fixed-width key fails
+  both ways: a short entry has fewer words than the key, and a short chunk cannot produce
+  the key of the longer sentence it starts. Lookups stay exact-equality.
+- **Relocation only anchors on a chunk that starts an entry.** A mid-sentence fragment
+  shares its prefix with nothing, so a lost cursor waits for the next sentence start and
+  the narrator covers the gap — a sentence or two, not a page.
 - **A chunk may span several entries.** When one incoming chunk covers *N* consecutive
   entries, Quire synthesises each in its own voice, in order, inside the single
   `onSynthesizeText` call. This is the whole mechanic that makes multi-voice work through a
@@ -153,6 +159,9 @@ The host owns the transport, and that changes the buffer's job.
   *because* of the index.
 - **The first utterance is always cold.** TTFS < 800 ms is therefore a single-segment
   synthesis budget, not a buffering one.
+- **Lead time is generous.** NeoReader submits a whole page of utterances in about 1.6 s
+  and then goes quiet for the ~20 s it takes to speak them (ADR-0004), so the buffer has
+  far more room than the PRD's three-paragraph rule assumed.
 - **Rate and pitch come from the host** in the `SynthesisRequest` and must be honoured;
   Quire's character voices are pitch/timbre offsets applied *on top of* the host's
   setting, never instead of it.

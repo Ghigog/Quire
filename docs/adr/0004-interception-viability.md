@@ -138,6 +138,61 @@ target and may chunk quite differently.
 
 Next capture must be a novel in EPUB, with the fixed probe.
 
+## Measured: a clean EPUB capture (2026-08-28)
+
+73 utterances from a novel in NeoReader, captured with the fixed probe. This is the
+capture the matcher is now built against.
+
+| Measurement | Value |
+| --- | --- |
+| Chunk length | min 2, median **27**, mean 32, max **133** characters |
+| Chunks near the 4000-character API limit | **none** — the limit is irrelevant in practice |
+| Chunk ends with `,` | **42 of 73** |
+| Chunk ends with `.` | 27 of 73 |
+| Chunk ends with a letter or digit | 4 — all of them headings |
+| Chunks beginning with a space | **61 of 73** |
+| Punctuation *not* split on | `;` and `—` appear mid-chunk |
+| Gap between calls | median **43 ms**, with three gaps of 27 s, 9.3 s and 6.2 s |
+| Batches between long gaps | 40, 9, 12, 12 utterances |
+
+### The host chunks by clause, not by sentence
+
+This is the finding that matters. NeoReader splits at **commas as well as full stops**, so
+one sentence arrives as several chunks, each continuation carrying a leading space.
+Semicolons and em-dashes are not split points.
+
+The consequence for QUI-022 is structural: the common case is a chunk that is an
+**interior fragment of one index entry**, not a whole entry and not several. The matcher
+now carries an intra-entry `offset` alongside the cursor. Without it, the second clause of
+every sentence would fail to match and fall to the narrator — most of the book.
+
+A second consequence, found by a failing test: relocation cannot key on a fixed-width
+head. A two-word chunk cannot produce the six-word key of the sentence it starts. Entries
+are now indexed under *every* word prefix from one to six words, which keeps lookups to
+exact equality at a small multiple of index size.
+
+A pleasant accident: comma splitting frequently lands **exactly on the dialogue/narration
+seam**. `"I know," said Sarah.` arrives as `"I know,"` then ` said Sarah.` — the two voices
+already separated by the host.
+
+### Batching gives the ring buffer free lead time
+
+The host submits a whole page of utterances in about 1.6 seconds, then goes quiet for the
+20-odd seconds it takes to speak them. Pre-synthesis therefore has far more room than the
+PRD's rolling buffer assumed, and time-to-first-sound is the only genuinely tight budget.
+
+### Correction: the heading-gluing finding was PDF-specific
+
+An earlier revision of this ADR recorded that a heading with no full stop is spoken as one
+unit with the paragraph beneath it, and QUI-021/QUI-022 were changed accordingly. That
+observation came from reading a **PDF**. In EPUB, headings arrive as their own chunks
+(`"CHAPTER TWO "`, `"1 "`), with trailing spaces, and structure is respected.
+
+The matcher's concatenation path is kept — it is what handles the PDF case, costs nothing,
+and other hosts may glue too — but the design should not have been driven by it. The
+mid-word split seen in the PDF capture (`"...the certifie"` / `"r or maker..."`) likewise
+does not appear in EPUB; it was a PDF text-extraction artefact, as suspected.
+
 ## What is still unverified
 
 This ADR is provisional because four of QUI-020's six questions remain open. They need the

@@ -77,14 +77,11 @@ object Normalizer {
         sentences(text).map(::normalize).filter { it.isNotEmpty() }
 
     /**
-     * The first few words of normalised text, used as the relocation lookup key.
+     * How many leading words of an entry are indexed for relocation lookups.
      *
-     * A whole-chunk hash cannot be the key: hosts glue entries together, so the chunk is
-     * rarely equal to any single entry. The head of the chunk, however, is always the head
-     * of the entry the chunk starts on. Writer and matcher compute it the same way.
+     * A whole-chunk hash cannot be the key: hosts split and glue entries, so a chunk is
+     * rarely equal to any one entry. Its opening words, though, always identify the entry
+     * it starts on. Writer and matcher agree on this constant.
      */
-    fun head(normalized: String, words: Int = HEAD_WORDS): String =
-        normalized.split(' ').take(words).joinToString(" ")
-
     const val HEAD_WORDS = 6
 }

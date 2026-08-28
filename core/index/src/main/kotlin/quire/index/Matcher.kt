@@ -26,7 +26,13 @@ data class MatchResult(
     val how: How,
     val entries: List<IndexEntry>,
     val spans: List<VoiceSpan>,
-    /** True when the host split a sentence and this chunk is only part of one entry. */
+    /**
+     * True when this chunk stopped inside an entry rather than completing it — the common
+     * case, since hosts chunk by clause.
+     *
+     * [spans] then covers the whole entry rather than only the part spoken. Clipping it
+     * needs a normalised-to-raw offset map that the index does not store yet; see QUI-027.
+     */
     val partial: Boolean = false,
 ) {
     val matched get() = how != How.NONE
@@ -54,8 +60,20 @@ class Matcher(
     private val window: Int = DEFAULT_WINDOW,
 ) {
 
-    /** Last entry consumed, or -1 before the first match. */
+    /** Last entry touched, or -1 before the first match. */
     var cursor: Int = -1
+        private set
+
+    /**
+     * How far into [cursor]'s normalised text we have already spoken.
+     *
+     * Needed because hosts chunk *below* the sentence. Measured on NeoReader reading an
+     * EPUB: 42 of 73 chunks ended on a comma and only 27 on a full stop, so the common
+     * case is a chunk that is an interior fragment of one index entry, not a whole entry.
+     * Without an intra-entry offset the second clause of every sentence would fail to
+     * match and fall to the narrator.
+     */
+    var offset: Int = 0
         private set
 
     fun match(chunk: String): MatchResult {
@@ -67,8 +85,10 @@ class Matcher(
         // Skipped entirely before the first match: an unpositioned cursor is not a
         // position, and scanning from 0 would masquerade as reading forward.
         if (cursor >= 0) {
+            // Continue inside the current entry first: the usual case mid-sentence.
+            runAt(cursor, offset, wanted)?.let { return accept(it, How.FORWARD) }
             for (start in cursor..(cursor + window)) {
-                runAt(start, wanted)?.let { return accept(it, How.FORWARD) }
+                runAt(start, 0, wanted)?.let { return accept(it, How.FORWARD) }
             }
         }
 
@@ -77,8 +97,12 @@ class Matcher(
         // nearest to where we were is overwhelmingly the right one.
         val candidates = candidateStarts(wanted)
             .sortedBy { if (cursor < 0) it else kotlin.math.abs(it - cursor) }
+        // Relocation can only anchor on a chunk that *starts* an entry: a mid-sentence
+        // fragment shares its head with nothing. That is fine — the next chunk after a
+        // full stop starts one, so a lost cursor re-locks within a sentence or two, and
+        // the narrator covers the gap.
         for (start in candidates) {
-            runAt(start, wanted)?.let { return accept(it, How.RELOCATED) }
+            runAt(start, 0, wanted)?.let { return accept(it, How.RELOCATED) }
         }
 
         return MatchResult.none
@@ -87,16 +111,16 @@ class Matcher(
     /**
      * Entries the chunk could begin on.
      *
-     * Looked up on progressively shorter heads rather than one fixed-width key, because a
-     * short entry — a heading, a bare `"Yes."` — has fewer words than the key width and
-     * would never be found by a six-word probe. Longest first, so the most specific
-     * candidates are considered before the vaguest.
+     * Probed on progressively shorter word prefixes, longest first, so the most specific
+     * candidates are considered before the vaguest. A single fixed-width key does not
+     * work in either direction: a short entry has fewer words than the key, and a short
+     * chunk cannot produce the key of the longer entry it starts.
      */
     private fun candidateStarts(normalized: String): List<Int> {
         val words = normalized.split(' ')
         val out = LinkedHashSet<Int>()
         for (n in minOf(Normalizer.HEAD_WORDS, words.size) downTo 1) {
-            out += index.seqsWithHead(words.take(n).joinToString(" "))
+            out += index.seqsWithPrefix(words.take(n).joinToString(" "))
         }
         return out.toList()
     }
@@ -104,6 +128,7 @@ class Matcher(
     /** Force the cursor, e.g. after QUI-023 identifies the book from a known position. */
     fun seek(seq: Int) {
         cursor = seq.coerceIn(-1, index.size - 1)
+        offset = 0
     }
 
     /**
@@ -116,39 +141,49 @@ class Matcher(
      * (ADR-0004). Splitting the chunk could never recover the boundary the index knows
      * about; walking entries and eating their text off the front of the chunk does.
      */
-    private fun runAt(start: Int, wanted: String): Run? {
+    private fun runAt(start: Int, startOffset: Int, wanted: String): Run? {
         val consumed = mutableListOf<IndexEntry>()
         var remaining = wanted
-        var i = 0
+        var seq = start
+        var off = startOffset
         while (remaining.isNotEmpty()) {
-            val entry = index.entry(start + i) ?: return null
+            val entry = index.entry(seq) ?: return null
             val text = entry.normalized
+            if (off > text.length) return null
+            val available = text.substring(off)
             when {
-                remaining == text -> {
+                // Exactly finishes this entry.
+                available == remaining -> {
                     consumed += entry
+                    off = text.length
                     remaining = ""
                 }
-                remaining.startsWith("$text ") -> {
+                // Finishes this entry and continues into the next: a host that glues
+                // entries together, as NeoReader does with headings in a PDF.
+                available.isNotEmpty() && remaining.startsWith("$available ") -> {
                     consumed += entry
-                    remaining = remaining.substring(text.length + 1)
+                    remaining = remaining.substring(available.length + 1)
+                    seq++
+                    off = 0
                 }
-                // The chunk stops inside this entry: the host split a sentence at its
-                // character limit, so we have a fragment of it.
-                text.startsWith(remaining) -> {
+                // Stops inside this entry: the dominant case, a clause of a sentence.
+                available.startsWith(remaining) -> {
                     consumed += entry
-                    return Run(consumed, partial = true)
+                    off += remaining.length
+                    if (text.getOrNull(off) == ' ') off++ // resume at a word boundary
+                    remaining = ""
                 }
                 else -> return null
             }
-            i++
         }
-        return if (consumed.isEmpty()) null else Run(consumed, partial = false)
+        if (consumed.isEmpty()) return null
+        val entry = index.entry(seq) ?: return null
+        return Run(consumed, seq, off, partial = off < entry.normalized.length)
     }
 
     private fun accept(run: Run, how: How): MatchResult {
-        // A partial match leaves the cursor on the entry still being spoken, so the rest
-        // of that sentence matches forward next time.
-        cursor = if (run.partial) run.entries.first().seq else run.entries.last().seq
+        cursor = run.endSeq
+        offset = run.endOffset
         return MatchResult(how, run.entries, rebase(run.entries), run.partial)
     }
 
@@ -166,7 +201,14 @@ class Matcher(
         return out
     }
 
-    private data class Run(val entries: List<IndexEntry>, val partial: Boolean)
+    private data class Run(
+        val entries: List<IndexEntry>,
+        /** Entry the next chunk resumes in. */
+        val endSeq: Int,
+        /** Offset within [endSeq]'s normalised text where the next chunk resumes. */
+        val endOffset: Int,
+        val partial: Boolean,
+    )
 
     companion object {
         /**

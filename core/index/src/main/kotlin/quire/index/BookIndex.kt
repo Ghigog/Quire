@@ -17,21 +17,22 @@ interface BookIndex {
     fun entry(seq: Int): IndexEntry?
 
     /**
-     * Every seq whose head — the first [Normalizer.HEAD_WORDS] words of its normalised
-     * text, or all of them if it is shorter — equals [head] exactly.
+     * Every seq whose normalised text *begins with* the word sequence [prefix], where
+     * [prefix] is between one and [Normalizer.HEAD_WORDS] words.
      *
-     * The matcher probes with progressively shorter word prefixes, so an implementation
-     * only ever needs exact equality on a stored key, never a range scan.
+     * This is the relocation path — PRD §2 Phase 2's "hash lookup", expressed as intent
+     * so QUI-021 can store it however SQLite prefers. Exact-equality lookups rather than
+     * a range scan: store one row per entry per prefix length, so a six-word-or-longer
+     * entry contributes six keys.
      *
-     * This is the relocation path: PRD §2 Phase 2's "hash lookup", expressed as intent so
-     * QUI-021 can index it however SQLite prefers (a stored, indexed `head` column is the
-     * obvious implementation). Keyed on the head rather than the whole entry because a
-     * host chunk is rarely equal to any single entry — it glues several together — but its
-     * head is always the head of the entry it starts on.
+     * One fixed-width key does not work in either direction. A short entry — a heading, a
+     * bare `"Yes."` — has fewer words than the key. And a short chunk cannot produce the
+     * six-word key of the longer sentence it starts, which is the common case now that we
+     * know hosts chunk by clause (ADR-0004).
      *
      * Order is unspecified; the matcher picks by distance from the cursor.
      */
-    fun seqsWithHead(head: String): List<Int>
+    fun seqsWithPrefix(prefix: String): List<Int>
 }
 
 class InMemoryBookIndex(
@@ -39,12 +40,22 @@ class InMemoryBookIndex(
     private val entries: List<IndexEntry>,
 ) : BookIndex {
 
-    private val byHead: Map<String, List<Int>> =
-        entries.groupBy({ Normalizer.head(it.normalized) }, { it.seq })
+    // `run` rather than `apply`/`buildMap`: with the map as receiver, `entries` would
+    // resolve to Map.entries instead of the constructor parameter.
+    private val byPrefix: Map<String, List<Int>> = run {
+        val map = mutableMapOf<String, MutableList<Int>>()
+        for (indexed in entries) {
+            val words = indexed.normalized.split(' ')
+            for (n in 1..minOf(Normalizer.HEAD_WORDS, words.size)) {
+                map.getOrPut(words.take(n).joinToString(" ")) { mutableListOf() } += indexed.seq
+            }
+        }
+        map
+    }
 
     override val size get() = entries.size
 
     override fun entry(seq: Int) = entries.getOrNull(seq)
 
-    override fun seqsWithHead(head: String) = byHead[head].orEmpty()
+    override fun seqsWithPrefix(prefix: String) = byPrefix[prefix].orEmpty()
 }

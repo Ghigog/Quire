@@ -21,6 +21,7 @@ already `In progress`.
 | QUI-021 | Dialogue index schema and store | Index | Todo | — | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | Todo | — | QUI-021, QUI-022 |
+| QUI-027 | Normalised-to-raw offset map | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
@@ -40,7 +41,7 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 
-Next free ID: **QUI-027**
+Next free ID: **QUI-028**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -1499,8 +1500,12 @@ normalisation function both sides share.
 - Table `spans`: `book_id`, `seq`, `start`, `end`, `kind` (`narration|dialogue`),
   `speaker_id`, `confidence` — the voiced runs within an entry, because one sentence can
   need two voices.
-- `head` is the first `Normalizer.HEAD_WORDS` words of `normalized`, or all of them if
-  shorter. It is the relocation key; the matcher probes it with exact equality only.
+- Table `prefixes`: `book_id`, `words` (1..`Normalizer.HEAD_WORDS`), `prefix`, `seq` —
+  one row per entry per prefix length, indexed on `(book_id, prefix)`. This is the
+  relocation key and the matcher probes it with exact equality only. A *single* fixed-width
+  head column does not work: a short entry has fewer words than the key, and a short chunk
+  cannot produce the key of the longer sentence it starts. Measured cost is roughly six
+  rows per entry; verify the 5 MB budget still holds.
 - Implement `quire.index.BookIndex` (QUI-022 defines it); `InMemoryBookIndex` is the
   reference behaviour and the tests to match.
 - Table `books`: `book_id`, `title`, `author`, `segment_count`, `indexed_at`,
@@ -1654,9 +1659,33 @@ failed for every entry shorter than six words — which is most dialogue. Fixed 
 progressively shorter prefixes; an implementation still needs only exact-equality lookups,
 so QUI-021 can index a stored `head` column.
 
-*What is left before this is Done:* the latency scenario re-measured on device, and
-`BookIndex` implemented over SQLite by QUI-021 — `InMemoryBookIndex` currently stands in
-and is what the tests run against.
+**2026-08-28 — rebuilt against the real host trace (ADR-0004).** 22 tests pass;
+`gradle :core:index:test`. Matching now costs 52 µs per chunk against a 14,284-entry index
+(still x86, not the device).
+
+The trace broke two assumptions:
+
+1. **Chunks are interior fragments of a sentence, not whole ones.** The host splits at
+   commas, so 42 of 73 chunks ended mid-sentence. The matcher gained an intra-entry
+   `offset` beside the cursor. Without it the second clause of every sentence would have
+   missed and fallen to the narrator — most of a book.
+2. **Relocation cannot key on a fixed-width head.** A failing test showed a two-word chunk
+   can never produce the six-word key of the sentence it starts. Entries are now indexed
+   under every one-to-six-word prefix, which keeps lookups exact-equality at about six
+   rows per entry.
+
+A pleasant accident worth keeping in mind for QUI-011: comma splitting frequently lands
+exactly on the dialogue/narration seam, so `"I know," said Sarah.` arrives as `"I know,"`
+then ` said Sarah.` — the two voices already separated by the host.
+
+One deliberate limitation: a lost cursor cannot anchor on a mid-sentence fragment, because
+it shares its prefix with nothing. It falls to the narrator and re-locks on the next
+sentence start — a sentence or two, not a page. Tested.
+
+*What is left before this is Done:* the latency scenario re-measured on device;
+`BookIndex` implemented over SQLite by QUI-021 (`InMemoryBookIndex` stands in and is what
+the tests run against); and QUI-027, without which `spans` on a partial match covers the
+whole entry rather than the part actually spoken.
 
 ---
 
@@ -2059,8 +2088,96 @@ binds to it, and the `start` → `audioAvailable` → `done` callback sequence w
 arbitrary third-party engine, not only from Google's, so word-level read-along ships in V1
 instead of waiting for V3.0. Recorded in ADR-0004.
 
-*Still open:* the log itself. The build that ran was v1, which wrote only to the app's
-private external directory — a path scoped storage makes awkward to reach without adb, and
-the reason v2 also writes to Downloads. Exact chunk sizes, mid-sentence splitting at the
-4000-character limit, `onStop` frequency, and whether footnote markers or page numbers
-appear in the stream all still need that TSV. Ticket stays `In progress`.
+**2026-08-28 — captured, and the log answers the rest.** Two bugs on the way. v1 wrote the
+log only to the app's private directory, which scoped storage puts out of reach without
+adb. v2 added a Downloads copy but appended with `openOutputStream(uri, "wa")`, which does
+not append through MediaStore — 97 rows each landed at offset 0 and one survived. v3 holds
+the rows in memory and rewrites the file whole with `"wt"`.
+
+The clean capture is 73 utterances of a novel in NeoReader. Full measurements are in
+ADR-0004; the headline is that **the host chunks by clause, not by sentence** — 42 of 73
+chunks ended on a comma against 27 on a full stop, median length 27 characters, nothing
+within two orders of magnitude of the 4000-character limit. That reshaped QUI-022.
+
+Also measured: the host submits a whole page of utterances in ~1.6 s then goes quiet for
+the ~20 s it takes to speak them, so the ring buffer has far more lead time than the PRD
+assumed; `rate` and `pitch` arrive as integer percentages; semicolons and em-dashes are not
+split points; headings arrive as their own chunks with trailing spaces.
+
+**A correction I had to make.** The earlier "headings glue to the following paragraph"
+finding came from reading a PDF, and I generalised it to EPUB without saying so. In EPUB,
+structure is respected. The mid-word split seen in the PDF capture was likewise a PDF
+text-extraction artefact. The matcher keeps its concatenation path — it costs nothing and
+covers PDFs and other hosts — but it should not have been the thing driving the design.
+
+*Not committed:* the raw capture. It is verbatim prose from a copyrighted novel and
+CLAUDE.md §8 forbids committing book text. `fixtures/host-traces/` holds a synthetic trace
+of the same shape instead, with the measurements in the ADR.
+
+*Still open:* `onStop` frequency (the probe logs it, but this capture caught none), and
+whether footnote markers or page numbers appear — none were in these two chapters. Both
+want a longer capture across a chapter boundary. Ticket stays `In progress` for those.
+
+---
+
+## QUI-027 — Normalised-to-raw offset map
+
+**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**PRD:** §2 Phase 2
+
+### User story
+As a listener, I want the right voice on a clause even when the host hands over half a
+sentence, so that a speech tag split at its comma does not drag the character's voice onto
+the narration that follows it.
+
+### Context (why)
+QUI-022 matches on normalised text — punctuation stripped, whitespace collapsed, lowercased
+— while voiced spans and `rangeStart` callbacks are addressed in the *raw* text the host
+sent. While a chunk covers whole entries the two agree at the boundaries. They stop
+agreeing the moment a chunk stops mid-entry, which the trace in ADR-0004 shows is the
+common case: 42 of 73 chunks ended on a comma.
+
+Today `MatchResult.spans` on a partial match returns the spans of the whole entry, so a
+chunk containing only the dialogue half of `"I know," said Sarah.` still reports the
+narration span too. QUI-024 cannot emit correct `rangeStart` offsets without this either.
+
+### Description (what)
+The index stores, per entry, a mapping between normalised character offsets and raw ones.
+The matcher uses it to clip the spans it returns to the part of the entry a chunk actually
+covered, and to report raw offsets rather than normalised ones.
+
+### Requirements (how)
+- Owns: the offset-map column in `core/index/` schema, `MatchResult` span clipping
+- Store the map compactly — a per-word pair of offsets is enough, since normalisation only
+  ever deletes characters and collapses runs of whitespace; it never reorders or inserts.
+- `MatchResult.spans` must be clipped to the covered range on partial matches, and its
+  offsets must be raw, relative to the chunk the host supplied.
+- Verify against `fixtures/host-traces/neoreader-epub-shape.tsv`, whose speech-tag rows are
+  exactly this case.
+- Out of scope: emitting the callbacks themselves (QUI-024).
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: A speech tag split at its comma reports only the speaking half
+  Given the entry "I know," said Sarah. indexed with a dialogue span and a narration span
+  When the chunk "I know," is matched
+  Then the returned spans cover only the dialogue span
+
+Scenario: The narration half reports only narration
+  Given the same entry with the cursor after the dialogue span
+  When the chunk " said Sarah." is matched
+  Then the returned spans cover only the narration span
+
+Scenario: Offsets address the host's own string
+  Given any matched chunk
+  When a returned span is applied to the chunk the host supplied
+  Then it selects that span's text exactly
+
+Scenario: Whole-entry matches are unchanged
+  Given a chunk covering an entire entry
+  When it is matched
+  Then the spans returned are identical to those before this ticket
+```
+
+### Worklog
+- _(empty)_
