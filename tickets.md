@@ -13,7 +13,7 @@ already `In progress`.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
+| QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
 | QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
