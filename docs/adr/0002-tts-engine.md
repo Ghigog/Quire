@@ -132,12 +132,29 @@ is defeated by clause-level chunking, which is exactly what @Voice's "alternatin
 does. Quire does not infer: it looks the speaker up by position in the index, which is
 state that survives chunking by construction.
 
+**Second listen, same day: carrying the state fixed the comma case and broke the paragraph
+case.** Narration on the *same line* as a quotation returns to the narrator correctly;
+narration on a *new line* stays in the character's voice.
+
+The cause is ordinary typography. A speech continuing across paragraphs opens a quote on
+every paragraph and closes only at the end of the last one, so the probe sees openers
+without closers and the flag latches true. Sources that use `“` at both ends of a
+quotation latch it the same way.
+
+The two failures are mirror images: per-chunk state breaks *within* a line, carried state
+breaks *across* paragraphs, and there is no third setting of the flag, because the
+information is not in the quote marks at all. Quote-mark inference is therefore not a weak
+signal to be strengthened — it is the wrong signal. The probe is left as it is; it has
+answered its question.
+
 ## Still needed
 
 1. ~~**Thread count.**~~ Measured: no help. See §5.
 2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
    for, and it decides whether 0.354 is actually a problem.
-3. **Kokoro int8 (140 MB)** for completeness. Only the 304 MB fp32 build was tried, and it
-   was slow throughout rather than slow to start, so int8 is unlikely to close a 2× gap —
-   but the number is cheap to take.
+3. ~~**Kokoro int8 (140 MB).**~~ Not taken, by decision (dylangrowcoot, 2026-08-28). The
+   304 MB fp32 build was slow *throughout* rather than slow to start, which makes it a
+   compute problem and not a size one; quantizing cannot close a 2.4× gap on an SoC with
+   no i8mm (`device-profile.md` §2). Reopen only if Kokoro becomes the only multi-speaker
+   option left.
 4. **TTFS** end to end with the engine preloaded, against 800 ms.
