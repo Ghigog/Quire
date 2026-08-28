@@ -144,7 +144,117 @@ class QuireProbeService : TextToSpeechService() {
         Log.i(TAG, "chars=${text.length} gap=${gap}ms rate=${request.speechRate} :: $text")
         append(line + "\n")
 
-        speakTone(text, callback)
+        val engine = engine()
+        if (engine == null) speakTone(text, callback) else speak(engine, text, request, callback)
+    }
+
+    // ---- Real synthesis (QUI-017) ----
+
+    private var loaded: TtsEngine? = null
+
+    @Synchronized
+    private fun engine(): TtsEngine? {
+        val wanted = Prefs.engineId(this)?.let(Candidate::byId)
+        if (wanted == null) { loaded?.release(); loaded = null; return null }
+        loaded?.let { if (it.candidate.id == wanted.id) return it else it.release() }
+        loaded = TtsEngine.load(this, wanted, Prefs.threads(this))
+        Log.i(TAG, "engine ${wanted.id} loaded=${loaded != null}")
+        return loaded
+    }
+
+    /**
+     * Speak one chunk, switching voice between narration and quoted speech.
+     *
+     * The voice switching is a **demo, not attribution**: it splits on quote marks and
+     * alternates two speaker ids, which is what @Voice already does and what Quire exists
+     * to improve on. It is here because it exercises the mechanic QUI-024 needs — several
+     * voices inside a single `onSynthesizeText` call, presented to the host as one
+     * continuous utterance — and because hearing it is the point of this spike.
+     */
+    private fun speak(
+        engine: TtsEngine,
+        text: String,
+        request: SynthesisRequest,
+        callback: SynthesisCallback,
+    ) {
+        // The host sends rate and pitch as integer percentages, 100 being normal.
+        val speed = (request.speechRate.coerceIn(20, 400)) / 100f
+        callback.start(engine.sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
+
+        var spokenChars = 0
+        val started = System.nanoTime()
+        var audioMs = 0L
+
+        for ((span, isDialogue) in splitOnQuotes(text)) {
+            if (stopped) break
+            if (span.isBlank()) { spokenChars += span.length; continue }
+
+            val voice = if (isDialogue) dialogueVoice(engine) else NARRATOR_VOICE
+            val samples = runCatching { engine.synthesise(span, voice, speed) }
+                .onFailure { Log.w(TAG, "synthesis failed: ${it.message}") }
+                .getOrNull() ?: continue
+            audioMs += samples.size * 1000L / engine.sampleRate
+
+            // No word alignments come out of the engine, so ranges are estimated from the
+            // span's position in the chunk. Sentence-level highlighting is fine on this;
+            // word-level is not, and that is a finding for ADR-0002.
+            runCatching { callback.rangeStart(spokenChars, spokenChars + span.length, 0) }
+            spokenChars += span.length
+
+            if (!writePcm(samples, callback)) return
+        }
+
+        val elapsed = (System.nanoTime() - started) / 1_000_000
+        if (audioMs > 0) {
+            Log.i(TAG, "RTF %.3f (%d ms synth for %d ms audio)".format(elapsed.toDouble() / audioMs, elapsed, audioMs))
+        }
+        callback.done()
+    }
+
+    /** Convert float samples to 16-bit PCM and hand them over in callback-sized pieces. */
+    private fun writePcm(samples: FloatArray, callback: SynthesisCallback): Boolean {
+        val pcm = ByteArray(samples.size * 2)
+        for (i in samples.indices) {
+            val v = (samples[i].coerceIn(-1f, 1f) * 32767).toInt()
+            pcm[i * 2] = (v and 0xFF).toByte()
+            pcm[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
+        }
+        var offset = 0
+        val max = callback.maxBufferSize
+        while (offset < pcm.size) {
+            if (stopped) return false
+            val len = minOf(max, pcm.size - offset)
+            if (callback.audioAvailable(pcm, offset, len) != TextToSpeech.SUCCESS) return false
+            offset += len
+        }
+        return true
+    }
+
+    /** A second voice, where the model has one. Kokoro and libritts_r have hundreds. */
+    private fun dialogueVoice(engine: TtsEngine) =
+        if (engine.voiceCount > 1) 1 else NARRATOR_VOICE
+
+    /** Split into runs of narration and quoted speech, preserving every character. */
+    private fun splitOnQuotes(text: String): List<Pair<String, Boolean>> {
+        val out = mutableListOf<Pair<String, Boolean>>()
+        val sb = StringBuilder()
+        var inQuote = false
+        for (c in text) {
+            val isQuote = c == '"' || c == '\u201C' || c == '\u201D'
+            if (isQuote) {
+                sb.append(c)
+                if (inQuote) { out += sb.toString() to true; sb.clear(); inQuote = false }
+                else {
+                    val head = sb.dropLast(1).toString()
+                    if (head.isNotEmpty()) out += head to false
+                    sb.clear(); sb.append(c); inQuote = true
+                }
+                continue
+            }
+            sb.append(c)
+        }
+        if (sb.isNotEmpty()) out += sb.toString() to inQuote
+        return out
     }
 
     /**
@@ -216,5 +326,8 @@ class QuireProbeService : TextToSpeechService() {
 
     private companion object {
         const val TAG = "QuireProbe"
+
+        /** Speaker id used for narration; models expose voices as an index. */
+        const val NARRATOR_VOICE = 0
     }
 }

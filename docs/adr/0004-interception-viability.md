@@ -193,6 +193,21 @@ and other hosts may glue too — but the design should not have been driven by i
 mid-word split seen in the PDF capture (`"...the certifie"` / `"r or maker..."`) likewise
 does not appear in EPUB; it was a PDF text-extraction artefact, as suspected.
 
+## Word timestamps are not available from sherpa-onnx (2026-08-28)
+
+A finding for ADR-0002 rather than this one, recorded here because it came out of the same
+probe. `OfflineTts.generate()` returns samples and a sample rate; there are no word or
+sentence alignments. PRD §4.2 asks for boundary timestamps "emitted during synthesis", and
+this engine does not emit them.
+
+Two options, neither free: estimate ranges from each span's position in the chunk, which is
+what the probe does now and what the prior art describes as "estimated `rangeStart`" — fine
+at sentence granularity, poor at word granularity; or run a forced aligner, which costs
+another model and more time per utterance. QUI-010 and QUI-024 need this decided.
+
+`generateWithCallback` does deliver audio incrementally, which helps time-to-first-sound
+even though it does not help alignment.
+
 ## What is still unverified
 
 This ADR is provisional because four of QUI-020's six questions remain open. They need the
