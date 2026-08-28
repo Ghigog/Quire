@@ -109,6 +109,35 @@ trusting a particular engine, so it **ships in V1** rather than waiting for V3.0
 reader. QUI-024 emits ranges from the TTS boundary timestamps and NeoReader will consume
 them.
 
+## First log, partially readable (2026-08-28)
+
+The first captured log was corrupted by a bug in the probe — `openOutputStream(uri, "wa")`
+does not reliably append through MediaStore, so 97 rows each wrote at offset 0 and one
+survived. What can be read from the intact final row is still worth recording:
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `rate`, `pitch` | `100`, `100` | Reported as **integer percentages**, not floats. 100 is normal. QUI-024 must scale character-voice offsets against that, not against 1.0. |
+| `locale`, `voice` | `eng-GBR`, `en-GB` | The host asks for a specific locale and voice name; the engine must claim them or be skipped. |
+| `callerUid` | `10044` | One calling app, as expected. |
+| utterance count | 97 | The host fed the engine continuously over a few minutes. |
+| `gap` | 106 ms | Time since the previous call — far shorter than the audio the previous call produced, which suggests the host queues utterances ahead of playback rather than waiting for each to finish. If that holds, the ring buffer gets lead time for free. |
+| `chars` | 27 | Nowhere near the 4000-character API limit. |
+
+**One observation needs confirming before it is trusted.** The intact row's text begins
+`"r or maker of the statement"` — mid-word — and the surviving fragment of an earlier row
+ends `"...responsibility of the certifie"`. Together they read as one sentence split
+*inside* the word "certifier". If the host really does split mid-word, the matcher needs a
+suffix-continuation path as well as the prefix-fragment path it has (QUI-022).
+
+It is not yet trustworthy, for two reasons. The file was corrupted, so the two fragments
+may not be adjacent rows. And **the source was a PDF, not an EPUB** — PDF text extraction
+splits words across line breaks on its own, and the same row shows a double space
+(`"safety-related  information"`), which is another PDF artefact. EPUB is the product's
+target and may chunk quite differently.
+
+Next capture must be a novel in EPUB, with the fixed probe.
+
 ## What is still unverified
 
 This ADR is provisional because four of QUI-020's six questions remain open. They need the

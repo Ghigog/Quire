@@ -52,8 +52,15 @@ class QuireProbeService : TextToSpeechService() {
      * device itself — opened, shared or emailed — without a cable and without adb. Best
      * effort: every failure here is swallowed, because losing the convenient copy must
      * never cost us the run.
+     *
+     * Rewritten whole on every row rather than appended. `openOutputStream(uri, "wa")`
+     * does not reliably append through MediaStore — measured on the Note Air5 C, 97 rows
+     * each landed at offset 0 without truncating, leaving one row and the tail of a longer
+     * earlier one. Holding the rows in memory and truncating on each write is O(n²) in
+     * bytes and completely fine at a few thousand rows.
      */
     private var downloadsUri: Uri? = null
+    private val rows = StringBuilder()
 
     private fun downloadsFile(): Uri? {
         downloadsUri?.let { return it }
@@ -63,24 +70,25 @@ class QuireProbeService : TextToSpeechService() {
                 put(MediaStore.Downloads.DISPLAY_NAME, "quire-probe-${startedAt}.tsv")
                 put(MediaStore.Downloads.MIME_TYPE, "text/tab-separated-values")
             }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            uri?.also {
-                contentResolver.openOutputStream(it, "wa")?.use { out ->
-                    out.write(header.toByteArray())
-                }
-            }
+            contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
         }.getOrNull()?.also { downloadsUri = it }
     }
 
     private val startedAt = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
     /** Write one row to both copies. Neither failure stops the probe. */
+    @Synchronized
     private fun append(line: String) {
+        if (rows.isEmpty()) rows.append(header)
+        rows.append(line)
         runCatching { logFile.appendText(line) }
             .onFailure { Log.w(TAG, "private log: ${it.message}") }
         runCatching {
             downloadsFile()?.let { uri ->
-                contentResolver.openOutputStream(uri, "wa")?.use { it.write(line.toByteArray()) }
+                // "wt" truncates: we write the whole log, not a delta.
+                contentResolver.openOutputStream(uri, "wt")?.use {
+                    it.write(rows.toString().toByteArray())
+                }
             }
         }.onFailure { Log.w(TAG, "downloads log: ${it.message}") }
     }
