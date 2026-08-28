@@ -14,8 +14,8 @@ already `In progress`.
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
-| QUI-017 | Model bake-off on target hardware | Spike | Todo | — | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
+| QUI-017 | Model bake-off on target hardware | Spike | In progress | claude-opus-5 | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | claude-opus-5 | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -1188,7 +1188,7 @@ Scenario: Battery procedure is documented
 
 ## QUI-017 — Model bake-off on target hardware
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
 **PRD:** §3.1, §3.2, §5 · **Timebox:** 3 days
 
 ### User story
@@ -1278,7 +1278,49 @@ Scenario: A candidate that fails is reported, not worked around
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-28 — claude-opus-5.** Candidates measured on the reference device (Onyx Boox
+Note Air5 C, Snapdragon 750G) through the probe APK in `spike/ttsbinding`. Reproduce:
+build and install the probe, pick a model, tap Download, then Benchmark; the numbers below
+are what it prints.
+
+*Measured — Piper `libritts_r` medium, 2 threads:*
+
+```
+load        2524 ms
+synthesis   4595 ms for 12979 ms of audio
+RTF         0.354   FAIL (> 0.15)
+peak RSS    314 MB
+on disk     92 MB
+voices      904 at 22050 Hz
+```
+
+| Threads | RTF |
+| --- | --- |
+| 2 | 0.354 |
+| 4 | 0.370 |
+
+Four threads is slightly *worse*. The 750G has two performance cores and scheduling onto
+the six efficiency cores costs more in coordination than it returns, so thread tuning is a
+closed avenue and RTF ≈ 0.35 is what this model does on this chip.
+
+Qualitatively: Kitten nano fast but unacceptable; `libritts_r` "almost perfect" and the
+leading candidate; Kokoro too slow on this SoC. Kokoro int8 was dropped by decision rather
+than measured — reasoning in ADR-0002.
+
+*What is left before this is Done:*
+
+1. **The alan LOW number**, which is the only thing still separating two very different
+   worlds: near 0.10 means the hardware is fine and `libritts_r` medium is merely heavy, so
+   a smaller multi-speaker model (VCTK, 109 voices) is worth chasing; near 0.30 means the
+   SoC is the ceiling and PRD §5's 0.15 has to be re-derived from a power measurement
+   instead of defended. Both models are already in the probe's list.
+2. **TTFS end to end with the engine preloaded**, against 800 ms. Cold load alone is
+   2,524 ms, so the engine must be warm before the first utterance either way — that is
+   QUI-010 and QUI-012's problem, but the number belongs here.
+3. **Sustained power draw** (QUI-016), which is what RTF was ever standing in for.
+
+ADR-0002 stays `Proposed` until 1 and 2 exist.
 
 ---
 
@@ -2030,7 +2072,7 @@ Scenario: A failing app is demoted, not hidden
 
 ## QUI-020 — TTS service registration and NeoReader binding
 
-**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
 **PRD:** §1, §2 Phase 2, §3 · **Timebox:** 2 days
 
 ### User story
@@ -2264,7 +2306,7 @@ Scenario: Whole-entry matches are unchanged
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
@@ -2355,7 +2397,20 @@ Scenario: A negative result is reported plainly
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-28 — claude-opus-5.** Tier 1 was scored against PDNC and the results are written
+up in **QUI-018's worklog**, not here — the scoring landed as part of the pipeline spike.
+Recorded in this ticket so the board does not read as though no work has happened.
+
+Headline: 58.5% precision over 2,846 matched quotations from five novels, against the 100%
+that hand-written fixtures had suggested. On quotations carrying no explicit tag, Tier 1 is
+right about one time in nine — it is not declining to guess, it is guessing and losing. The
+consequential finding is that the confidence values are fiction (EXPLICIT_TAG 0.95 against
+a measured 68.6%), which makes calibration a prerequisite for QUI-009's gates.
+
+*What is left:* the actual bake-off this ticket is for — an encoder candidate measured
+against the 1B SLM on device — has not started. Only the Tier 1 baseline it will be
+compared against exists.
 
 ---
 
