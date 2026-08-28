@@ -92,6 +92,7 @@ because it does.
 /docs/adr/            ← architecture decision records (one file per decision)
 /docs/architecture.md ← how the pipeline actually fits together (kept in sync with code)
 /docs/device-profile.md ← the reference device and what it forces on the design
+/core/                ← pure-Kotlin/JVM modules: model, index (testable without a device)
 /fixtures/            ← labelled test data shared across tickets (attribution golds)
 /spike/               ← timeboxed throwaway harnesses; never shipped, never depended on
 ```

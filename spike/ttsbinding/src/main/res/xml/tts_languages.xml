@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Claiming en only. A host will not offer the engine for locales it does not claim. -->
+<languages xmlns:android="http://schemas.android.com/apk/res/android">
+    <language android:name="eng" />
+    <language android:name="eng" android:country="USA" />
+    <language android:name="eng" android:country="GBR" />
+</languages>

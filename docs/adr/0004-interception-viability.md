@@ -58,20 +58,50 @@ proprietary engine, so a service Quire registers will receive the book's text.
   session after switching engines). Read before QUI-020's logging spike; check its licence
   before borrowing anything.
 
+## Observed behaviour (manual, 2026-08-27)
+
+Four of the six questions answered by ear and eye on the device:
+
+| Question | Answer |
+| --- | --- |
+| Does NeoReader consume `rangeStart`? | **Yes — it underlines the spoken word**, with both eSpeak NG and Google TTS. Word-granularity read-along survives in V1. |
+| Is the text clean? | Chapter headings are spoken. Acceptable: a narrator reading a heading is correct behaviour. |
+| Page turns | NeoReader turns the page and continues. No re-read of the last sentence was observed. |
+| Rate and pitch | Pass through from NeoReader's own controls. |
+
+### The chunking finding
+
+The most consequential observation: **NeoReader segments by terminal punctuation, not by
+document structure.** A heading with no full stop runs straight into the paragraph beneath
+it and is spoken as a single unit. Otherwise it reads all text on screen, pausing at
+punctuation.
+
+Three design consequences, all of which change tickets:
+
+1. **The match unit is the sentence, not the paragraph** (QUI-021). Chunks arrive
+   punctuation-delimited, so the index must be addressable at that granularity or nothing
+   will line up.
+2. **A chunk may merge across structural boundaries.** A heading and the first sentence of
+   the following paragraph can arrive as one string. The matcher (QUI-022) must therefore
+   match a chunk against a *contiguous run* of index entries, not against one entry, and a
+   run may cross a boundary the EPUB considered structural.
+3. **The voice unit stays finer than the match unit.** `"I know," said Sarah.` is one
+   sentence containing a dialogue span and a narration span, needing two voices. So an
+   index entry is a sentence carrying an ordered list of voiced spans — sentences for
+   matching, spans for voicing.
+
 ## What is still unverified
 
 This ADR is provisional because four of QUI-020's six questions remain open. They need the
 logging spike, or careful observation on device:
 
-1. **Chunk size and alignment** — sentence, paragraph or page? `architecture.md` §9.1 and
-   the matcher's forward window (QUI-022) are designed around an assumption here.
-2. **Text cleanliness** — do chapter headings, page numbers, footnote markers or
-   hyphenation arrive in the stream? Decides how aggressive normalisation must be
-   (QUI-021).
-3. **`rangeStart` consumption** — does NeoReader highlight in response? Decides whether
-   read-along survives in V1 or waits for V3.0.
-4. **`onStop` frequency and page-turn behaviour** — decides how cheap cancellation has to
-   be, and whether the cursor survives a page turn.
+1. **Exact chunk sizes in characters**, and whether NeoReader ever splits mid-sentence at
+   the 4000-character API limit. Inferred to be punctuation-delimited from listening;
+   needs the logging spike to confirm and to bound.
+2. **`onStop` frequency** — whether it fires per page turn or only on stop. Decides how
+   cheap cancellation has to be.
+3. **Footnote markers, page numbers and hyphenation** in the stream. Headings are known to
+   arrive; the rest was not specifically listened for.
 
-Revisit this ADR if any of the four turns out to break the design, or if a firmware update
-changes NeoReader's TTS routing.
+Revisit this ADR if any of these breaks the design, or if a firmware update changes
+NeoReader's TTS routing.

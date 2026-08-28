@@ -19,7 +19,7 @@ already `In progress`.
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-021 | Dialogue index schema and store | Index | Todo | — | QUI-001 |
-| QUI-022 | Text normalisation and cursor matcher | Index | Todo | — | QUI-021 |
+| QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
@@ -95,6 +95,13 @@ Scenario: <name>
 # Epic: Foundations
 
 ## QUI-001 — Project scaffold, build and CI
+
+> **Partially landed out of order (2026-08-27).** QUI-022 needed somewhere real to live, so
+> the pure-Kotlin half exists: root `settings.gradle.kts`/`build.gradle.kts`, `core:model`
+> and `core:index`, building and testing on a desktop JVM. Still owed by this ticket: the
+> Android application modules (`app:companion`, `app:ttsservice`), `.github/workflows/ci.yml`,
+> and the module-boundary checks. Those need an Android SDK, which this environment cannot
+> reach — `dl.google.com` is denied by the network egress policy.
 
 **Status:** Todo · **Owner:** — · **Epic:** Foundations · **Depends on:** —
 **PRD:** §2
@@ -1486,9 +1493,16 @@ normalisation function both sides share.
 
 ### Requirements (how)
 - Owns: `core/index/`, `docs/schema/dialogue-index.md`
-- Table `segments`: `book_id`, `seq` (dense, 0-based, ordered), `kind`
-  (`narration|dialogue`), `text`, `normalized`, `hash`, `speaker_id`, `confidence`,
-  `chapter`. Indexes on `(book_id, seq)` and `(book_id, hash)`.
+- Granularity is the **sentence** — hosts segment on terminal punctuation (ADR-0004).
+- Table `entries`: `book_id`, `seq` (dense, 0-based, reading order), `text`, `normalized`,
+  `head`, `chapter`. Indexes on `(book_id, seq)` and `(book_id, head)`.
+- Table `spans`: `book_id`, `seq`, `start`, `end`, `kind` (`narration|dialogue`),
+  `speaker_id`, `confidence` — the voiced runs within an entry, because one sentence can
+  need two voices.
+- `head` is the first `Normalizer.HEAD_WORDS` words of `normalized`, or all of them if
+  shorter. It is the relocation key; the matcher probes it with exact equality only.
+- Implement `quire.index.BookIndex` (QUI-022 defines it); `InMemoryBookIndex` is the
+  reference behaviour and the tests to match.
 - Table `books`: `book_id`, `title`, `author`, `segment_count`, `indexed_at`,
   `schema_version`, `source_digest` (SHA-256 of the EPUB, so a re-import is detectable).
 - **Normalisation lives here**, used by writer and matcher alike, so the two can never
@@ -1533,7 +1547,7 @@ Scenario: Size budget
 
 ## QUI-022 — Text normalisation and cursor matcher
 
-**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021
+**Status:** In review · **Owner:** claude-opus-5 · **Epic:** Index · **Depends on:** QUI-021
 **PRD:** §2 Phase 2
 
 ### User story
@@ -1613,7 +1627,36 @@ Scenario: Matching is fast enough to be invisible
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-27 — claude-opus-5.** Implemented in `core/index/`. Reproduce with
+`gradle :core:index:test` from the repository root. 18 tests, all passing.
+
+*Measured:* 44 µs mean per chunk over 500 chunks against a 14,284-entry index, against a
+10 ms budget — but on an Intel Xeon container, **not** the Note Air5 C. Three orders of
+magnitude of headroom means the device will not be the problem, but the number is not the
+device's number and the scenario is not yet satisfied as written.
+
+*The design changed because of ADR-0004.* The ticket was written assuming chunks arrive
+aligned to something structural. They do not: NeoReader segments on terminal punctuation,
+so a chapter heading with no full stop arrives glued to the sentence beneath it. Two
+consequences, both now in the code:
+
+1. The index is addressed by **sentence**, not paragraph, or nothing lines up.
+2. Matching **consumes by concatenation** rather than comparing sentence lists. My first
+   implementation split the incoming chunk into sentences and compared them pairwise; it
+   failed the glued-heading test, because splitting the chunk cannot recover a boundary
+   the host has already destroyed. Walking entries and eating their normalised text off
+   the front of the chunk handles gluing, whole-paragraph chunks and mid-sentence
+   fragments with one loop.
+
+*Second thing that surprised me.* Relocation keyed on a fixed six-word head silently
+failed for every entry shorter than six words — which is most dialogue. Fixed by probing
+progressively shorter prefixes; an implementation still needs only exact-equality lookups,
+so QUI-021 can index a stored `head` column.
+
+*What is left before this is Done:* the latency scenario re-measured on device, and
+`BookIndex` implemented over SQLite by QUI-021 — `InMemoryBookIndex` currently stands in
+and is what the tests run against.
 
 ---
 
@@ -1980,7 +2023,24 @@ Boox engine, so Quire can sit in that path. Recorded as `docs/adr/0004-intercept
 and was not one — it lists installed engines, and only one was installed. The picker
 existing at all was the signal.
 
-*Still open:* questions 2–6 (chunk size and alignment, text cleanliness, `rangeStart`
-highlighting, `onStop` frequency, rate/pitch pass-through). Questions 3–6 are observable by
-ear and eye on device; question 2 needs the logging spike, which needs an APK and therefore
-an Android SDK. Ticket stays `In progress`.
+**2026-08-27 (later) — observation round, then the probe written.**
+
+Four more questions answered by ear and eye, recorded in ADR-0004: NeoReader **underlines
+the spoken word** (so it consumes `rangeStart` — read-along survives V1), it speaks chapter
+headings, it turns the page and continues, and its own speed control passes through.
+
+The consequential one was unprompted: **it does not treat a line break as a boundary.** A
+heading with no full stop is spoken as one unit with the paragraph beneath it. So the host
+segments on terminal punctuation, not on document structure. That forced two changes in
+QUI-021 and QUI-022 — index by sentence, and match by concatenation rather than by
+comparing sentence lists.
+
+`spike/ttsbinding/` now holds the probe service that answers the rest: a system TTS engine
+that plays one tone per word and logs every `onSynthesizeText` call to a TSV. **It has
+never been compiled** — this environment has no Android SDK, because `dl.google.com` is
+denied by the network egress policy — so expect a round of small fixes. Its README lists
+the six questions and how to collect the answers.
+
+*Still open:* exact chunk sizes in characters, whether the host ever splits mid-sentence at
+the 4000-character limit, `onStop` frequency, and whether footnote markers or page numbers
+appear in the stream. All need the probe on the device. Ticket stays `In progress`.

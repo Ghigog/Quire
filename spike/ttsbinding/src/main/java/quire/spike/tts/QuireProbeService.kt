@@ -1,0 +1,172 @@
+package quire.spike.tts
+
+import android.media.AudioFormat
+import android.speech.tts.SynthesisCallback
+import android.speech.tts.SynthesisRequest
+import android.speech.tts.TextToSpeech
+import android.speech.tts.TextToSpeechService
+import android.util.Log
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.sin
+
+/**
+ * QUI-020: a system TTS engine that answers questions rather than reading books.
+ *
+ * It speaks a tone, not words. The deliverable is the observation log: what a host
+ * actually sends us, how big it is, how often, and with what parameters. Everything in
+ * `core:index`'s matcher is designed around assumptions this service exists to confirm.
+ *
+ * Throwaway. Nothing here ships.
+ */
+class QuireProbeService : TextToSpeechService() {
+
+    private val supported = setOf("eng")
+    private var currentLanguage = Triple("eng", "USA", "")
+
+    @Volatile private var stopped = false
+    private var lastCallAt = 0L
+    private var utterance = 0
+
+    private val logFile: File by lazy {
+        File(getExternalFilesDir(null), "quire-probe.tsv").also { f ->
+            if (!f.exists()) {
+                f.appendText(
+                    listOf(
+                        "wall", "utterance", "gapMs", "chars", "rate", "pitch",
+                        "locale", "voice", "callerUid", "text",
+                    ).joinToString("\t") + "\n",
+                )
+            }
+        }
+    }
+
+    // ---- Language plumbing. A host will not use an engine that claims nothing. ----
+
+    override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
+        when {
+            lang !in supported -> TextToSpeech.LANG_NOT_SUPPORTED
+            country.isNullOrEmpty() -> TextToSpeech.LANG_AVAILABLE
+            variant.isNullOrEmpty() -> TextToSpeech.LANG_COUNTRY_AVAILABLE
+            else -> TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+        }
+
+    override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int {
+        val result = onIsLanguageAvailable(lang, country, variant)
+        if (result != TextToSpeech.LANG_NOT_SUPPORTED) {
+            currentLanguage = Triple(lang.orEmpty(), country.orEmpty(), variant.orEmpty())
+        }
+        return result
+    }
+
+    override fun onGetLanguage(): Array<String> =
+        arrayOf(currentLanguage.first, currentLanguage.second, currentLanguage.third)
+
+    override fun onStop() {
+        stopped = true
+        record("onStop")
+    }
+
+    // ---- The call we actually care about ----
+
+    override fun onSynthesizeText(request: SynthesisRequest?, callback: SynthesisCallback?) {
+        if (request == null || callback == null) return
+        stopped = false
+
+        val text = (request.charSequenceText ?: "").toString()
+        val now = System.currentTimeMillis()
+        val gap = if (lastCallAt == 0L) 0 else now - lastCallAt
+        lastCallAt = now
+        utterance++
+
+        val callerUid = runCatching { request.callerUid.toString() }.getOrDefault("?")
+        val line = listOf(
+            stamp(now), utterance.toString(), gap.toString(), text.length.toString(),
+            request.speechRate.toString(), request.pitch.toString(),
+            "${request.language}-${request.country}", request.voiceName ?: "-",
+            callerUid,
+            // Tabs and newlines would break the TSV; the shape of the text is what matters.
+            text.replace("\t", "\\t").replace("\n", "\\n"),
+        ).joinToString("\t")
+
+        Log.i(TAG, "chars=${text.length} gap=${gap}ms rate=${request.speechRate} :: $text")
+        runCatching { logFile.appendText(line + "\n") }
+            .onFailure { Log.w(TAG, "could not write log: ${it.message}") }
+
+        speakTone(text, callback)
+    }
+
+    /**
+     * Emit a tone of roughly the right duration, reporting word ranges as it goes.
+     *
+     * The audio is deliberately not speech: the question is whether the host feeds us and
+     * consumes our callbacks, and a tone makes it obvious which engine is playing. The
+     * `rangeStart` calls are the real payload — if the host highlights in response, we
+     * know read-along survives in V1.
+     */
+    private fun speakTone(text: String, callback: SynthesisCallback) {
+        val sampleRate = 22_050
+        callback.start(sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
+
+        // Roughly natural pacing, so chunk-to-chunk timing in the log stays meaningful.
+        val words = wordRanges(text)
+        val perWordMs = 300L
+
+        for ((index, range) in words.withIndex()) {
+            if (stopped) break
+            // API 26+. Tells the host which characters we are speaking right now.
+            runCatching { callback.rangeStart(range.first, range.last + 1, 0) }
+
+            val samples = (sampleRate * perWordMs / 1000).toInt()
+            val pcm = tone(samples, if (index % 2 == 0) 440.0 else 494.0, sampleRate)
+            var offset = 0
+            val max = callback.maxBufferSize
+            while (offset < pcm.size && !stopped) {
+                val len = minOf(max, pcm.size - offset)
+                if (callback.audioAvailable(pcm, offset, len) != TextToSpeech.SUCCESS) return
+                offset += len
+            }
+        }
+        callback.done()
+    }
+
+    private fun tone(samples: Int, hz: Double, sampleRate: Int): ByteArray {
+        val out = ByteArray(samples * 2)
+        for (i in 0 until samples) {
+            // Fade the edges so a sequence of tones does not click between words.
+            val fade = minOf(1.0, minOf(i, samples - i) / (sampleRate * 0.01))
+            val v = (sin(2.0 * PI * hz * i / sampleRate) * 8000 * fade).toInt()
+            out[i * 2] = (v and 0xFF).toByte()
+            out[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
+        }
+        return out
+    }
+
+    /** Character ranges of each word, so rangeStart points at something real. */
+    private fun wordRanges(text: String): List<IntRange> {
+        val out = mutableListOf<IntRange>()
+        var start = -1
+        for (i in text.indices) {
+            val word = !text[i].isWhitespace()
+            if (word && start < 0) start = i
+            if (!word && start >= 0) { out += start..(i - 1); start = -1 }
+        }
+        if (start >= 0) out += start..(text.length - 1)
+        return out.ifEmpty { listOf(0..0) }
+    }
+
+    private fun record(event: String) {
+        Log.i(TAG, event)
+        runCatching { logFile.appendText("${stamp(System.currentTimeMillis())}\t$event\n") }
+    }
+
+    private fun stamp(millis: Long) =
+        SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(millis))
+
+    private companion object {
+        const val TAG = "QuireProbe"
+    }
+}

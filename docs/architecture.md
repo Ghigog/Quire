@@ -105,16 +105,30 @@ stateDiagram-v2
     Relocating --> Unlocated: no hit at all — narrator, keep trying
 ```
 
+- **The index is addressed by sentence.** Hosts segment on terminal punctuation, so an
+  index addressable only by paragraph would never line up (ADR-0004).
 - **Normalisation** before any comparison: NFKC, lowercase, strip quote marks and
-  footnote markers, collapse whitespace, drop soft hyphens. Both sides of the comparison
-  run the identical function — it lives in `core:index` precisely so the writer and the
-  matcher can never drift apart.
-- **A window, not an increment.** The matcher tries `cursor+1 … cursor+5`, because hosts
-  skip chapter headings, page numbers and footnotes unpredictably.
-- **A chunk may span several segments.** Hosts send anything from a sentence to a page.
-  When one incoming chunk covers *N* consecutive index entries, Quire synthesises each in
-  its own voice, in order, inside the single `onSynthesizeText` call. This is the whole
-  mechanic that makes multi-voice work through a single-voice API.
+  footnote markers, drop punctuation, collapse whitespace, keep apostrophes so
+  contractions survive. Both sides run the identical function — it lives in `core:index`
+  precisely so the writer and the matcher can never drift apart.
+- **Matching consumes by concatenation, not sentence by sentence.** The host's boundaries
+  are not ours: a heading with no full stop arrives glued to the sentence beneath it, so a
+  chunk can have *fewer* boundaries than the index has. Splitting the chunk could never
+  recover a boundary the index knows about; walking entries and eating their normalised
+  text off the front of the chunk does. Implemented and tested in QUI-022.
+- **A window, not an increment.** The matcher tries `cursor … cursor+5` — starting *at*
+  the cursor, which costs nothing and absorbs a host that re-reads a sentence after a page
+  turn.
+- **Relocation is keyed on the head** — the first six normalised words — probed at
+  progressively shorter prefixes so short entries (a heading, a bare `"Yes."`) are still
+  findable. An implementation needs only exact equality on a stored key, never a range
+  scan.
+- **A chunk may span several entries.** When one incoming chunk covers *N* consecutive
+  entries, Quire synthesises each in its own voice, in order, inside the single
+  `onSynthesizeText` call. This is the whole mechanic that makes multi-voice work through a
+  single-voice API.
+- **The voice unit is finer than the match unit.** `"I know," said Sarah.` is one sentence
+  needing two voices, so an entry carries an ordered list of voiced spans.
 - **Confidence gates apply to the stored value** at lookup: ≥0.65 the character voice,
   0.40–0.64 the most active speaker near the cursor, <0.40 the narrator.
 - **Never block on a miss.** An unmatched chunk is read by the narrator immediately.
