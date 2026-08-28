@@ -9,6 +9,14 @@ package quire.spike
  */
 object Tier1 {
 
+    /**
+     * Whether to attribute a quote from a name in an adjacent sentence.
+     *
+     * Switchable because QUI-028 measures whether the rule pays for itself. It fires on
+     * quotations that carry no tag at all, which is precisely where it has no evidence.
+     */
+    var useActionBeats = true
+
     private const val TITLES =
         "Mr|Mrs|Ms|Miss|Dr|Prof|St|Sir|Lady|Lord|Captain|Capt|Colonel|Col|Major|Aunt|Uncle|Father|Mother"
 
@@ -134,6 +142,8 @@ object Tier1 {
             // more than a guess here.
             return result(seg, null, 0.0, Tier.NONE, "pronoun speech tag")
         }
+
+        if (!useActionBeats) return result(seg, null, 0.0, Tier.NONE, "unattributed")
 
         actionBeatName(Text.sentences(seg.before).lastOrNull(), roster)?.let {
             return result(seg, it, Thresholds.ACTION_BEAT, Tier.HEURISTIC, "action beat before")

@@ -1390,11 +1390,41 @@ two speakers, so the unit that gets a voice must be finer than the paragraph. Th
 introduces `Segment` with locators of the form `chapter#p3#s1`. `docs/architecture.md` §2
 still holds for scheduling and synthesis; it now names the exception.
 
-*What is left.* Tier 2/3 (blocked on ADR-0001). Real fixtures: these three passages were
-hand-written because the build container cannot reach Project Gutenberg, so the 44.4% is a
-shape, not an accuracy estimate — QUI-018's acceptance criteria ask for three real
-chapters and they are still owed. No wav is produced yet; that needs the TTS engine from
-ADR-0002. The ticket therefore stays `In progress`.
+**2026-08-28 — scored against PDNC, and the hand-written numbers do not survive.**
+Reproduce: clone PDNC, then
+`quire-pipeline-spike pdnc <pdnc>/data/Emma <pdnc>/data/TheSignOfTheFour …`
+
+Measured over 2,846 matched quotations from five novels:
+
+| Quote type | Coverage | Precision | Accuracy |
+| --- | --- | --- | --- |
+| Explicit | 91.7% | 68.6% | 62.9% |
+| Anaphoric | 21.5% | 11.9% | 2.6% |
+| Implicit | 4.8% | 10.7% | 0.5% |
+| **All** | **39.4%** | **58.5%** | **23.0%** |
+
+**The 100% precision I reported on 2026-08-27 was an artefact of writing my own fixtures.**
+On real novels Tier 1 is right about 59% of the time when it commits to a speaker — and on
+quotations that carry no explicit tag it is right about one time in nine. It is not
+declining to guess; it is guessing and losing.
+
+Disabling the action-beat rule (`--no-beats`) trades accuracy for precision: 23.0% → 15.0%
+accuracy, 58.5% → 64.8% precision. So beats earn their keep on explicitly tagged lines and
+do damage everywhere else. Keeping them, for now, but see below.
+
+**The finding that matters: our confidence numbers are fiction.** `EXPLICIT_TAG = 0.95`
+against a measured 68.6% precision, and `ACTION_BEAT = 0.75` against roughly 11% on
+untagged material. QUI-009's gates (`SLM_MIN = 0.65`, `NARRATOR_FLOOR = 0.40`) assume
+calibrated confidences and will misbehave on these. Calibrating them against PDNC is now
+part of QUI-008.
+
+*Caveat.* Only 2,846 of roughly 10,000 quotations in these five novels matched our
+segmentation by text, so this is a sample rather than a census, and alias mismatches
+between PDNC's canonical names and our roster's tag-derived names may understate Explicit
+precision. Both are fixable; neither changes the direction.
+
+*What is left.* Tier 2/3 (blocked on ADR-0001). No wav yet; that needs ADR-0002. Confidence
+calibration. The ticket stays `In progress`.
 
 ---
 
