@@ -1,3 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<tts-engine xmlns:android="http://schemas.android.com/apk/res/android"
-    android:languages="@xml/tts_languages" />
+<!--
+  The metadata resource is what makes Android recognise the service as a TTS engine at
+  all. It carries no language list: supported locales are reported at runtime through
+  onIsLanguageAvailable() and onGetVoices(). android:settingsActivity is the only
+  attribute, and it is optional.
+-->
+<tts-engine xmlns:android="http://schemas.android.com/apk/res/android" />

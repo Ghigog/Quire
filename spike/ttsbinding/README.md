@@ -3,18 +3,22 @@
 A system TTS engine that answers questions instead of reading books. It speaks a tone, not
 words, and logs everything a host sends it.
 
-> **Not compiled.** This was written in an environment with no Android SDK
-> (`dl.google.com` is blocked by the network egress policy), so it has never been built.
-> Expect a round of small fixes. The manifest registration, the `TextToSpeechService`
-> overrides and the callback sequence are the parts worth reviewing closely.
+> **Builds clean** as of 2026-08-28 (AGP 8.7.3, compileSdk 35, minSdk 26). It has not yet
+> been run on a device, so the runtime behaviour — whether NeoReader binds to it and what
+> the audio callbacks do — is still unverified.
 
 ## Build and install
 
 ```bash
 cd spike/ttsbinding
+echo "sdk.dir=$ANDROID_HOME" > local.properties   # if not already set
 gradle assembleDebug
 adb install -r build/outputs/apk/debug/quire-tts-probe-debug.apk
 ```
+
+Sideloading the APK directly works too; the device will ask for permission to install from
+an unknown source. The app has no launcher icon on purpose — it is a service, and it shows
+up in the text-to-speech engine list rather than the app drawer.
 
 Then on the device: Settings → Text-to-speech → preferred engine → **Quire Probe (spike)**.
 If NeoReader already had a TTS session open, close and reopen it — Android only rebinds

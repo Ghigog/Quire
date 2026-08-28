@@ -2036,10 +2036,20 @@ QUI-021 and QUI-022 — index by sentence, and match by concatenation rather tha
 comparing sentence lists.
 
 `spike/ttsbinding/` now holds the probe service that answers the rest: a system TTS engine
-that plays one tone per word and logs every `onSynthesizeText` call to a TSV. **It has
-never been compiled** — this environment has no Android SDK, because `dl.google.com` is
-denied by the network egress policy — so expect a round of small fixes. Its README lists
-the six questions and how to collect the answers.
+that plays one tone per word and logs every `onSynthesizeText` call to a TSV. Its README
+lists the six questions and how to collect the answers.
+
+**2026-08-28 — builds.** `dl.google.com` was added to the environment's network allowlist,
+so the Android SDK installed here and the APK now compiles (AGP 8.7.3, compileSdk 35,
+minSdk 26 for `rangeStart`). One real bug found by compiling: the engine metadata declared
+`android:languages` on `<tts-engine>`, which is not an attribute — resource linking failed
+outright. Supported locales are reported at runtime through `onIsLanguageAvailable()` and
+`onGetVoices()`, never in XML; `android:settingsActivity` is the element's only attribute
+and it is optional. `res/xml/tts_languages.xml` deleted.
+
+Verified in the built APK: the service declares the `TTS_SERVICE` action, the `DEFAULT`
+category, the metadata resource, and `exported=true`. Runtime behaviour on the device is
+still unverified.
 
 *Still open:* exact chunk sizes in characters, whether the host ever splits mid-sentence at
 the 4000-character limit, `onStop` frequency, and whether footnote markers or page numbers
