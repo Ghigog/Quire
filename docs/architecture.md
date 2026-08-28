@@ -189,9 +189,12 @@ with a fresh ~300-token window each lands in the hours. Therefore:
 
 - Attribution runs **chapter-at-a-time with KV-cache reuse**, not line-at-a-time.
 - Generation is **constrained to a single token** — an index into the candidate speakers.
-- **Tier 1 coverage is a performance feature.** Measured at 44.4% coverage / 100%
-  precision on hand-written fixtures (QUI-018); every point of coverage is work the SLM
-  never does.
+- **Tier 1 coverage helps but cannot rescue us.** Every line the heuristics resolve is a
+  line the model never sees — but measured on PDNC, explicit speech tags account for only
+  30.1% of quotations across 28 novels, and 11.6% in the worst book. The 44.4% coverage
+  QUI-018 measured came from hand-written fixtures that over-represent taggable lines. The
+  model still carries most of a novel, so its speed is what decides the budget
+  (`docs/prior-art.md` §3).
 
 See [`device-profile.md`](device-profile.md) §2.
 

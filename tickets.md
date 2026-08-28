@@ -2261,8 +2261,13 @@ rewrite of QUI-006 and QUI-009.
 - Owns: `spike/attribution-bakeoff/`, `docs/adr/0005-attribution-model.md`
 - Candidates: an encoder-based attribution model exported to ONNX, BookNLP as the baseline
   the field reports against, and the 1B SLM prompt from QUI-009.
-- Evaluate on **PDNC** (35,978 quotations, 22 novels) so numbers are comparable to
-  published results. **Confirm the corpus licence before use, and record it in the ADR.**
+- Evaluate on **PDNC** — 37,131 quotations across 28 novels in the current revision — so
+  numbers are comparable to published results. **It carries no licence**: no `LICENSE`
+  file, no terms in its ReadMe, only a link to its paper (checked 2026-08-28). Clone it
+  with a fetch script, cite the paper, never commit or redistribute it.
+- Report accuracy **split by PDNC's `quoteType`**. The corpus is 30.1% `Explicit`, 45.0%
+  `Implicit`, 24.8% `Anaphoric`, so a headline number hides which tier does the work —
+  Tier 1 can never exceed the explicit share.
 - Measure per candidate: accuracy on PDNC, wall-clock to attribute a 100k-word novel on the
   Note Air5 C, peak RSS, on-disk size, sustained power draw.
 - Report Tier 1 coverage separately, so we can see how much of the book each model is even
