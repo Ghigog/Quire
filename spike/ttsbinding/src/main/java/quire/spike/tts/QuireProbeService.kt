@@ -230,9 +230,16 @@ class QuireProbeService : TextToSpeechService() {
         return true
     }
 
-    /** A second voice, where the model has one. Kokoro and libritts_r have hundreds. */
+    /**
+     * A second voice, chosen far from the narrator's.
+     *
+     * Speaker 1 sounds like speaker 0 — adjacent ids in `libritts_r` are neighbouring
+     * readers from the same corpus, which is why the first device test heard no voice
+     * change at all on a model carrying 904 of them. Halfway down the list is reliably a
+     * different person.
+     */
     private fun dialogueVoice(engine: TtsEngine) =
-        if (engine.voiceCount > 1) 1 else NARRATOR_VOICE
+        if (engine.voiceCount > 1) engine.voiceCount / 2 else NARRATOR_VOICE
 
     /** Split into runs of narration and quoted speech, preserving every character. */
     private fun splitOnQuotes(text: String): List<Pair<String, Boolean>> {

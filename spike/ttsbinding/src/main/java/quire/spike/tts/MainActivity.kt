@@ -49,6 +49,19 @@ class MainActivity : Activity() {
             append("selected: beep mode")
             refresh()
         })
+        root.addView(body("Inference threads — the 750G has 2 performance cores and 6 efficiency cores:"))
+        root.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf(1, 2, 4, 6).forEach { n ->
+                    addView(button(if (Prefs.threads(this@MainActivity) == n) "[$n]" else "$n") {
+                        Prefs.setThreads(this@MainActivity, n)
+                        append("threads: $n")
+                        refresh()
+                    })
+                }
+            },
+        )
         root.addView(button("Benchmark everything installed") { benchmarkAll() })
 
         log = body("").apply { setTextIsSelectable(true) }

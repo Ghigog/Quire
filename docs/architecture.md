@@ -170,6 +170,26 @@ The host owns the transport, and that changes the buffer's job.
 - **One model instance, serialised inference.** Concurrency here buys nothing at RTF 0.15
   and doubles peak memory.
 
+### Fragments break prosody, and the index is the fix
+
+Measured on device: because the host splits at commas, each clause arrives as its own
+`onSynthesizeText` call and every engine tested synthesises it as a **standalone
+utterance** — sentence-final intonation on a fragment, and an odd re-start on the clause
+after. Every candidate did this. It is not an engine defect; it is what the interception
+architecture does to prosody by construction.
+
+The fix is only available to us because we hold the index and the cursor:
+
+**Synthesise the whole sentence, serve the fragments.** When the first clause of a sentence
+arrives, the matcher already knows which entry it belongs to and therefore knows the whole
+sentence. Synthesise that entry once, cache the audio, and serve the arriving clause from
+the part of it that clause covers; the following clauses are then cache hits with correct
+prosody. This needs the normalised-to-raw offset map (QUI-027) to know where in the audio
+each clause starts.
+
+A reader app cannot do this — it has no index. Neither can a plain TTS engine — it has no
+idea what comes next. It is a direct payoff of the design.
+
 ### Highlighting
 
 Not lost, as first thought. `callback.rangeStart(start, end, frame)` lets the engine tell

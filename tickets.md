@@ -32,6 +32,7 @@ already `In progress`.
 | QUI-011 | Automatic voice casting | Audio | Todo | — | QUI-007, QUI-010 |
 | QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
+| QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
 | QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
 | QUI-003 | E-ink display mode and hardware keys | Companion | Todo (reduced) | — | QUI-025 |
 | QUI-026 | E-reader compatibility matrix verification | Quality | Todo | — | QUI-019 |
@@ -43,7 +44,7 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 
-Next free ID: **QUI-030**
+Next free ID: **QUI-031**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -2407,6 +2408,80 @@ Scenario: Quire does not nag
   Given a reader who listens to unindexed material repeatedly
   When they do so
   Then they are not interrupted on every session
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-030 — Whole-sentence synthesis with fragment serving
+
+**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-012, QUI-027
+**PRD:** §3.2
+
+### User story
+As a listener, I want a sentence to sound like a sentence, so that a comma does not land
+like a full stop and the clause after it does not restart oddly.
+
+### Context (why)
+Measured on device (ADR-0002): the host splits at commas, so each clause arrives as its own
+`onSynthesizeText` call, and **every engine tested synthesises it as a standalone
+utterance** — sentence-final intonation on a fragment, and a strange re-entry on the clause
+that follows. Kitten, Piper and Kokoro all did it. This is not an engine defect; it is what
+interception does to prosody by construction, and it is the single most audible flaw in the
+prototype.
+
+The fix is available to Quire and to nothing else on the market. A reader app has no index;
+a plain TTS engine has no idea what comes next. We have both.
+
+### Description (what)
+When the first clause of a sentence arrives, synthesise the *whole* sentence from the index
+entry, cache the audio, and return only the portion the arriving clause covers. Subsequent
+clauses of that sentence are served from the cache. The listener hears one continuously
+intoned sentence, delivered in pieces.
+
+### Requirements (how)
+- Owns: `core/tts/sentence/`, the fragment-serving path in `app/ttsservice/`
+- Keyed by index `seq`; evicted once the cursor has passed the entry.
+- Needs QUI-027's normalised-to-raw offset map to know where in the audio a clause begins
+  and ends. Without it the cut points are guesses.
+- A cache miss must never stall: an unmatched or unlocated chunk falls back to synthesising
+  the fragment alone, which is today's behaviour and today's prosody.
+- Interacts with multi-voice (QUI-024): a sentence containing both narration and dialogue
+  must still be synthesised per voice span, so the unit cached is the span, not always the
+  whole sentence.
+- Measure the memory cost: one sentence of audio at 22,050 Hz mono 16-bit is roughly 40 KB
+  per second, and the buffer already holds several.
+- Out of scope: cross-sentence prosody.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: A sentence split at its commas sounds continuous
+  Given an indexed sentence of three comma-separated clauses
+  When the host requests each clause in turn
+  Then the audio returned is the corresponding part of one synthesis of the whole sentence
+  And no clause carries sentence-final intonation except the last
+
+Scenario: Later clauses cost nothing
+  Given the first clause of a sentence has been served
+  When the second clause arrives
+  Then it is served from cache without a further synthesis call
+
+Scenario: A miss degrades rather than stalls
+  Given a chunk the matcher could not place
+  When it is synthesised
+  Then the fragment is spoken on its own with no added delay
+
+Scenario: Mixed sentences keep their voices
+  Given a sentence containing narration and one character's speech
+  When it is served clause by clause
+  Then each clause is spoken in the voice of the span it belongs to
+
+Scenario: The cache does not grow without bound
+  Given a chapter played to its end
+  When cache occupancy is sampled
+  Then entries behind the cursor have been evicted
 ```
 
 ### Worklog

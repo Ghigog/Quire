@@ -39,6 +39,55 @@ recorded and this ADR cannot be accepted without them.**
   is consistent with `device-profile.md` §2: no i8mm, so quantized matmul takes the slow
   path.
 
+## Measured — Piper `libritts_r` medium, Note Air5 C, 2 threads
+
+```
+load        2524 ms
+synthesis   4595 ms for 12979 ms of audio
+RTF         0.354   FAIL (> 0.15)
+peak RSS    314 MB
+on disk     92 MB
+voices      904 at 22050 Hz
+```
+
+Four things fall out of this, and the RTF failure is not the most important.
+
+### 1. RTF fails the SLA, but the SLA may be the wrong instrument
+
+0.354 is 2.4× over PRD §5's 0.15. It is also **2.8× faster than real time**: 13 seconds of
+audio in 4.6 seconds. With the ring buffer, playback never starves at this rate; the host
+gives us a whole page at once and then goes quiet for twenty seconds (ADR-0004), so there
+is far more slack than the budget assumes.
+
+RTF was never the thing we cared about. It is a proxy for two things we do care about —
+never starving playback, and battery — and it is a poor proxy for the second. The decisive
+measurement is sustained power draw against ≈1.14 W (`device-profile.md` §4), which is
+QUI-016 and has not been run.
+
+**This is not a licence to ignore the number.** It fails as written, and either the SLA is
+re-derived from a battery measurement or the engine has to get faster. What it should not
+do is kill Piper on a proxy metric before the real one has been taken.
+
+### 2. Load time alone blows the TTFS budget
+
+2,524 ms to load, against 800 ms for time-to-first-sound. A cold start cannot meet the SLA
+however fast synthesis is. The engine must be **loaded before the first utterance arrives**
+and kept warm across a reading session — a foreground service, or loading on the first
+`onIsLanguageAvailable` rather than the first `onSynthesizeText`. QUI-010 and QUI-012.
+
+### 3. 904 voices, free
+
+`libritts_r` carries 904 speakers in one 92 MB model. Casting is an integer, memory cost
+does not grow with the size of the cast, and there is no reason to ever run two models.
+This is the strongest argument for Piper and it makes QUI-011 much simpler than planned.
+
+The probe reported "no multi-speaker" only because it picked speaker ids 0 and 1, which are
+adjacent voices in the same corpus and sound alike. Fixed by spreading them.
+
+### 4. Peak RSS 314 MB — comfortable
+
+Against a 1.2 GB ceiling, with the SLM in a different process entirely.
+
 ## Decision
 
 **Provisionally Piper `libritts_r` medium**, pending the measured RTF, TTFS and peak RSS
@@ -57,9 +106,11 @@ that QUI-017's benchmark reports.
 
 ## Still needed
 
-1. Measured **RTF** for Piper and Kokoro against the 0.15 budget — the number this ADR
-   turns on.
-2. **TTFS** from pressing Read Aloud to first audio, against 800 ms.
-3. **Peak RSS** for the service process, against the 1.2 GB ceiling.
-4. What "almost" meant for Piper: pronunciation, pacing, or something else. A defect that
-   shows up on every page is different from one that shows up on proper nouns.
+1. **Thread count.** Measured at 2 threads. The 750G has two performance cores and six
+   efficiency cores; 4 threads may move RTF materially and has not been tried.
+2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
+   for, and it decides whether 0.354 is actually a problem.
+3. **Kokoro int8 (140 MB)** for completeness. Only the 304 MB fp32 build was tried, and it
+   was slow throughout rather than slow to start, so int8 is unlikely to close a 2× gap —
+   but the number is cheap to take.
+4. **TTFS** end to end with the engine preloaded, against 800 ms.
