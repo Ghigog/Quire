@@ -1753,10 +1753,19 @@ Thomas is a woman. Not a bug — `Casting` spreads speaker ids across the model'
 make voices *distinct*, and has no idea what any of them sound like. QUI-005's manifest
 carries `gender` precisely for this and nothing consumes it yet; that is QUI-011.
 
-*Still unconfirmed on device*, and both matter more than the casting: whether a character's
-voice holds across a comma (`quite still,`, `on and off,`) and whether the speech tag
-`" she said.` drops back to the narrator. The desktop tests assert both; nobody has yet
-said they heard them.
+**2026-08-29 — both confirmed on device, dylangrowcoot.** The character's voice **holds
+across a comma** (`quite still,`, `for a quarter of an hour,`), and the speech tag
+`" she said.` **drops back to the narrator**.
+
+That is the whole architecture demonstrated on hardware. Both failures ADR-0002 §6 records —
+per-chunk inference breaking *within* a line, carried state breaking *across* paragraphs —
+are absent, not because a flag was set correctly but because the speaker is looked up by
+position in an index and never inferred from the text of a chunk. A reader hears three
+voices in a book whose cast the engine was told about, through a reader nobody wrote, with
+the host chunking at commas.
+
+Casting was also re-heard after QUI-011's measured voices landed: narrator and Sarah are
+both women, 188.5 and 217.2 Hz, and Thomas a man at 111.9 Hz.
 
 *Two installation findings, the second expensive.* The screen is a `ScrollView` and the
 build stamp sits above the fold, which is easy to miss. And the first container-built APK

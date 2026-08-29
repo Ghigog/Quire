@@ -175,6 +175,12 @@ information is not in the quote marks at all. Quote-mark inference is therefore 
 signal to be strengthened — it is the wrong signal. The probe is left as it is; it has
 answered its question.
 
+**Closed on device, 2026-08-29.** With the probe voicing chunks from a dialogue index
+instead of from quote marks (QUI-019), both failures are gone on the reference device: a
+character's voice holds across a comma, and the speech tag after a closing quote returns to
+the narrator. Not a better flag — no flag. The speaker comes from position in the index,
+which is state the host's chunking cannot destroy.
+
 ### 7. The SoC is not the ceiling — the model is
 
 ```
