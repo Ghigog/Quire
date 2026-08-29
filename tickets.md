@@ -199,13 +199,23 @@ fetches the AAR, builds the slice index, assembles the probe, and **uploads the 
 matching EPUB as artefacts**. That is a way to get a build onto the device without an agent
 being able to compile Android at all, and it is the fastest route to unblocking QUI-019.
 
+**CI run #1 is green** — [run 33261024333](https://github.com/Ghigog/Quire/actions/runs/33261024333),
+both jobs, first attempt. `quire-tts-probe-debug` (11.6 MB) and `slice-book` are attached to
+it, and artefacts expire on 2026-11-27.
+
+The consequence is larger than a green tick. **The `Assemble` step compiled the Android
+sources that were handed over unbuilt on this branch** — `AndroidSql`, `SliceIndex` and the
+rewritten `QuireProbeService.speak()`. QUI-019's worklog warned to expect compiler errors
+first; there were none. More usefully, the constraint in CLAUDE.md §9 is now routed around
+rather than merely documented: an agent that cannot resolve the Android Gradle Plugin can
+still get a signed-by-nobody debug APK onto the device by pushing.
+
 *What is left before this is Done:*
 
-1. **The Android application modules** (`app:companion`, `app:ttsservice`) — still owed,
-   still un-buildable here. The `spike/ttsbinding` probe is the stand-in.
-2. **The CI workflow has never run.** It is written against the repository as it is and its
-   commands were rehearsed locally, but a workflow is only correct once green.
-3. **"The check appears as required on the pull request"** is a branch-protection setting.
+1. **The Android application modules** (`app:companion`, `app:ttsservice`) — still owed.
+   They cannot be built in a dev container, but CI compiles Android now, so they no longer
+   have to be written blind.
+2. **"The check appears as required on the pull request"** is a branch-protection setting.
    It needs a human in GitHub settings; nothing in this repository can assert it.
 
 ---

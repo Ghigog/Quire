@@ -233,8 +233,11 @@ and the Gradle plugin portal both 404.
 curl -sS -o /dev/null -w '%{http_code}\n' https://dl.google.com/   # 000 means blocked
 ```
 
-If it is blocked, hand over the Android sources unbuilt and say in the ticket that *this*
-is why, because it is a setting someone can change rather than a fact about the tooling.
+If it is blocked, **push and let CI build it**. GitHub's runners ship the SDK, and
+`.github/workflows/ci.yml` assembles the probe and attaches the APK and its matching EPUB to
+the run (QUI-001, first green run 2026-08-29). Handing over unbuilt Android sources is now
+the fallback, not the answer — and if you do, say in the ticket that the blocked host is
+why, because it is a setting someone can change rather than a fact about the tooling.
 A session on 2026-08-28 built the probe clean from this same repository
 (`spike/ttsbinding/README.md`), so an environment allowing that host works fine.
 
