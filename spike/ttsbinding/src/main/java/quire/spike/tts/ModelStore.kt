@@ -51,6 +51,13 @@ data class Candidate(
             Candidate(
                 "vctk", "VITS VCTK (109 voices)", "vits-vctk", 151_000_000, Kind.VITS,
             ),
+            // Multi-speaker at the same "medium" tier as libritts_r but a different
+            // corpus. Tests whether RTF 0.35 is inherent to medium-quality multi-speaker
+            // Piper or specific to libritts_r.
+            Candidate(
+                "vctk-piper", "Piper VCTK medium (multi-voice speed test)",
+                "vits-piper-en_GB-vctk-medium", 79_800_000, Kind.VITS,
+            ),
             Candidate(
                 "kokoro-int8", "Kokoro multi-lang v1.1 (int8)",
                 "kokoro-int8-multi-lang-v1_1", 147_031_220, Kind.KOKORO,

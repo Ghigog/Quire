@@ -90,11 +90,21 @@ Against a 1.2 GB ceiling, with the SLM in a different process entirely.
 
 ## Decision
 
-**Piper `libritts_r` medium on `sherpa-onnx`.** Accepted 2026-08-29.
+**The engine is sherpa-onnx running a Piper/VITS model** — accepted. Kitten is ruled out on
+quality, Kokoro on speed, and the runtime has proved itself on device.
 
-904 voices in 92 MB, "almost perfect" on device, and — after §7 and §8 — between 6× and 23×
-faster than every other multi-speaker engine available. Kitten is out on quality, Kokoro on
-speed, `vits-vctk` on speed, and `vctk-medium` is the same engine on a smaller corpus.
+**The voice model is `libritts_r` medium** — accepted 2026-08-29, after the two candidates
+that were meant to settle it were screened and neither did.
+
+This decision was written first as "settled by the VCTK-medium benchmark and, failing that,
+by the power measurement in QUI-016". The VCTK benchmark has since been run on the host and
+answers nothing: §8 measures it within 0.5% of `libritts_r`, the same engine on a smaller
+corpus. §9 closes the rest of the field. So the fallback is now the only path, and the
+choice between `libritts_r` medium's casting and `alan` low's single voice cannot be
+deferred to a better model, because there is not one.
+
+It carries 904 voices in 92 MB, was judged "almost perfect" on device, and — after §7 and
+§8 — is between 6× and 23× faster than every other multi-speaker engine available.
 
 **Accepted with a deviation, not a pass.** RTF 0.354 misses PRD §5's 0.15 by 2.4×, and we
 are proceeding anyway on the reasoning in §1: it is still 2.8× faster than real time, and
@@ -102,7 +112,7 @@ ADR-0004 establishes that the host hands us a page and then goes quiet, so playb
 starve. What 0.15 was really standing in for is battery, and that has not been measured.
 
 This is a deliberate, recorded risk rather than a met requirement. It is accepted because
-no model change can fix it — §8 exhausted that search — so blocking on the number would
+no model change can fix it — §9 exhausted that search — so blocking on the number would
 block the product without improving it.
 
 **Revisit trigger.** QUI-016's sustained power measurement. If draw at RTF 0.354 fits
@@ -165,7 +175,54 @@ information is not in the quote marks at all. Quote-mark inference is therefore 
 signal to be strengthened — it is the wrong signal. The probe is left as it is; it has
 answered its question.
 
-### 7. VCTK is not the way out — screened on the host, 2026-08-29
+### 7. The SoC is not the ceiling — the model is
+
+```
+Piper alan LOW (1 voice, 16 kHz)
+load        3190 ms
+synthesis   2236 ms for 16960 ms of audio
+RTF         0.132   PASS (<= 0.15)
+peak RSS    304 MB
+on disk     77 MB
+```
+
+**0.132 against libritts_r's 0.354, on the same chip.** The 750G can hit the SLA; medium
+quality at 22.05 kHz cannot. Two variables move together — Piper's `low` tier is a smaller
+network *and* runs at 16 kHz, roughly 1.38x less audio to generate — so the 2.7x gap is both.
+
+That reframes the decision. Not "is the hardware fast enough" but **"what do we spend the
+speed on"**:
+
+| | Voices | Quality | RTF |
+| --- | --- | --- | --- |
+| Piper `alan` low, 16 kHz | 1 | acceptable | **0.132** |
+| Piper `libritts_r` medium, 22.05 kHz | 904 | "almost perfect" | 0.354 |
+
+Piper publishes no multi-speaker model at the `low` tier — every multi-speaker option
+(`libritts_r`, `vctk`, `arctic`, `l2arctic`) is `medium`. The two things we want are not
+available in one file.
+
+Three ways out, in the order to try them:
+
+1. **Another medium multi-speaker model may be lighter.** `en_GB-vctk-medium`, 76 MB,
+   ~109 speakers, different corpus, same tier. One benchmark says whether 0.35 is inherent
+   to medium multi-speaker Piper or specific to `libritts_r`. Added to the probe.
+2. **Re-derive the budget from power.** 0.354 is still 2.8x faster than real time and the
+   host hands us a page at a time, so nothing starves. If sustained draw at 0.354 fits
+   ~1.14 W, then 0.15 was simply the wrong number. QUI-016, and the measurement that
+   actually decides.
+3. **Differentiate one fast voice** with per-character pitch and rate offsets. Cheap,
+   always affordable, audibly worse than real distinct speakers. The fallback if 1 and 2
+   both fail.
+
+Casting quality is the product. Reaching for option 3 first would be optimising the metric
+and losing the thing the metric was for.
+
+**Option 1 is closed** — §8 screened `vctk-medium` and it is the same engine on a smaller
+corpus. §9 closes the rest of the field. That leaves option 2, which was always the
+measurement that decides.
+
+### 8. VCTK is not the way out — screened on the host, 2026-08-29
 
 The open question after §5 was whether RTF ≈ 0.35 is inherent to medium-tier multi-speaker
 Piper or specific to `libritts_r`. It is not specific to `libritts_r`.
@@ -213,7 +270,7 @@ faster than real time, and ADR-0004 establishes that the host hands us a page at
 so nothing starves. Either power says multi-voice at medium quality is affordable, or it
 says the engine must get faster and we are choosing between 109 voices and none.
 
-### 8. Every alternative engine screened; Piper is an order of magnitude ahead
+### 9. Every alternative engine screened; Piper is an order of magnitude ahead
 
 Kokoro int8 and a low-tier VCTK were the two candidates left. Neither survives, and one of
 them does not exist.
@@ -245,11 +302,11 @@ accounts for almost none of a 9.4× gap.
 
 **The consequence is the useful part.** Piper is not narrowly ahead of the field; it is
 6–23× ahead of every other multi-speaker engine in the zoo, measured on one runtime and one
-machine. Combined with §7, the search for a faster multi-speaker model is exhausted. There
+machine. Combined with §8, the search for a faster multi-speaker model is exhausted. There
 is no model to go and find, so the voice-model question is no longer "which model" but
 "is 0.354 affordable" — which only a power measurement answers.
 
-Note the direction of the host's error, established in §7: the 750G punishes medium-tier
+Note the direction of the host's error, established in §8: the 750G punishes medium-tier
 synthesis about twice as hard as this machine. Applied to this table, the alternatives get
 *worse* on device, not better. Nothing here is a near miss that device measurement might
 rescue.
@@ -258,11 +315,11 @@ rescue.
 
 1. ~~**Thread count.**~~ Measured: no help. See §5.
 1b. ~~**A lighter medium multi-speaker model.**~~ Screened on the host: `vctk` is within
-   0.5% of `libritts_r`. See §7.
+   0.5% of `libritts_r`. See §8.
 2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
    for, and it decides whether 0.354 is actually a problem.
 3. ~~**Kokoro int8 (140 MB).**~~ Screened on the host after all, and it is 2.46x slower
-   than unquantized Kokoro, which is itself 9.4x slower than Piper. See §8. The
+   than unquantized Kokoro, which is itself 9.4x slower than Piper. See §9. The
    304 MB fp32 build was slow *throughout* rather than slow to start, which makes it a
    compute problem and not a size one; quantizing cannot close a 2.4× gap on an SoC with
    no i8mm (`device-profile.md` §2). Reopen only if Kokoro becomes the only multi-speaker
