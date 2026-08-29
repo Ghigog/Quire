@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import quire.index.InMemoryBookIndex
+import quire.index.OffsetMap
 import quire.index.Matcher
 import quire.index.Normalizer
 import quire.model.IndexEntry

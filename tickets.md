@@ -22,7 +22,7 @@ already `In progress`.
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
-| QUI-027 | Normalised-to-raw offset map | Index | In progress | session-visibility-check | QUI-021, QUI-022 |
+| QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
@@ -2412,7 +2412,7 @@ want a longer capture across a chapter boundary. Ticket stays `In progress` for 
 > empty and a naive per-character walk drops every space; and asserting the walk reproduces
 > `normalize()` exactly is what caught that.
 
-**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**Status:** Done · **Owner:** session-visibility-check · **Epic:** Index · **Depends on:** QUI-021, QUI-022
 **PRD:** §2 Phase 2
 
 ### User story
@@ -2438,8 +2438,13 @@ covered, and to report raw offsets rather than normalised ones.
 
 ### Requirements (how)
 - Owns: the offset-map column in `core/index/` schema, `MatchResult` span clipping
-- Store the map compactly — a per-word pair of offsets is enough, since normalisation only
-  ever deletes characters and collapses runs of whitespace; it never reorders or inserts.
+- ~~Store the map compactly — a per-word pair of offsets.~~ **Changed during
+  implementation, 2026-08-29:** the map is *computed* from the entry's raw text, not
+  stored. It costs a linear walk of one sentence, needs no schema bump and no migration,
+  adds nothing to the 5 MB index budget QUI-021 fought for, and — deciding it — a stored
+  map could disagree with `Normalizer` after a normalisation change, which is the exact
+  bug that module exists as the single implementation to prevent. Cache per entry if
+  profiling ever demands it; do not persist.
 - `MatchResult.spans` must be clipped to the covered range on partial matches, and its
   offsets must be raw, relative to the chunk the host supplied.
 - Verify against `fixtures/host-traces/neoreader-epub-shape.tsv`, whose speech-tag rows are
@@ -2470,7 +2475,39 @@ Scenario: Whole-entry matches are unchanged
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — session-visibility-check.** `OffsetMap` lifted from `spike/slice` into
+`core:index`, and `Matcher.rebase` replaced by `Matcher.clip`. Reproduce with
+`gradle test`: 54 tests, 0 failures across the repository, 4 of them the scenarios here.
+
+*Deviation from Requirements, stated rather than slipped in:* the map is computed, not
+stored. Reasoning on the ticket above and in the class doc.
+
+*Two off-by-one bugs, both caught by the new tests and both worth remembering.*
+
+1. **The resume offset is not the content end.** `runAt` steps the offset over the space
+   between clauses so the next chunk resumes on a word boundary. Clipping with that value
+   handed every partial chunk one character of the clause *after* it, which was enough to
+   drag a whole narration span into a dialogue chunk. `Run` now carries `contentEnd`
+   separately from `endOffset`.
+2. **Normalisation drops the opening quote**, so the first normalised character of
+   `"I know,"` maps to the `I`, and the chunk's own opening quote fell to whoever held the
+   previous span. `clip` now reaches back over characters that normalise to nothing,
+   stopping at whitespace so it can never cross into the clause before.
+
+*A test that encoded the bug.* `SceneReplayTest` asserted that `" she said."` carries
+Sarah, and passed, because spans covered the whole entry and the speech tag inherited the
+dialogue voice. That is precisely the defect this ticket exists to fix, written down as an
+expectation. Corrected, with the reason in the test. Worth the reminder that a test can be
+as confidently wrong as the code.
+
+*Verified against the capture* the ticket asks for: every span of every chunk in
+`fixtures/host-traces/neoreader-epub-shape.tsv` now falls inside the chunk it belongs to.
+
+*Downstream simplification.* `spike/slice/ChunkPlan` loses its proportional-cutting
+approximation entirely — the matcher returns exact, chunk-relative spans, so the spike just
+cuts the string. That was the one remaining place where a chunk straddling a speaker change
+mid-clause would have been voiced wrongly.
 
 ---
 

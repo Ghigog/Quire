@@ -49,13 +49,19 @@ class SceneReplayTest {
             matcher.match(chunk).spans.mapNotNull { it.speakerId }.distinct()
         }
 
-        // The bug this architecture exists to avoid: these two clauses contain no opening
-        // quote, so anything inferring speech from the text in front of it reads them as
-        // narration. Observed on device before the index was wired in — ADR-0002 §6.
+        // The bug this architecture exists to avoid: this clause carries no opening quote,
+        // so anything inferring speech from the text in front of it reads it as narration.
+        // Observed on device before the index was wired in — ADR-0002 §6.
         assertTrue("Sarah" in voices.getValue(" avoiding the letter,"))
-        assertTrue("Sarah" in voices.getValue(" she said."))
 
-        // And narration on its own line stays narration, which is the mirror failure.
+        // The speech tag after the closing quote is *not* the character — the opposite
+        // error, and just as audible. This line used to assert "Sarah" and passed, because
+        // spans covered the whole entry and the tag inherited the dialogue voice. QUI-027
+        // clips them to the chunk, so the old expectation was simply wrong: a test can
+        // encode a bug every bit as confidently as the code can.
+        assertTrue(voices.getValue(" she said.").isEmpty())
+
+        // Narration on its own line stays narration, which is the mirror failure.
         assertTrue(voices.getValue("Thomas did not turn from the desk.").isEmpty())
         assertTrue(voices.getValue("He responded at last.").isEmpty())
     }

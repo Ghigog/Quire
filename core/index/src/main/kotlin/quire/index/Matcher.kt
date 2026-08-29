@@ -146,6 +146,10 @@ class Matcher(
         var remaining = wanted
         var seq = start
         var off = startOffset
+        // Where the chunk's text actually stops, as distinct from where the next chunk
+        // resumes: the resume point steps over the separating space, and clipping with it
+        // would hand every partial chunk one character of the clause after it.
+        var contentEnd = startOffset
         while (remaining.isNotEmpty()) {
             val entry = index.entry(seq) ?: return null
             val text = entry.normalized
@@ -156,6 +160,7 @@ class Matcher(
                 available == remaining -> {
                     consumed += entry
                     off = text.length
+                    contentEnd = off
                     remaining = ""
                 }
                 // Finishes this entry and continues into the next: a host that glues
@@ -170,6 +175,7 @@ class Matcher(
                 available.startsWith(remaining) -> {
                     consumed += entry
                     off += remaining.length
+                    contentEnd = off
                     if (text.getOrNull(off) == ' ') off++ // resume at a word boundary
                     remaining = ""
                 }
@@ -178,31 +184,73 @@ class Matcher(
         }
         if (consumed.isEmpty()) return null
         val entry = index.entry(seq) ?: return null
-        return Run(consumed, seq, off, partial = off < entry.normalized.length)
+        return Run(consumed, startOffset, contentEnd, seq, off, partial = off < entry.normalized.length)
     }
 
     private fun accept(run: Run, how: How): MatchResult {
         cursor = run.endSeq
         offset = run.endOffset
-        return MatchResult(how, run.entries, rebase(run.entries), run.partial)
+        return MatchResult(how, run.entries, clip(run), run.partial)
     }
 
     /**
-     * Rebase span offsets from per-entry onto the concatenated chunk, so callers can map
-     * them back to the host's own string.
+     * The spans this chunk actually covered, in the chunk's own coordinates.
+     *
+     * Two conversions, and both are needed before a caller can voice a partial chunk.
+     *
+     * **Per-entry to run.** Spans are stored per entry; a chunk may span several, so they
+     * are rebased onto the entries concatenated with the single space a host puts between
+     * sentences.
+     *
+     * **Normalised to raw.** The run's bounds are known in normalised coordinates, because
+     * that is what matching works in, while spans and `rangeStart` are raw. [OffsetMap]
+     * bridges them. Without this a chunk carrying only the tail of `"I know," said Sarah.`
+     * comes back with the dialogue span attached and reads the speech tag in Sarah's
+     * voice — the failure ADR-0002 §6 describes, arriving by a different route.
      */
-    private fun rebase(entries: List<IndexEntry>): List<VoiceSpan> {
+    private fun clip(run: Run): List<VoiceSpan> {
+        val entries = run.entries
+        val joined = entries.joinToString(" ") { it.text }
+        val map = OffsetMap(joined)
+
+        // Where the run starts and ends, in the normalised text of the concatenation.
+        var normEnd = run.contentEnd
+        for (entry in entries.dropLast(1)) normEnd += entry.normalized.length + 1
+        val rawEnd = map.rawAt(normEnd)
+
+        // Normalisation drops the opening quote, so the first *normalised* character of
+        // `"I know,"` maps to the `I`. Reach back over anything that normalises to
+        // nothing to recover it, stopping at whitespace so this never crosses into the
+        // clause before. Without it the chunk's own opening quote is spoken by whoever
+        // held the previous span.
+        var rawStart = map.rawAt(run.startOffset)
+        while (rawStart > 0 && !joined[rawStart - 1].isWhitespace() &&
+            Normalizer.normalize(joined[rawStart - 1].toString()).isEmpty()
+        ) {
+            rawStart--
+        }
+
         val out = mutableListOf<VoiceSpan>()
         var base = 0
         for (entry in entries) {
-            entry.spans.mapTo(out) { it.copy(start = it.start + base, end = it.end + base) }
-            base += entry.text.length + 1 // the space the host puts between sentences
+            for (span in entry.spans) {
+                val start = maxOf(span.start + base, rawStart)
+                val end = minOf(span.end + base, rawEnd)
+                // Offsets come back relative to the chunk the host supplied, so a caller
+                // can slice its own string with them and never sees our concatenation.
+                if (start < end) out += span.copy(start = start - rawStart, end = end - rawStart)
+            }
+            base += entry.text.length + 1
         }
         return out
     }
 
     private data class Run(
         val entries: List<IndexEntry>,
+        /** Offset within the first entry's normalised text where this chunk began. */
+        val startOffset: Int,
+        /** Where its text stops, in the last entry — not where the next chunk resumes. */
+        val contentEnd: Int,
         /** Entry the next chunk resumes in. */
         val endSeq: Int,
         /** Offset within [endSeq]'s normalised text where the next chunk resumes. */

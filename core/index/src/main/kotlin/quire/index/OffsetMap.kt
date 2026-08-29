@@ -1,6 +1,5 @@
-package quire.spike.slice
+package quire.index
 
-import quire.index.Normalizer
 
 /**
  * Maps positions in normalised text back to positions in the raw text it came from.
@@ -12,9 +11,13 @@ import quire.index.Normalizer
  * right *voice* but not split at the right *place*, which is exactly the limitation
  * recorded on `MatchResult.partial`.
  *
- * This is QUI-027's job. Implemented here in the spike because the vertical slice cannot
- * demonstrate per-speaker voices without it, and deliberately kept in one small class so
- * QUI-027 can lift it into `core:index` and delete this one.
+ * **Computed rather than stored.** QUI-027 first specified a per-word offset column in the
+ * schema. Recomputing from the entry's own raw text turns out to be better: it costs a
+ * linear walk of a sentence, it needs no schema version bump and no migration, it adds
+ * nothing to the 5 MB index budget QUI-021 fought for, and — the deciding reason — a
+ * stored map could disagree with [Normalizer] after a normalisation change, which is the
+ * exact class of bug that module exists as the single implementation to prevent. If
+ * profiling ever shows the walk matters, cache it per entry; do not persist it.
  *
  * **Known approximation.** [Normalizer] applies NFKC to the whole string; this walks it a
  * character at a time, so a decomposition that spans characters would drift. English prose
