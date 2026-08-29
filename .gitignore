@@ -6,3 +6,26 @@ local.properties
 spike/ttsbinding/libs/
 spike/hostbench/models/
 spike/ttsbinding/src/main/assets/
+
+# QUI-001 — things that must never reach the repository (CLAUDE.md §6, §8).
+# Model weights: fetched by a documented script in /tools, never stored.
+*.gguf
+*.onnx
+*.onnx.data
+*.aar
+*.bin
+# Generated audio and its caches. A reader's synthesised audio stays on their device.
+*.wav
+*.pcm
+*.opus
+*.mp3
+audio-cache/
+# Books. The ticket asked for .epub over 1 MB; a size rule cannot be expressed here, and
+# §8 forbids committing book files at any size, so the stricter rule is the correct one.
+# Fixtures are generated from labelled TSVs (spike/indexer), not stored as books.
+*.epub
+*.mobi
+*.azw3
+# Built indexes are derived from committed fixtures — regenerate, do not store.
+*.db
+

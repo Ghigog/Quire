@@ -132,6 +132,12 @@ builds and runs unit tests on every push.
 - Modules: `app` (UI shell), `core:reader`, `core:attribution`, `core:tts`,
   `core:model` (shared data types). Empty but wired, with dependency direction
   `app → core:*` and no `core → core` cycles.
+  **Rule corrected during implementation, 2026-08-29:** "no core module depends on another"
+  is false as written — `core:index` depends on `core:model`, deliberately, and this same
+  requirement calls `core:model` the shared data types. The rule enforced by
+  `checkModuleBoundaries` is the one it meant: `core:model` is the single permitted shared
+  leaf, it may depend on nothing itself, and no core module may reach sideways, upward into
+  `app`, or down into a spike.
 - Minimum Android SDK 26; target the current stable SDK.
 - `.gitignore` must exclude model weights (`*.gguf`, `*.onnx`), audio caches, and
   `.epub` fixtures over 1 MB.
@@ -164,7 +170,43 @@ Scenario: Model weights cannot be committed
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — session-visibility-check.** Reproduce with
+`./gradlew test checkModuleBoundaries`: 61 tests, 0 failures, boundaries clean.
+
+*Gradle wrapper.* The acceptance criteria say `./gradlew` and there was none — every
+session so far has used whatever `gradle` happened to be installed. `./gradlew` now
+bootstraps 8.14.3, so a clean checkout builds with a pinned Gradle.
+
+*Module boundaries* are enforced by a `checkModuleBoundaries` task wired into `check`, with
+the rule corrected as above. **Verified by breaking it:** adding
+`core:model → core:index` fails the build with
+`:core:model must depend on nothing: found :core:index`, and removing it passes again. A
+check that has never failed is not known to work — the same lesson QUI-023's benchmark
+taught an hour earlier.
+
+*`.gitignore`* covers weights (`*.gguf`, `*.onnx`, `*.bin`, `*.aar`), generated audio and
+caches, books, and built indexes. The ticket asked to exclude `.epub` **over 1 MB**; a size
+rule cannot be expressed in `.gitignore`, and §8 forbids committing book files at any size,
+so the stricter rule is the correct one — the slice's book is generated from a labelled TSV
+rather than stored. Verified by dropping `model.onnx`, `book.epub`, `voice.wav` and
+`index.db` in the tree: none appears in `git status --porcelain`, and no already-tracked
+file is caught by the new rules.
+
+*CI does something this ticket did not anticipate.* GitHub's runners ship the Android SDK,
+which the dev containers cannot reach (CLAUDE.md §9). So the workflow has a second job that
+fetches the AAR, builds the slice index, assembles the probe, and **uploads the APK and the
+matching EPUB as artefacts**. That is a way to get a build onto the device without an agent
+being able to compile Android at all, and it is the fastest route to unblocking QUI-019.
+
+*What is left before this is Done:*
+
+1. **The Android application modules** (`app:companion`, `app:ttsservice`) — still owed,
+   still un-buildable here. The `spike/ttsbinding` probe is the stand-in.
+2. **The CI workflow has never run.** It is written against the repository as it is and its
+   commands were rehearsed locally, but a workflow is only correct once green.
+3. **"The check appears as required on the pull request"** is a branch-protection setting.
+   It needs a human in GitHub settings; nothing in this repository can assert it.
 
 ---
 

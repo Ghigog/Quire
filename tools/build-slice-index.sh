@@ -12,7 +12,7 @@ OUT="$ASSETS/slice-index.db"
 BOOK="$ROOT/build/slice/chapter-one.epub"
 
 cd "$ROOT"
-gradle --quiet :spike:indexer:installDist
+"$ROOT/gradlew" --quiet :spike:indexer:installDist
 mkdir -p "$ASSETS"
 mkdir -p "$(dirname "$BOOK")"
 "$ROOT/spike/indexer/build/install/indexer/bin/indexer" \

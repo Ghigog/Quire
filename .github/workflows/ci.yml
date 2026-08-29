@@ -1,0 +1,82 @@
+# QUI-001 — build and test on every push and pull request.
+#
+# The second job is the interesting one. Cloud dev containers for this project cannot reach
+# dl.google.com, so neither the Android SDK nor the Android Gradle Plugin resolves there and
+# the probe cannot be built by an agent (CLAUDE.md §9). GitHub's runners ship the SDK, so CI
+# can build it and attach the APK to the run — which is how the device gets a build without
+# anyone's laptop being involved.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm:
+    name: JVM tests and module boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test
+        run: ./gradlew test checkModuleBoundaries --stacktrace
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/build/test-results/test/*.xml'
+          if-no-files-found: warn
+
+  probe:
+    name: TTS probe APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Neither is committed: the AAR is 38 MB of native ONNX Runtime, and the index is
+      # derived from a labelled fixture that is under version control instead (CLAUDE.md §6).
+      - name: Fetch the sherpa-onnx AAR
+        run: ./tools/fetch-sherpa-aar.sh
+      - name: Build the slice index asset
+        run: ./tools/build-slice-index.sh
+
+      # gradlew locates the wrapper by its own path and the project by the working
+      # directory, so this builds the probe's standalone build, not the root one.
+      - name: Assemble
+        working-directory: spike/ttsbinding
+        run: ../../gradlew assembleDebug --stacktrace
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: quire-tts-probe-debug
+          path: spike/ttsbinding/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # The book the index was built from, so a tester gets a matching pair rather than
+      # having to remember which fixture the APK was cut against.
+      - name: Upload the slice book
+        uses: actions/upload-artifact@v4
+        with:
+          name: slice-book
+          path: build/slice/*.epub
+          if-no-files-found: error

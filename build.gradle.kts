@@ -29,3 +29,57 @@ subprojects {
         testLogging { showStandardStreams = true }
     }
 }
+
+/**
+ * QUI-001 — the module graph cannot rot quietly.
+ *
+ * The ticket asked for "no core module depends on another core module". Taken literally
+ * that fails on the graph it was written for: `core:index` depends on `core:model`, and the
+ * same ticket calls `core:model` the shared data types. The rule it meant is encoded here —
+ * `core:model` is the one permitted shared leaf, and nothing else may reach sideways.
+ *
+ * Run by `check`, so CI enforces it without anyone remembering to.
+ */
+val checkModuleBoundaries by tasks.registering {
+    group = "verification"
+    description = "Fails if a core module reaches sideways, upward, or into a spike."
+
+    doLast {
+        val violations = mutableListOf<String>()
+
+        fun dependenciesOf(project: Project): List<String> =
+            project.configurations
+                .filter { it.name in setOf("api", "implementation", "compileOnly", "runtimeOnly") }
+                .flatMap { configuration ->
+                    configuration.dependencies.filterIsInstance<ProjectDependency>().map { it.path }
+                }
+                .distinct()
+
+        for (project in subprojects) {
+            val from = project.path
+            if (!from.startsWith(":core:")) continue
+            for (to in dependenciesOf(project)) {
+                when {
+                    to == ":core:model" -> Unit // the permitted shared leaf
+                    from == ":core:model" ->
+                        violations += "$from must depend on nothing: found $to"
+                    to.startsWith(":core:") ->
+                        violations += "$from reaches sideways to $to (only :core:model is shared)"
+                    to.startsWith(":app") ->
+                        violations += "$from depends upward on $to"
+                    to.startsWith(":spike:") ->
+                        violations += "$from depends on the throwaway module $to"
+                }
+            }
+        }
+
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "module boundaries violated:\n" + violations.joinToString("\n") { "  - $it" },
+            )
+        }
+        logger.lifecycle("module boundaries: ${subprojects.count { it.path.startsWith(":core:") }} core modules, all clean")
+    }
+}
+
+tasks.register("check") { dependsOn(checkModuleBoundaries) }
