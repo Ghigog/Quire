@@ -279,11 +279,17 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
 2. **Editions.** Two EPUBs of the same novel differ in whitespace, hyphenation and
    footnotes. How far normalisation carries across editions is unmeasured; worst case the
    user must index the exact file they read.
-3. **Voice pool size.** Casting distinctness depends on how many usable variants the
-   chosen engine ships. Unknown until ADR-0002.
+3. ~~**Voice pool size.**~~ **Answered 2026-08-29 — ADR-0002 accepted.** Piper
+   `libritts_r` medium carries **904 speakers in one 92 MB model**, so casting is an
+   integer lookup against a single resident engine and cast size costs nothing in memory.
+   QUI-011 gets simpler than planned.
 4. **Scene boundaries** for the 0.40–0.64 "most active speaker" band. Chapter breaks are a
    crude proxy. Deferred until QUI-009 has fixture data.
 5. **RTF and battery SLAs** are retained in PRD §4 but not restated by v1.2 — confirm.
+   Now urgent rather than tidy: ADR-0002 is accepted at RTF 0.354 against a budget of 0.15,
+   as a recorded deviation, because no faster multi-speaker engine exists. QUI-016's power
+   measurement decides whether the budget was the wrong instrument or the engine is a real
+   problem.
 6. ~~**What happens to a book we never indexed?**~~ **Deferred 2026-08-28 — QUI-029.**
    Unindexed books, PDFs included, fall through to the narrator and Quire behaves as an
    ordinary TTS engine. Correct failure shape, silent about it. Explicitly out of scope

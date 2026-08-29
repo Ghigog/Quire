@@ -14,7 +14,7 @@ already `In progress`.
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
-| QUI-017 | Model bake-off on target hardware | Spike | In progress | claude-opus-5 | — |
+| QUI-017 | TTS engine bake-off on target hardware | Spike | Done | claude-opus-5 | — |
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | claude-opus-5 | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
@@ -43,6 +43,7 @@ already `In progress`.
 | QUI-013 | Playback controls | Reader | **Deferred → V3.0** | — | — |
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
+| QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
 
 Next free ID: **QUI-031**
 
@@ -1186,9 +1187,15 @@ Scenario: Battery procedure is documented
 > code may be throwaway; their measurements and ADRs are not. See
 > [`docs/architecture.md`](docs/architecture.md) §8.
 
-## QUI-017 — Model bake-off on target hardware
+## QUI-017 — TTS engine bake-off on target hardware
 
-**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
+> **Narrowed to TTS, 2026-08-29.** This ticket was written to bake off the SLM *and* the TTS
+> engine together, because co-residency was thought to couple them. The TTS half is
+> finished and ADR-0002 is accepted; the SLM half has not started and is blocked on QUI-006
+> having a runtime at all. Splitting rather than holding a settled decision hostage — the
+> SLM scenarios moved verbatim to **QUI-031**.
+
+**Status:** Done · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
 **PRD:** §3.1, §3.2, §5 · **Timebox:** 3 days
 
 ### User story
@@ -1242,11 +1249,10 @@ resident memory. The output is three ADRs and a table of numbers.
 
 ### Acceptance criteria (Gherkin)
 ```gherkin
-Scenario: Every candidate is measured
+Scenario: Every TTS candidate is measured
   Given the bake-off harness on a mid-tier e-ink device
   When it runs to completion
-  Then it reports load time, peak RSS and throughput for each SLM candidate
-  And RTF, peak RSS, disk size and voice count for each TTS candidate
+  Then it reports RTF, peak RSS, disk size and voice count for each TTS candidate
 
 Scenario: Boundary timestamps are proven, not assumed
   Given the chosen TTS candidate
@@ -1254,22 +1260,10 @@ Scenario: Boundary timestamps are proven, not assumed
   Then word boundary timestamps are emitted by synthesis itself
   And a named word's timestamp matches its position in the audio within 50 ms
 
-Scenario: The co-residency question is answered
-  Given an SLM and a TTS engine loaded simultaneously
-  When peak resident memory and sustained power draw are measured
-  Then both are recorded against the 1.2 GB and 1.14 W budgets
-  And ADR-0003 selects whole-book, chapter-ahead or co-resident attribution on that basis
-
-Scenario: KV-cache reuse is quantified
-  Given 50 consecutive dialogue lines from one chapter
-  When they are attributed with a fresh context window each, and again with one rolling context
-  Then both wall-clock times are recorded
-  And the ratio is stated as a projected whole-book scan time against the 30 minute budget
-
 Scenario: Decisions are recorded
   Given the bake-off has run
-  When I read the three ADRs
-  Then each names its alternatives, its measurements, the decision, and its revisit trigger
+  When I read ADR-0002
+  Then it names its alternatives, its measurements, the decision, and its revisit trigger
 
 Scenario: A candidate that fails is reported, not worked around
   Given a candidate that misses its SLA on the target device
@@ -1356,9 +1350,17 @@ Piper is 6–23x ahead of every other multi-speaker engine in the zoo. **The sea
 faster multi-speaker model is exhausted** — there is no model left to find, and §7's
 finding means the alternatives get worse on device, not better. Written up in ADR-0002 §8.
 
-*What is left before this is Done:* TTFS with the engine preloaded, and QUI-016's power
-measurement — now the only thing that can decide the voice model, since no model change
-can.
+**2026-08-29 (close) — claude-opus-5.** ADR-0002 accepted: Piper `libritts_r` medium on
+`sherpa-onnx`, 904 voices in 92 MB. Accepted **with a recorded deviation, not a pass** —
+RTF 0.354 misses PRD §5's 0.15 by 2.4×, and we proceed because §8 exhausted the search for a
+faster multi-speaker engine, so blocking on the number would block the product without
+improving it. QUI-016's power measurement is the revisit trigger; if it fails, the engine
+stays and the product changes, because there is nothing faster to move to.
+
+Ticket narrowed to TTS and closed. Two things it was carrying go elsewhere rather than
+being quietly dropped: **TTFS** with a preloaded engine is already a QUI-019 acceptance
+criterion and is measured there; **sustained power** is QUI-016. The SLM half of the
+original bake-off is now QUI-031.
 
 ---
 
@@ -2584,3 +2586,77 @@ Scenario: The cache does not grow without bound
 
 ### Worklog
 - _(empty)_
+
+---
+
+## QUI-031 — SLM runtime bake-off and co-residency
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-006
+**PRD:** §3, §5 · **Timebox:** 3 days
+
+> Split out of QUI-017 on 2026-08-29. QUI-017 bundled the SLM and TTS bake-offs because
+> co-residency was thought to couple them. The TTS half finished first and ADR-0002 is
+> accepted; this is the half that has not started, and it cannot start until QUI-006 gives
+> us a runtime to measure.
+
+### User story
+As a team, I want the attribution model measured on the reference device beside the TTS
+engine, so that we know whether a book can be scanned in the time and power we have, and
+whether the two models can be resident at once.
+
+### Context (why)
+`device-profile.md` §2 works out that a quantized 1B SLM on a Snapdragon 750G without i8mm
+lands in the *hours* for a novel, and everything in `architecture.md` §5 — KV-cache reuse,
+single-token generation, Tier 1 coverage as a performance feature — exists to fight that.
+None of it is measured. QUI-028 has since shown Tier 1 resolves far less than hoped
+(58.5% precision, and roughly one line in nine on untagged material), so the SLM carries
+more of the load than the architecture assumed, not less.
+
+ADR-0002 also leaves this ticket a harder budget than it expected. The TTS engine is
+accepted at RTF 0.354 with peak RSS 314 MB, so the SLM's share of the 1.2 GB ceiling is
+what remains after that, and its share of ≈1.14 W competes with an engine already spending
+more of it than planned.
+
+### Description (what)
+The SLM half of the original bake-off: each candidate runtime measured on the device for
+load time, peak RSS and throughput, the two models measured together, and ADR-0003 written
+to choose whole-book, chapter-ahead or co-resident attribution on the numbers.
+
+### Requirements (how)
+- Owns: `spike/slmbench/`; writes `docs/adr/0003-attribution-timing.md`
+- Measure on the physical Note Air5 C, not an emulator and not the host. `spike/hostbench`
+  exists for TTS and its README records why host numbers do not transfer to this SoC —
+  the same caveat applies here, and more strongly, because quantized inference is exactly
+  where the missing i8mm bites.
+- Peak RSS is measured with the TTS engine loaded, since that is the configuration that
+  has to fit.
+- Out of scope: which model wins on accuracy (QUI-028), and the attribution logic itself.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Every SLM candidate is measured
+  Given the bake-off harness on a mid-tier e-ink device
+  When it runs to completion
+  Then it reports load time, peak RSS and throughput for each SLM candidate
+
+Scenario: The co-residency question is answered
+  Given an SLM and a TTS engine loaded simultaneously
+  When peak resident memory and sustained power draw are measured
+  Then both are recorded against the 1.2 GB and 1.14 W budgets
+  And ADR-0003 selects whole-book, chapter-ahead or co-resident attribution on that basis
+
+Scenario: KV-cache reuse is quantified
+  Given 50 consecutive dialogue lines from one chapter
+  When they are attributed with a fresh context window each, and again with one rolling context
+  Then both wall-clock times are recorded
+  And the ratio is stated as a projected whole-book scan time against the 30 minute budget
+
+Scenario: A candidate that fails is reported, not worked around
+  Given a candidate that misses its SLA on the target device
+  When results are written up
+  Then ADR-0003 states the miss plainly rather than proposing a heavier device
+```
+
+### Worklog
+- _(empty)_
+

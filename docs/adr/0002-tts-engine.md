@@ -1,6 +1,6 @@
 # ADR-0002 — TTS engine
 
-**Status:** Proposed — qualitative results in, numbers pending
+**Status:** Accepted, 2026-08-29 — with one deviation recorded below
 **Date:** 2026-08-28
 **Ticket:** QUI-017
 **Deciders:** dylangrowcoot (device testing), claude-opus-5
@@ -90,10 +90,28 @@ Against a 1.2 GB ceiling, with the SLM in a different process entirely.
 
 ## Decision
 
-**Provisionally Piper `libritts_r` medium**, pending the measured RTF, TTFS and peak RSS
-that QUI-017's benchmark reports.
+**Piper `libritts_r` medium on `sherpa-onnx`.** Accepted 2026-08-29.
 
-## Consequences if confirmed
+904 voices in 92 MB, "almost perfect" on device, and — after §7 and §8 — between 6× and 23×
+faster than every other multi-speaker engine available. Kitten is out on quality, Kokoro on
+speed, `vits-vctk` on speed, and `vctk-medium` is the same engine on a smaller corpus.
+
+**Accepted with a deviation, not a pass.** RTF 0.354 misses PRD §5's 0.15 by 2.4×, and we
+are proceeding anyway on the reasoning in §1: it is still 2.8× faster than real time, and
+ADR-0004 establishes that the host hands us a page and then goes quiet, so playback cannot
+starve. What 0.15 was really standing in for is battery, and that has not been measured.
+
+This is a deliberate, recorded risk rather than a met requirement. It is accepted because
+no model change can fix it — §8 exhausted that search — so blocking on the number would
+block the product without improving it.
+
+**Revisit trigger.** QUI-016's sustained power measurement. If draw at RTF 0.354 fits
+≈1.14 W (`device-profile.md` §4), PRD §5's RTF budget is re-derived and this ADR stands as
+written. If it does not, the engine stays and the *product* changes — fewer distinct
+voices, or synthesis further ahead of playback — because there is no faster engine to move
+to.
+
+## Consequences
 
 - QUI-010 targets sherpa-onnx with a VITS/Piper model.
 - QUI-011's casting becomes an index into one model's speakers rather than a choice between
