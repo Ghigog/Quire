@@ -23,7 +23,12 @@ class VoiceProfile(voices: List<Voice>) {
         voices.groupBy { it.gender }
             .mapValues { (_, group) -> group.sortedBy { it.f0 }.map { it.id } }
 
+    private val f0ById: Map<Int, Double> = voices.associate { it.id to it.f0 }
+
     fun pool(gender: Gender): List<Int> = pools[gender].orEmpty()
+
+    /** Measured pitch of one voice, for judging whether two of them are far enough apart. */
+    fun f0Of(id: Int): Double? = f0ById[id]
 
     val size: Int get() = pools.values.sumOf { it.size }
 

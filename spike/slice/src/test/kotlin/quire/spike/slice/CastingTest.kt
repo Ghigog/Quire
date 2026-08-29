@@ -42,14 +42,19 @@ class CastingTest {
     }
 
     @Test
-    fun `a character never shares the narrator's voice`() {
-        // Same sex as the narrator is the case that matters: it is the one distinction the
-        // listener cannot afford to lose.
+    fun `a character of the narrator's sex is far enough away in pitch to hear`() {
+        // Asserting only that the ids differ is not enough, and passed while shipping a
+        // narrator and a Sarah that were different speakers at an identical 188.5 Hz. Two
+        // voices of one sex at one pitch are one voice to a listener.
         val casting = Casting(
             mapOf("Sarah" to Gender.FEMALE),
             voiceCount = 904, profile = profile, narratorGender = Gender.FEMALE,
         )
-        assertNotEquals(casting.narrator, casting.voiceFor("Sarah"))
+        val sarah = casting.voiceFor("Sarah")
+        assertNotEquals(casting.narrator, sarah)
+
+        val gap = kotlin.math.abs(profile.f0Of(sarah)!! - profile.f0Of(casting.narrator)!!)
+        assertTrue(gap >= Casting.GUARD_HZ, "narrator and Sarah are only %.1f Hz apart".format(gap))
     }
 
     @Test
@@ -60,6 +65,11 @@ class CastingTest {
         )
         assertEquals(3, casting.cast.values.distinct().size, "voices collided: ${casting.cast}")
         assertTrue(casting.cast.values.all { genderOf(it) == Gender.FEMALE })
+
+        // And audibly apart from each other, not merely different integers.
+        val pitches = casting.cast.values.map { profile.f0Of(it)!! }.sorted()
+        val closest = pitches.zipWithNext { a, b -> b - a }.min()
+        assertTrue(closest >= 5.0, "two of the three are only %.1f Hz apart".format(closest))
     }
 
     @Test
