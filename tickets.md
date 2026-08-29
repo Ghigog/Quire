@@ -21,7 +21,7 @@ already `In progress`.
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
-| QUI-023 | Book identification by fingerprint | Index | In progress | session-visibility-check | QUI-021, QUI-022 |
+| QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
@@ -1938,7 +1938,7 @@ identical results, cursor and offset.
 
 ## QUI-023 — Book identification by fingerprint
 
-**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**Status:** In review · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
 **PRD:** §2 Phase 2
 
 ### User story
@@ -1997,7 +1997,43 @@ Scenario: The user can override
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — session-visibility-check.** `core/index/identify/BookIdentifier.kt`.
+Reproduce with `gradle :core:index:test`; 7 tests, one per Gherkin scenario plus the
+budget. Whole module: 36 tests, 0 failures.
+
+*Shape.* One identifier per reading session, holding a `Matcher` per candidate book. While
+searching it runs every candidate and counts consecutive agreements; at three it locks.
+`accept()` returns `MatchResult.none` until then, so "still identifying" and "book not
+indexed" take the **same** path to the narrator rather than two — the caller needs no new
+branch, and QUI-029's failure shape is inherited for free.
+
+*Why narrate the chunk that completes the streak.* Locking is decided after all candidates
+have seen the chunk, so voicing it would mean the caller acting on a book it has not been
+told about yet. Costs one utterance and keeps the rule "no more than 3" exactly true.
+
+*Ambiguity.* Two editions of one novel agree on nearly all their text and will both reach
+the threshold. Resolved to the newest `indexedAt` — most likely the import the reader just
+made — and `ambiguous` is set so the companion app can offer the override instead of
+leaving them puzzled by a wrong cast.
+
+*Override.* `BookIdentifier.forBook()` starts locked and never fingerprints. Deliberately
+not a bias: a heuristic that could still overrule an explicit choice is a worse setting
+than no setting.
+
+*Measured (host, not an SLA):* **1.30 ms per chunk** identifying across 50 books of 200
+entries, against the ticket's 50 ms. That is a desktop x86 number and PRD budgets are only
+true on the reference device (CLAUDE.md §1.6) — it is in the suite to catch a linear scan
+going quadratic, not to claim a pass. The device measurement is still owed.
+
+The first version of that benchmark **measured nothing**: it timed a *locked* identifier,
+which runs one matcher rather than fifty, and reported 0.00 ms. It now builds a fresh
+identifier per iteration so the scan is what is timed. Worth remembering — a performance
+test that exercises the cheap path passes loudly and tells you nothing.
+
+*What is left before this is Done:* the per-chunk cost re-measured on the Note Air5 C, and
+the companion-app half of the override (`app/companion/`), which needs QUI-025. The
+`core:index` half is complete and tested.
 
 ---
 
