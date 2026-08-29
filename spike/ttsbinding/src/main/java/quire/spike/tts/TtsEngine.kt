@@ -71,6 +71,11 @@ class TtsEngine private constructor(
                 Log.e(TAG, "${candidate.id}: ${candidate.kind} needs voices.bin; refusing to load")
                 return null
             }
+            if (candidate.kind == Candidate.Kind.VITS && espeak == null && lexicon == null) {
+                // Native code aborts rather than erroring on this, taking the app with it.
+                Log.e(TAG, "${candidate.id}: VITS needs espeak-ng-data or a lexicon; refusing")
+                return null
+            }
 
             fun p(f: File?) = f?.absolutePath.orEmpty()
 
@@ -82,9 +87,13 @@ class TtsEngine private constructor(
                     ),
                     numThreads = threads,
                 )
+                // Not every VITS model phonemises with espeak: Coqui-derived ones ship a
+                // lexicon instead. sherpa-onnx *aborts the process* when handed neither,
+                // so pass both and refuse below if both are missing.
                 Candidate.Kind.VITS -> OfflineTtsModelConfig(
                     vits = OfflineTtsVitsModelConfig(
-                        model = p(onnx), tokens = p(tokens), dataDir = p(espeak),
+                        model = p(onnx), tokens = p(tokens),
+                        dataDir = p(espeak), lexicon = p(lexicon),
                     ),
                     numThreads = threads,
                 )

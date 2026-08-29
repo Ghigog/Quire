@@ -20,7 +20,13 @@ using on-device AI, optimised for e-ink Android hardware. The product spec lives
 4. **Do the asked-for scope.** Don't silently widen (refactoring the world) or narrow
    (shipping half and calling it done). If you think the scope is wrong, say it in one
    or two sentences, then deliver under a stated assumption.
-5. **The device is the constraint.** Every decision is weighed against the SLAs in
+5. **Measure off-device first, then on it.** A device round-trip costs an APK build, an
+   install and a human. Most questions do not need one: `spike/ttsbench/` runs the real
+   models through the real runtime on a desktop, and relative numbers transfer even though
+   absolute ones do not. Eliminate candidates locally; take the survivor to hardware. The
+   same instinct applies elsewhere — a JVM harness answered more attribution questions in
+   an afternoon than an Android build would have in a week.
+6. **The device is the constraint.** Every decision is weighed against the SLAs in
    §5 of the PRD: ≤1.2 GB RAM, ≤450 MB app footprint, RTF ≤0.15, <8%/hr battery.
    "It works on my laptop" is not evidence. The reference device is an Onyx Boox
    Note Air5 C — `docs/device-profile.md` says what that implies. Android only;

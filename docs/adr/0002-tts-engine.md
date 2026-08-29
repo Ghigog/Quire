@@ -131,6 +131,43 @@ Three ways out, in the order to try them:
 Casting quality is the product. Reaching for option 3 first would be optimising the metric
 and losing the thing the metric was for.
 
+### 8. Measured off-device — three candidates eliminated without touching the Boox
+
+`spike/ttsbench/` runs the same models through the same runtime on a desktop. Absolute RTF
+there is meaningless; the ratio between models is what transfers. x86_64, 2 threads:
+
+| Model | RTF | ×fastest | kHz | Voices | MB |
+| --- | --- | --- | --- | --- | --- |
+| Piper `alan` low | 0.042 | 1.00× | 16.0 | 1 | 77 |
+| Piper `vctk` medium | 0.059 | 1.40× | 22.1 | 109 | 91 |
+| Piper `libritts_r` medium | 0.066 | 1.57× | 22.1 | 904 | 92 |
+| Kitten nano fp16 | 0.229 | 5.47× | 24.0 | 8 | 40 |
+| VITS VCTK (Coqui) | 0.344 | 8.21× | 22.1 | 109 | 189 |
+| Kokoro int8 multi-lang | **1.040** | 24.83× | 24.0 | 103 | 205 |
+
+Four things, three of which were queued as device tests and are now answered:
+
+- **Kokoro is dead in every quantization.** int8 runs at RTF 1.04 on a *desktop* — slower
+  than real time on hardware many times the Boox's. No device test needed.
+- **Kitten was never fast.** It felt quick on device but is 5.5× slower than `alan` low.
+  Already ruled out on quality; also ruled out on speed.
+- **Coqui VITS VCTK is out**: 8.2× and 189 MB.
+- **`vctk` medium and `libritts_r` medium are within noise of each other** — an earlier
+  two-model run put them in the opposite order. Both sit at 1.4–1.6× `alan` low here,
+  against 2.7× measured on the device, so the ARM gap is wider than the architecture alone
+  explains. `vctk` medium is the better pick regardless: 109 voices is far more than any
+  book needs, and it is the smaller model.
+
+**RTF does not vary with chunk length.** 27, 48, 108 and 330-character inputs all land
+within noise of each other on both models. Per-call overhead is negligible, so QUI-030's
+whole-sentence synthesis buys prosody and *not* speed — a hypothesis worth killing before
+it became an assumption.
+
+**One real bug found in seconds.** Not every VITS model phonemises with espeak; the
+Coqui-derived ones ship a lexicon, and sherpa-onnx **aborts the process** rather than
+raising when handed neither. The Android loader passed only `dataDir`, so selecting that
+model would have killed the app on device. Fixed, and it now refuses rather than aborting.
+
 ## Decision
 
 **The engine is sherpa-onnx running a Piper/VITS model** — accepted. Kitten is ruled out on
