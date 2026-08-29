@@ -15,9 +15,9 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | claude-opus-5 | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | claude-opus-5 | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
-| QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In progress | claude-opus-5 | QUI-020, QUI-021, QUI-022, QUI-024 |
+| QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
@@ -1518,7 +1518,7 @@ calibration. The ticket stays `In progress`.
 
 ## QUI-019 — Vertical slice: NeoReader Read Aloud in three voices
 
-**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** QUI-020, QUI-021, QUI-022, QUI-024
+**Status:** In review · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-020, QUI-021, QUI-022, QUI-024
 **PRD:** §1, §2 · **Timebox:** 1 week
 
 > Rewritten for PRD v1.2. The v1.1 version of this ticket was a standalone player on a
@@ -1665,6 +1665,12 @@ from another file), so expect more of that shape on the first build.
 *What is left:* build the APK, side-load `build/slice/chapter-one.epub`, and listen. Then
 QUI-019's remaining criteria, none of which can be taken here: TTFS against 800 ms, peak RSS
 against 1.2 GB, and page turns.
+
+**Released `In review`, unowned, 2026-08-29.** "Review" here means device verification, not
+code review — the desktop half is tested and the Android half has never been compiled.
+Whoever picks this up should expect compiler errors in `AndroidSql`, `SliceIndex` and
+`QuireProbeService` first, and should not read a clean `gradle test` as evidence that the
+probe builds: no module in the root build compiles against the Android SDK.
 
 ---
 
@@ -2434,7 +2440,11 @@ Scenario: Whole-entry matches are unchanged
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
+> **Partially done, unclaimed.** The Tier 1 baseline exists and is scored (see Worklog);
+> the bake-off this ticket is actually for has not started. `Todo` rather than
+> `In progress` because nobody is working it — the claim is free to take.
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
