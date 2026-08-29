@@ -218,13 +218,30 @@ Knowing its edges saves a lot of wasted work.
 **Available:** JDK 21 and Gradle 8.14 (`gradle test` at the root runs the whole JVM suite
 in seconds), Python 3.11 with pip, and outbound HTTPS to GitHub release assets and PyPI.
 
-**Not available, and the one that bites:** **there is no Android SDK.** `spike/ttsbinding`
-cannot be compiled, so the APK cannot be built here. A green `gradle test` says nothing
-about whether the Android code compiles — the root build does not include that module.
-Anyone handing over unbuilt Android sources should say so plainly in the ticket.
+**Whether you can build the APK depends on the environment's network policy — check, do
+not assume.** On 2026-08-29 a session could not, and the cause was not a missing SDK but a
+blocked host: `dl.google.com` is rejected by the proxy with a 403, and Gradle's `google()`
+repository *is* `dl.google.com/dl/android/maven2`. So the Android Gradle Plugin itself
+cannot be resolved and the build dies before it reaches any of our code. `maven.google.com`
+looks reachable but only redirects there, and AGP is published nowhere else — Maven Central
+and the Gradle plugin portal both 404.
 
-Also blocked by network policy: Hugging Face and Project Gutenberg. GitHub release assets
-are reachable, which is where the TTS models come from.
+**Test it in one command rather than inferring it:**
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://dl.google.com/   # 000 means blocked
+```
+
+If it is blocked, hand over the Android sources unbuilt and say in the ticket that *this*
+is why, because it is a setting someone can change rather than a fact about the tooling.
+A session on 2026-08-28 built the probe clean from this same repository
+(`spike/ttsbinding/README.md`), so an environment allowing that host works fine.
+
+Either way, **a green `gradle test` says nothing about whether the Android code compiles**:
+the root build does not include `spike/ttsbinding` at all.
+
+Also blocked: Hugging Face and Project Gutenberg. GitHub release assets are reachable,
+which is where the TTS models and the sherpa AAR come from.
 
 **Two habits follow from this, and both are worth keeping even once an SDK exists.**
 
