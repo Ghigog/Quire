@@ -12,6 +12,8 @@ quire-pipeline-spike (QUI-018)
   epub <book.epub>            attribute a real book and print the same transcript
   pdnc <pdnc/data/Novel>...   score Tier 1 against PDNC, split by quotation type
                               add --no-beats to disable the action-beat rule
+  export <book.epub> <out.tsv>  attribute a real book and write the segments for
+                              spike/indexer to turn into a dialogue index
 
 Tier 2/3 are not implemented: they need the runtime chosen by ADR-0001 (QUI-017).
 """
@@ -21,7 +23,9 @@ fun main(args: Array<String>) {
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
-    val missing = files.filterNot { it.exists() } // pdnc takes directories
+    // `export` names a file it is about to create, so only its input has to exist.
+    val inputs = if (args[0] == "export") files.take(1) else files
+    val missing = inputs.filterNot { it.exists() } // pdnc takes directories
     if (missing.isNotEmpty()) {
         System.err.println("not found: ${missing.joinToString { it.path }}")
         exitProcess(2)
@@ -32,8 +36,56 @@ fun main(args: Array<String>) {
         "roster" -> roster(files)
         "epub" -> epub(files.first())
         "pdnc" -> pdnc(files)
+        "export" -> export(files[0], files.getOrElse(1) { File("attributed.tsv") })
         else -> { println(USAGE.trim()); exitProcess(2) }
     }
+}
+
+/**
+ * Attribute a real book and write the result where the indexer can read it.
+ *
+ * A TSV rather than a direct module dependency, for two reasons. The pipeline and the
+ * indexer stay independent, and — the one that matters — the intermediate is *inspectable*:
+ * when a character speaks in the wrong voice on device, the question is always whether
+ * attribution was wrong or the matcher was, and a file you can open answers it in seconds.
+ *
+ * Every segment is written, narration included, so concatenating the text column
+ * reconstructs the book. The indexer relies on that to rebuild sentences.
+ */
+private fun export(book: File, out: File) {
+    val units = Epub.paragraphs(book)
+    val roster = Tier1.bootstrapRoster(units)
+    val results = Tier1.attribute(units, roster.names)
+
+    // Each paragraph is written before its own segments, with its text exactly as the
+    // reader will see it. Segment text is trimmed, so rebuilding a paragraph by joining
+    // segments would drift from what the host actually sends — and a paragraph that
+    // differs by one space matches nothing.
+    val bySegment = results.associateBy { it.locator }
+    out.printWriter().use { w ->
+        w.println("locator\tkind\tspeaker\tconfidence\ttier\ttext")
+        for (unit in units) {
+            val flat = unit.text.replace("\t", " ").replace("\n", " ")
+            if (flat.isBlank()) continue
+            w.println("${unit.locator}\tPARAGRAPH\t\t0.00\tNONE\t$flat")
+            for (seg in Text.segment(unit)) {
+                val r = bySegment[seg.locator] ?: continue
+                val text = r.text.replace("\t", " ").replace("\n", " ")
+                w.println("${r.locator}\t${r.kind}\t${r.speakerId ?: ""}\t" +
+                    "%.2f\t${r.tier}\t$text".format(r.confidence))
+            }
+        }
+    }
+
+    val dialogue = results.filter { it.kind == Kind.DIALOGUE }
+    val named = dialogue.count { it.speakerId != null }
+    println("${units.size} paragraphs, ${results.size} segments -> ${out.path}")
+    println("roster: ${roster.names.sorted().joinToString(", ")}")
+    println("dialogue spans %d, attributed %d (%s)".format(
+        dialogue.size, named, pct(if (dialogue.isEmpty()) 0.0 else named.toDouble() / dialogue.size)))
+    println()
+    println("Tier 1 only. QUI-028 measured it at 58.5%% precision on PDNC, so expect a")
+    println("meaningful share of these to be wrong -- which is what listening is for.")
 }
 
 private fun pct(d: Double) = "%.1f%%".format(d * 100)

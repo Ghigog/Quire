@@ -216,6 +216,20 @@ with a fresh ~300-token window each lands in the hours. Therefore:
   model still carries most of a novel, so its speed is what decides the budget
   (`docs/prior-art.md` §3).
 
+- **Pronoun tags are the cheapest coverage left, and nothing claims them yet.** Running
+  Tier 1 over the slice's own generated book (2026-08-29,
+  `quire-pipeline-spike export`) attributed **3 of 9 dialogue spans — 33%**, in line with
+  PDNC's 39.4%. Precision on what it did attribute was 3 of 3. Of the six misses, **three
+  carry a pronoun tag** — `" she said.`, `" he said.` twice — and the other three carry no
+  tag at all.
+
+  A pronoun plus the cast's gender resolves those three outright: `she` has exactly one
+  candidate in a two-hander, and the gender is already in `characters.json` (QUI-005). That
+  is a Tier 1.5 between the explicit-tag rule and the model, and on this chapter it would
+  take coverage from 33% to 67% without loading anything. On a novel with several women it
+  degrades to a recency choice rather than a certainty, which is where the model earns its
+  place — so this narrows the SLM's job rather than removing it. **QUI-008.**
+
 See [`device-profile.md`](device-profile.md) §2.
 
 ---
