@@ -14,7 +14,7 @@ already `In progress`.
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
-| QUI-017 | TTS engine bake-off on target hardware | Spike | Done | claude-opus-5 | — |
+| QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
@@ -1195,7 +1195,7 @@ Scenario: Battery procedure is documented
 > having a runtime at all. Splitting rather than holding a settled decision hostage — the
 > SLM scenarios moved verbatim to **QUI-031**.
 
-**Status:** Done · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
+**Status:** Done · **Owner:** session-visibility-check · **Epic:** Spike · **Depends on:** —
 **PRD:** §3.1, §3.2, §5 · **Timebox:** 3 days
 
 ### User story

@@ -25,6 +25,12 @@ using on-device AI, optimised for e-ink Android hardware. The product spec lives
    "It works on my laptop" is not evidence. The reference device is an Onyx Boox
    Note Air5 C — `docs/device-profile.md` says what that implies. Android only;
    iOS is out of scope.
+6. **The device decides, but it does not have to be asked first.** An SLA number is only
+   ever true on the reference device. A *comparison* between two candidates usually is
+   not: `spike/hostbench` screens TTS models on the build machine in seconds, and killed
+   two candidates that would each have cost a build, an install and a listen. Its README
+   records where that transfers and where it demonstrably does not. Screen on the host,
+   decide on the device, and never quote a host number at an SLA.
 
 ---
 
@@ -37,10 +43,26 @@ exist so that two agents never fight over the same bytes.
 
 | Rule | Detail |
 | --- | --- |
-| Branch naming | `claude/<ticket-id>-<kebab-slug>` e.g. `claude/QUI-014-ring-buffer` |
+| Branch naming | `claude/<ticket-id>-<kebab-slug>` e.g. `claude/QUI-014-ring-buffer`. A session handed a branch it did not choose keeps that branch — see below |
 | Ownership | An agent owns the ticket it claimed and *only* the files listed in that ticket's **Requirements** |
-| Claiming | Set the ticket's `Status` to `In progress` and `Owner` to your agent label in `tickets.md`, and push that change **first**, before writing code |
-| Releasing | On finish (or abandonment) set `Status` back to `Done` / `Blocked` / `Todo` and push |
+| Claiming | Set the ticket's `Status` to `In progress` and `Owner` to **your branch slug** in `tickets.md`, and push that change **first**, before writing code |
+| Releasing | On finish (or abandonment) set `Status` back to `Done` / `In review` / `Blocked` / `Todo`, clear `Owner` to `—`, and push |
+
+**Owner is the branch slug, never the model name.** Every session runs on the same model,
+so signing the board `claude-opus-5` makes two concurrent agents indistinguishable and
+defeats the whole point of claiming — a real collision, found on 2026-08-29 when four
+tickets shared one owner across three sessions. Use the distinctive part of your branch:
+owner `session-visibility-check` for `claude/session-visibility-check-62dpup`. Model names
+do not belong in committed artefacts anyway.
+
+**Sessions started from the web or the desktop app are given a generated branch** named
+after the request, not after a ticket. Do not rename it and do not open a second branch to
+satisfy the naming rule — note the ticket in the first commit instead. The rule above is
+for branches you create yourself.
+
+**`In review` means the deliverable is done and something outside this repo has to
+confirm it** — a device measurement, a listen, a human read. It is a legitimate release
+state, and more honest than `Done` for work whose acceptance criteria need hardware.
 
 ### 2.2 Avoiding collisions
 
@@ -95,6 +117,12 @@ because it does.
 /core/                ← pure-Kotlin/JVM modules: model, index (testable without a device)
 /fixtures/            ← labelled test data shared across tickets (attribution golds)
 /spike/               ← timeboxed throwaway harnesses; never shipped, never depended on
+/spike/hostbench/     ← screens TTS candidates on the build machine (Python + sherpa-onnx)
+/spike/indexer/       ← builds a dialogue index, and the EPUB that matches it
+/spike/slice/         ← pure-Kotlin casting and span clipping for the vertical slice
+/spike/pipeline/      ← Tier 1 attribution and scoring against PDNC
+/spike/ttsbinding/    ← the Android TTS probe; the only module needing an SDK
+/tools/               ← documented fetch and build scripts for artefacts git does not hold
 ```
 
 Application code directories are created by the tickets that introduce them; the ticket
@@ -179,3 +207,41 @@ These bite often enough to be written down:
   ticket and an ADR.
 - Ask before: deleting files you didn't create, changing the branch protection or CI
   config, or bumping a major dependency version.
+
+---
+
+## 9. What the build environment actually has
+
+Sessions run in an ephemeral cloud container, not on the machine with the device attached.
+Knowing its edges saves a lot of wasted work.
+
+**Available:** JDK 21 and Gradle 8.14 (`gradle test` at the root runs the whole JVM suite
+in seconds), Python 3.11 with pip, and outbound HTTPS to GitHub release assets and PyPI.
+
+**Not available, and the one that bites:** **there is no Android SDK.** `spike/ttsbinding`
+cannot be compiled, so the APK cannot be built here. A green `gradle test` says nothing
+about whether the Android code compiles — the root build does not include that module.
+Anyone handing over unbuilt Android sources should say so plainly in the ticket.
+
+Also blocked by network policy: Hugging Face and Project Gutenberg. GitHub release assets
+are reachable, which is where the TTS models come from.
+
+**Two habits follow from this, and both are worth keeping even once an SDK exists.**
+
+1. **Put the logic where it can be tested.** Casting, matching, normalisation and span
+   clipping live in pure-Kotlin modules with tests, not in Android classes. `spike/slice`
+   exists for exactly this reason, and its tests caught two real bugs — a per-character
+   normalisation walk that silently dropped every space, and a chunk-clipping rule that
+   read a speech tag in the character's voice. Neither would have been obvious by ear.
+   Android classes stay thin glue: a driver, an asset copy, a service callback.
+2. **Never copy `core:` sources into a spike.** The Android and desktop spikes reach the
+   real modules through `includeBuild("../..")`. If a spike normalised text even slightly
+   differently from the writer that built the index, nothing would match and it would look
+   like a matcher bug for a day.
+
+**Nothing large is committed.** Model weights, the sherpa AAR, and generated indexes are
+produced by scripts in `/tools/`, and the fixtures they derive from are what version
+control holds. Where a spike needs a book, generate it — `spike/indexer` emits an EPUB and
+its index from one labelled fixture, so the two cannot drift and no real book ever lands in
+the repository (§8).
+
