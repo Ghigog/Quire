@@ -22,7 +22,7 @@ already `In progress`.
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
-| QUI-027 | Normalised-to-raw offset map | Index | Todo | — | QUI-021, QUI-022 |
+| QUI-027 | Normalised-to-raw offset map | Index | In progress | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
@@ -2412,7 +2412,7 @@ want a longer capture across a chapter boundary. Ticket stays `In progress` for 
 > empty and a naive per-character walk drops every space; and asserting the walk reproduces
 > `normalize()` exactly is what caught that.
 
-**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Index · **Depends on:** QUI-021, QUI-022
 **PRD:** §2 Phase 2
 
 ### User story
