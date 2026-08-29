@@ -88,10 +88,57 @@ adjacent voices in the same corpus and sound alike. Fixed by spreading them.
 
 Against a 1.2 GB ceiling, with the SLM in a different process entirely.
 
+### 7. The SoC is not the ceiling — the model is
+
+```
+Piper alan LOW (1 voice, 16 kHz)
+load        3190 ms
+synthesis   2236 ms for 16960 ms of audio
+RTF         0.132   PASS (<= 0.15)
+peak RSS    304 MB
+on disk     77 MB
+```
+
+**0.132 against libritts_r's 0.354, on the same chip.** The 750G can hit the SLA; medium
+quality at 22.05 kHz cannot. Two variables move together — Piper's `low` tier is a smaller
+network *and* runs at 16 kHz, roughly 1.38x less audio to generate — so the 2.7x gap is both.
+
+That reframes the decision. Not "is the hardware fast enough" but **"what do we spend the
+speed on"**:
+
+| | Voices | Quality | RTF |
+| --- | --- | --- | --- |
+| Piper `alan` low, 16 kHz | 1 | acceptable | **0.132** |
+| Piper `libritts_r` medium, 22.05 kHz | 904 | "almost perfect" | 0.354 |
+
+Piper publishes no multi-speaker model at the `low` tier — every multi-speaker option
+(`libritts_r`, `vctk`, `arctic`, `l2arctic`) is `medium`. The two things we want are not
+available in one file.
+
+Three ways out, in the order to try them:
+
+1. **Another medium multi-speaker model may be lighter.** `en_GB-vctk-medium`, 76 MB,
+   ~109 speakers, different corpus, same tier. One benchmark says whether 0.35 is inherent
+   to medium multi-speaker Piper or specific to `libritts_r`. Added to the probe.
+2. **Re-derive the budget from power.** 0.354 is still 2.8x faster than real time and the
+   host hands us a page at a time, so nothing starves. If sustained draw at 0.354 fits
+   ~1.14 W, then 0.15 was simply the wrong number. QUI-016, and the measurement that
+   actually decides.
+3. **Differentiate one fast voice** with per-character pitch and rate offsets. Cheap,
+   always affordable, audibly worse than real distinct speakers. The fallback if 1 and 2
+   both fail.
+
+Casting quality is the product. Reaching for option 3 first would be optimising the metric
+and losing the thing the metric was for.
+
 ## Decision
 
-**Provisionally Piper `libritts_r` medium**, pending the measured RTF, TTFS and peak RSS
-that QUI-017's benchmark reports.
+**The engine is sherpa-onnx running a Piper/VITS model** — accepted. Kitten is ruled out on
+quality, Kokoro on speed, and the runtime has proved itself on device.
+
+**The voice model is not yet decided.** `libritts_r` medium gives the casting the product
+needs but misses the RTF budget; `alan` low meets the budget with one voice. Settled by the
+VCTK-medium benchmark and, failing that, by the power measurement in QUI-016.
 
 ## Consequences if confirmed
 
