@@ -1341,9 +1341,24 @@ same-tier ratios transfer, cross-tier ratios do not. The host puts `alan-low` at
 `libritts_r-medium`; the device measured 0.37. Whatever the 750G does to medium-tier
 22.05 kHz synthesis, this machine does not do it.
 
-*What is left before this is Done:* unchanged except that item 1 is now closed. TTFS with
-the engine preloaded, and QUI-016's power measurement — which after this is the only thing
-that can still decide the voice model.
+**2026-08-29 (later) — claude-opus-5.** Screened the last two candidates on the host.
+Reproduce with `spike/hostbench/fetch-models.sh` then `python3 spike/hostbench/bench.py`.
+
+A low-tier VCTK does not exist: `en_GB-vctk-low`, `en_US-vctk-low` and `libritts-low` all
+404 in the model zoo. Screened the nearest substitutes instead.
+
+*Measured (host, 2 threads, relative to `libritts_r-medium` at 0.065):* `vits-vctk` 0.369
+(5.7x), Kokoro fp32 0.607 (9.4x), **Kokoro int8 1.493 (23x)**. Kokoro int8 is 2.46x slower
+than the identical unquantized model — quantization made it worse, not better, which is a
+stronger reason to drop it than the one recorded on 2026-08-28.
+
+Piper is 6–23x ahead of every other multi-speaker engine in the zoo. **The search for a
+faster multi-speaker model is exhausted** — there is no model left to find, and §7's
+finding means the alternatives get worse on device, not better. Written up in ADR-0002 §8.
+
+*What is left before this is Done:* TTFS with the engine preloaded, and QUI-016's power
+measurement — now the only thing that can decide the voice model, since no model change
+can.
 
 ---
 

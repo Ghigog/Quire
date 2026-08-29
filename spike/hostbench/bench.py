@@ -28,21 +28,49 @@ TEXT = (
 )
 
 
-def load(model_dir, length_scale):
-    onnx = [f for f in glob.glob(model_dir + "/*.onnx") if not f.endswith(".json")][0]
-    cfg = sherpa_onnx.OfflineTtsConfig(
-        model=sherpa_onnx.OfflineTtsModelConfig(
-            vits=sherpa_onnx.OfflineTtsVitsModelConfig(
-                model=onnx,
-                tokens=model_dir + "/tokens.txt",
+def _pick(model_dir, prefer_int8):
+    """The weights file. Some releases ship fp32 and int8 side by side."""
+    onnx = sorted(f for f in glob.glob(model_dir + "/*.onnx") if not f.endswith(".json"))
+    int8 = [f for f in onnx if ".int8." in f]
+    fp32 = [f for f in onnx if ".int8." not in f]
+    if prefer_int8 and int8:
+        return int8[0]
+    return (fp32 or int8)[0]
+
+
+def load(model_dir, length_scale, prefer_int8=False):
+    """Build an OfflineTts, dispatching on which family the directory holds.
+
+    Three shapes turn up in the sherpa-onnx zoo: Piper/VITS phonemised by espeak, plain
+    VITS with a lexicon, and Kokoro, which additionally needs its voices file.
+    """
+    onnx = _pick(model_dir, prefer_int8)
+    have = lambda n: os.path.exists(os.path.join(model_dir, n))
+    tokens = model_dir + "/tokens.txt"
+    threads = int(os.environ.get("THREADS", "2"))
+
+    if have("voices.bin"):
+        model = sherpa_onnx.OfflineTtsModelConfig(
+            kokoro=sherpa_onnx.OfflineTtsKokoroModelConfig(
+                model=onnx, voices=model_dir + "/voices.bin", tokens=tokens,
                 data_dir=model_dir + "/espeak-ng-data",
+                dict_dir=model_dir + "/dict" if have("dict") else "",
+                lexicon=",".join(sorted(glob.glob(model_dir + "/lexicon*.txt"))),
                 length_scale=length_scale,
             ),
-            provider="cpu",
-            num_threads=int(os.environ.get("THREADS", "2")),
-        ),
-        max_num_sentences=1,
-    )
+            provider="cpu", num_threads=threads)
+    else:
+        espeak = model_dir + "/espeak-ng-data"
+        model = sherpa_onnx.OfflineTtsModelConfig(
+            vits=sherpa_onnx.OfflineTtsVitsModelConfig(
+                model=onnx, tokens=tokens,
+                data_dir=espeak if os.path.isdir(espeak) else "",
+                lexicon=model_dir + "/lexicon.txt" if have("lexicon.txt") else "",
+                length_scale=length_scale,
+            ),
+            provider="cpu", num_threads=threads)
+
+    cfg = sherpa_onnx.OfflineTtsConfig(model=model, max_num_sentences=1)
     return sherpa_onnx.OfflineTts(cfg), onnx
 
 
@@ -59,7 +87,8 @@ def run(tts, repeats):
 
 
 def resolve(fragment):
-    hits = [d for d in sorted(glob.glob(ROOT + "/vits-piper-*")) if fragment in d]
+    hits = [d for d in sorted(glob.glob(ROOT + "/*"))
+            if os.path.isdir(d) and fragment in d]
     if len(hits) != 1:
         raise SystemExit(f"{fragment!r} matched {len(hits)} models; be more specific")
     return hits[0]
@@ -67,7 +96,9 @@ def resolve(fragment):
 
 def matrix(repeats):
     out = []
-    for d in sorted(glob.glob(ROOT + "/vits-piper-*")):
+    for d in sorted(glob.glob(ROOT + "/*")):
+        if not os.path.isdir(d):
+            continue
         t0 = time.perf_counter()
         tts, onnx = load(d, 1.0)
         load_ms = round((time.perf_counter() - t0) * 1000)

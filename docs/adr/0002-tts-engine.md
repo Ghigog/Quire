@@ -195,6 +195,47 @@ faster than real time, and ADR-0004 establishes that the host hands us a page at
 so nothing starves. Either power says multi-voice at medium quality is affordable, or it
 says the engine must get faster and we are choosing between 109 voices and none.
 
+### 8. Every alternative engine screened; Piper is an order of magnitude ahead
+
+Kokoro int8 and a low-tier VCTK were the two candidates left. Neither survives, and one of
+them does not exist.
+
+**There is no Piper VCTK low.** `en_GB-vctk-low` and `en_US-vctk-low` both 404 in the model
+zoo, as does `libritts-low`. This confirms rather than assumes the earlier claim: Piper
+publishes no multi-speaker model at the low tier.
+
+The nearest substitutes were screened on the host instead (`spike/hostbench`, 2 threads,
+`length_scale` equalised, relative to `libritts_r-medium`):
+
+| Model | Voices | Host RTF | Relative |
+| --- | --- | --- | --- |
+| `vits-piper-en_US-libritts_r-medium` | 904 | 0.065 | 1.00× |
+| `vits-vctk` (original non-Piper VITS) | 109 | 0.369 | **5.7×** |
+| `kokoro-multi-lang-v1_1` (fp32) | 103 | 0.607 | **9.4×** |
+| `kokoro-int8-multi-lang-v1_1` | 103 | 1.493 | **23×** |
+
+**Kokoro int8 is 2.46× slower than the identical unquantized model** — 1.493 against 0.607,
+paired and interleaved. Quantization made it worse. The likely mechanism is
+dequantize/quantize conversions around operators with no fused int8 kernel, costing more
+than the arithmetic saves; on a chip without i8mm that trade gets worse, not better. So the
+decision recorded in "Still needed" item 3 was right, and for a stronger reason than the one
+given there: int8 was never going to close the gap because int8 does not make this model
+faster at all.
+
+Kokoro at 24 kHz is also generating 1.09× more samples than Piper at 22.05 kHz, which
+accounts for almost none of a 9.4× gap.
+
+**The consequence is the useful part.** Piper is not narrowly ahead of the field; it is
+6–23× ahead of every other multi-speaker engine in the zoo, measured on one runtime and one
+machine. Combined with §7, the search for a faster multi-speaker model is exhausted. There
+is no model to go and find, so the voice-model question is no longer "which model" but
+"is 0.354 affordable" — which only a power measurement answers.
+
+Note the direction of the host's error, established in §7: the 750G punishes medium-tier
+synthesis about twice as hard as this machine. Applied to this table, the alternatives get
+*worse* on device, not better. Nothing here is a near miss that device measurement might
+rescue.
+
 ## Still needed
 
 1. ~~**Thread count.**~~ Measured: no help. See §5.
@@ -202,7 +243,8 @@ says the engine must get faster and we are choosing between 109 voices and none.
    0.5% of `libritts_r`. See §7.
 2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
    for, and it decides whether 0.354 is actually a problem.
-3. ~~**Kokoro int8 (140 MB).**~~ Not taken, by decision (dylangrowcoot, 2026-08-28). The
+3. ~~**Kokoro int8 (140 MB).**~~ Screened on the host after all, and it is 2.46x slower
+   than unquantized Kokoro, which is itself 9.4x slower than Piper. See §8. The
    304 MB fp32 build was slow *throughout* rather than slow to start, which makes it a
    compute problem and not a size one; quantizing cannot close a 2.4× gap on an SoC with
    no i8mm (`device-profile.md` §2). Reopen only if Kokoro becomes the only multi-speaker

@@ -37,6 +37,38 @@ the decoder, since `alan-low` and `alan-medium` are the same size on disk (63 MB
 mainly in output rate. Untested either way, and it is why cross-tier screening here is a
 hint and not a result.
 
+## Screened so far
+
+Median of 5–7 interleaved runs, 2 threads, `length_scale` equalised. Relative column is
+against `libritts_r-medium`, the incumbent.
+
+| Model | Voices | Rate | Host RTF | Relative |
+| --- | --- | --- | --- | --- |
+| `vits-piper-en_GB-alan-low` | 1 | 16 kHz | 0.047 | 0.73× |
+| `vits-piper-en_GB-alan-medium` | 1 | 22.05 kHz | 0.060 | 0.93× |
+| `vits-piper-en_GB-vctk-medium` | 109 | 22.05 kHz | 0.065 | 1.00× |
+| `vits-piper-en_US-libritts_r-medium` | 904 | 22.05 kHz | 0.065 | 1.00× |
+| `vits-vctk` (non-Piper VITS) | 109 | 22.05 kHz | 0.369 | **5.7×** |
+| `kokoro-multi-lang-v1_1` (fp32) | 103 | 24 kHz | 0.607 | **9.4×** |
+| `kokoro-int8-multi-lang-v1_1` | 103 | 24 kHz | 1.493 | **23×** |
+
+Two things worth taking away.
+
+**Piper is not narrowly ahead, it is an order of magnitude ahead.** Every other
+multi-speaker engine in the zoo is 6–23× its cost on the same runtime and machine. There is
+no faster multi-speaker model to go and find.
+
+**int8 made Kokoro 2.46× slower, not faster.** Paired against the identical unquantized
+model: 1.493 against 0.607. Quantized weights are smaller on disk but the graph pays
+dequantize/quantize conversions around operators with no fused int8 kernel, and here that
+costs more than the arithmetic saves. It is a reminder that "int8" is a size decision that
+*may* be a speed decision, and never automatically is — and on a chip without i8mm the
+odds are worse, not better.
+
+`vits-vctk` has no curly quotes in its lexicon and drops them with an OOV warning. Quote
+marks are not spoken, so the timing stands, but the phoneme stream is not byte-identical to
+the Piper runs.
+
 ## Method notes
 
 - Median of N interleaved runs after a discarded warm-up. Run-to-run spread on a shared VM
