@@ -39,7 +39,7 @@ class QuireProbeService : TextToSpeechService() {
 
     private val header = listOf(
         "wall", "utterance", "gapMs", "chars", "rate", "pitch",
-        "locale", "voice", "callerUid", "text",
+        "locale", "voice", "callerUid", "ttfsMs", "peakRssMb", "text",
     ).joinToString("\t") + "\n"
 
     /** Private copy, always written. Reachable only over adb. */
@@ -134,21 +134,49 @@ class QuireProbeService : TextToSpeechService() {
         utterance++
 
         val callerUid = runCatching { request.callerUid.toString() }.getOrDefault("?")
+
+        // QUI-019: time to first sound, measured from the moment the host hands us the
+        // chunk to the moment we hand back the first frame of audio. The first utterance
+        // of a session carries the engine load with it — ADR-0002 §2 measured that alone
+        // at 2,524 ms against an 800 ms budget — so cold and warm are reported apart.
+        firstFrameAt = 0L
+        val enteredAt = System.nanoTime()
+        val engine = engine()
+        if (engine == null) speakTone(text, callback) else speak(engine, text, request, callback)
+        val ttfsMs = if (firstFrameAt == 0L) -1L else (firstFrameAt - enteredAt) / 1_000_000
+
         val line = listOf(
             stamp(now), utterance.toString(), gap.toString(), text.length.toString(),
             request.speechRate.toString(), request.pitch.toString(),
             "${request.language}-${request.country}", request.voiceName ?: "-",
             callerUid,
+            // Filled in after synthesis returns, so the row is written last rather than
+            // first — see the deferred append below.
+            "%d".format(ttfsMs), "%d".format(peakRssMb()),
             // Tabs and newlines would break the TSV; the shape of the text is what matters.
             text.replace("\t", "\\t").replace("\n", "\\n"),
         ).joinToString("\t")
 
-        Log.i(TAG, "chars=${text.length} gap=${gap}ms rate=${request.speechRate} :: $text")
+        Log.i(TAG, "chars=${text.length} gap=${gap}ms ttfs=${ttfsMs}ms rss=${peakRssMb()}MB :: $text")
         append(line + "\n")
-
-        val engine = engine()
-        if (engine == null) speakTone(text, callback) else speak(engine, text, request, callback)
     }
+
+    /** Set by [writePcm] the first time audio leaves this utterance. */
+    @Volatile private var firstFrameAt = 0L
+
+    /**
+     * Peak resident memory of this process, against PRD §5's 1.2 GB ceiling.
+     *
+     * `VmHWM` is the kernel's own high-water mark, so it survives the garbage collector
+     * having already given memory back — which is exactly the number the budget is about,
+     * and one that sampling from Java could easily miss.
+     */
+    private fun peakRssMb(): Long = runCatching {
+        File("/proc/self/status").useLines { lines ->
+            lines.firstOrNull { it.startsWith("VmHWM:") }
+                ?.filter(Char::isDigit)?.toLongOrNull()?.div(1024) ?: -1L
+        }
+    }.getOrDefault(-1L)
 
     // ---- Real synthesis (QUI-017) ----
 
@@ -231,6 +259,7 @@ class QuireProbeService : TextToSpeechService() {
             if (stopped) return false
             val len = minOf(max, pcm.size - offset)
             if (callback.audioAvailable(pcm, offset, len) != TextToSpeech.SUCCESS) return false
+            if (firstFrameAt == 0L) firstFrameAt = System.nanoTime()
             offset += len
         }
         return true

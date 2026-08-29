@@ -1767,6 +1767,19 @@ the host chunking at commas.
 Casting was also re-heard after QUI-011's measured voices landed: narrator and Sarah are
 both women, 188.5 and 217.2 Hz, and Thomas a man at 111.9 Hz.
 
+**Page turns do not break it** — confirmed on device the same session. The cursor survives
+the host re-entering mid-book, which was the scenario most likely to expose the matcher's
+relocation path in anger.
+
+*Three of five acceptance scenarios are therefore confirmed on hardware.* The two left are
+measurements rather than behaviours: **TTFS against 800 ms** and **peak RSS against
+1.2 GB**. The probe now records both — time from `onSynthesizeText` entry to the first
+frame handed back, and `VmHWM` from `/proc/self/status`, which is the kernel's own
+high-water mark and so survives the collector having already given memory back. They land
+in the TSV the probe drops in Downloads, two columns before `text` so existing replay
+tooling still reads the last column as the chunk. Nobody has run a session with that build
+yet; the numbers cost one reading, not one ticket.
+
 *Two installation findings, the second expensive.* The screen is a `ScrollView` and the
 build stamp sits above the fold, which is easy to miss. And the first container-built APK
 was signed with a freshly generated per-machine debug key, so it could not install over the
