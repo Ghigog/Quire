@@ -21,7 +21,7 @@ already `In progress`.
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
-| QUI-023 | Book identification by fingerprint | Index | Todo | — | QUI-021, QUI-022 |
+| QUI-023 | Book identification by fingerprint | Index | In progress | session-visibility-check | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Todo | — | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
@@ -1938,7 +1938,7 @@ identical results, cursor and offset.
 
 ## QUI-023 — Book identification by fingerprint
 
-**Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
+**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Index · **Depends on:** QUI-021, QUI-022
 **PRD:** §2 Phase 2
 
 ### User story
