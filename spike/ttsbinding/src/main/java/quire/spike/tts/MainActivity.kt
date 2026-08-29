@@ -34,6 +34,9 @@ class MainActivity : Activity() {
             setPadding(24, 24, 24, 24)
         }
         root.addView(heading("Quire TTS bake-off — QUI-017"))
+        // Which build this is. The APK filename carries the same stamp, but it does not
+        // survive installation, and a device with four probes on it needs to be sure.
+        root.addView(body("build ${BuildConfig.BUILD_STAMP}"))
         root.addView(
             body(
                 "Download a candidate, select it, and NeoReader's Read Aloud speaks with it " +
