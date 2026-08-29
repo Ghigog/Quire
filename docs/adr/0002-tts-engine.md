@@ -147,9 +147,59 @@ information is not in the quote marks at all. Quote-mark inference is therefore 
 signal to be strengthened — it is the wrong signal. The probe is left as it is; it has
 answered its question.
 
+### 7. VCTK is not the way out — screened on the host, 2026-08-29
+
+The open question after §5 was whether RTF ≈ 0.35 is inherent to medium-tier multi-speaker
+Piper or specific to `libritts_r`. It is not specific to `libritts_r`.
+
+`spike/hostbench` runs the same `sherpa-onnx` runtime on an x86 host. It cannot produce an
+SLA number — a desktop core is not a Cortex-A77 — but it compares candidates against each
+other without a build-install-listen cycle. Interleaved, seven runs each, `length_scale`
+forced equal so neither model is flattered by speaking slower:
+
+| Model | Voices | Host RTF (median) | Range |
+| --- | --- | --- | --- |
+| `en_GB-vctk-medium` | 109 | 0.0566 | 0.0549–0.0600 |
+| `en_US-libritts_r-medium` | 904 | 0.0569 | 0.0549–0.0593 |
+
+**Ratio 0.995, with the ranges fully overlapping.** The two are the same engine wearing a
+different corpus. Expect `vctk` to land within noise of 0.354 on device, and note that it
+would buy 109 voices in place of 904 for nothing. Option 1 is closed.
+
+A second host result bounds what the low tier is actually buying. `alan-low` and
+`alan-medium` are the same voice, the same corpus, and the same 63 MB on disk, differing
+mainly in output rate:
+
+| Comparison | Host | Device |
+| --- | --- | --- |
+| `alan-low` ÷ `alan-medium` | 0.76 | — |
+| `alan-low` ÷ `libritts_r-medium` | 0.72 | **0.37** |
+
+The host says the low tier buys about 1.4×, most of which is the 1.38× fewer samples at
+16 kHz rather than a smaller network. The device measured 2.7× for the same pair. **The
+750G punishes medium-tier 22.05 kHz synthesis about twice as hard as the host does**, which
+is a property of the device worth knowing and is not explained by anything in the model
+files. Most likely memory bandwidth around the decoder — `device-profile.md` §2 already
+says this SoC is bandwidth-poor — but that is a hypothesis, not a finding.
+
+Thread scaling shows the same divergence from the opposite direction. On the host
+`libritts_r` goes 0.092 → 0.057 → 0.045 across 1, 2 and 4 threads; on device 4 threads was
+*worse* than 2. The scheduling result in §5 is therefore not measurement noise: it is
+big.LITTLE behaving unlike a homogeneous machine, and it confirms that nothing about this
+device's performance can be inferred from a desktop.
+
+**Consequence for the decision.** Of the three ways out, option 1 is closed and option 3
+(pitch and rate offsets on one fast voice) trades away the thing the product is for. That
+leaves option 2: re-derive the budget from sustained power (QUI-016). 0.354 is still 2.8×
+faster than real time, and ADR-0004 establishes that the host hands us a page at a time,
+so nothing starves. Either power says multi-voice at medium quality is affordable, or it
+says the engine must get faster and we are choosing between 109 voices and none.
+
 ## Still needed
 
 1. ~~**Thread count.**~~ Measured: no help. See §5.
+1b. ~~**A lighter medium multi-speaker model.**~~ Screened on the host: `vctk` is within
+   0.5% of `libritts_r`. See §7.
 2. **Sustained power draw** against ≈1.14 W (QUI-016). This is what RTF was standing in
    for, and it decides whether 0.354 is actually a problem.
 3. ~~**Kokoro int8 (140 MB).**~~ Not taken, by decision (dylangrowcoot, 2026-08-28). The

@@ -1322,6 +1322,29 @@ than measured — reasoning in ADR-0002.
 
 ADR-0002 stays `Proposed` until 1 and 2 exist.
 
+**2026-08-29 — claude-opus-5.** Device: `alan-low` measures **0.132 PASS**, against 0.354
+for `libritts_r` medium. The 750G is not the ceiling; medium quality at 22.05 kHz is what
+is expensive. Piper publishes no multi-speaker model at the low tier, so the two things we
+want are not in one file.
+
+Added `spike/hostbench/`, which runs the same `sherpa-onnx` runtime on the build host.
+Reproduce with `spike/hostbench/fetch-models.sh` then
+`python3 spike/hostbench/bench.py --paired vctk libritts_r`.
+
+*Measured (host, x86, 2 threads, interleaved, seven runs each):* `vctk-medium` 0.0566
+against `libritts_r-medium` 0.0569 — **ratio 0.995, ranges overlapping**. A lighter medium
+multi-speaker model is not available; `vctk` is the same engine on a different corpus and
+would trade 904 voices for 109 to no purpose. Written up in ADR-0002 §7.
+
+The host screen has a stated limit, recorded because it will be tempting to over-trust it:
+same-tier ratios transfer, cross-tier ratios do not. The host puts `alan-low` at 0.72 of
+`libritts_r-medium`; the device measured 0.37. Whatever the 750G does to medium-tier
+22.05 kHz synthesis, this machine does not do it.
+
+*What is left before this is Done:* unchanged except that item 1 is now closed. TTFS with
+the engine preloaded, and QUI-016's power measurement — which after this is the only thing
+that can still decide the voice model.
+
 ---
 
 ## QUI-018 — Headless end-to-end pipeline spike
