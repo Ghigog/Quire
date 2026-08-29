@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "bookId": "3f1a2b7c9d0e4f58",
+  "generatedAt": 1756483200000,
+  "narrator": {
+    "id": "narrator",
+    "displayName": "Narrator",
+    "aliases": [],
+    "gender": "neutral",
+    "ageBand": "adult",
+    "traits": ["measured"],
+    "confidence": 1.0,
+    "firstSeenLocator": "ch1#p1#s1",
+    "lineCount": 412
+  },
+  "characters": [
+    {
+      "id": "sarah",
+      "displayName": "Sarah",
+      "aliases": ["Miss Ashcombe", "she"],
+      "gender": "female",
+      "ageBand": "adult",
+      "traits": ["direct", "dry"],
+      "confidence": 0.94,
+      "firstSeenLocator": "ch1#p4#s2",
+      "lineCount": 118
+    },
+    {
+      "id": "thomas",
+      "displayName": "Thomas",
+      "aliases": ["Mr Ashcombe", "he"],
+      "gender": "male",
+      "ageBand": "elder",
+      "traits": ["hesitant"],
+      "confidence": 0.88,
+      "firstSeenLocator": "ch1#p6#s1",
+      "lineCount": 96
+    }
+  ]
+}

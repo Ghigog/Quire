@@ -4,6 +4,8 @@
 // than on a device in minutes (docs/architecture.md §1).
 plugins {
     kotlin("jvm") version "2.2.20" apply false
+    // Applied only by core:model, for characters.json (QUI-005).
+    kotlin("plugin.serialization") version "2.2.20" apply false
 }
 
 subprojects {

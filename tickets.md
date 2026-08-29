@@ -23,7 +23,7 @@ already `In progress`.
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
-| QUI-005 | `characters.json` schema and manifest store | Attribution | In progress | session-visibility-check | QUI-001 |
+| QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005, QUI-018 |
@@ -370,7 +370,7 @@ Scenario: Persistence does not stall rendering
 
 ## QUI-005 — `characters.json` schema and manifest store
 
-**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.1
 
 ### User story
@@ -426,7 +426,40 @@ Scenario: Storage is per book
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — session-visibility-check.** `core/model/characters/`,
+`docs/schema/characters.schema.json`, and the example manifest that downstream tickets test
+against. Reproduce with `gradle :core:model:test`; 7 tests, one per Gherkin scenario plus
+two the scenarios implied. Whole repository: 61 tests, 0 failures.
+
+*Dependency, justified as CLAUDE.md §6 requires.* `kotlinx-serialization-json`, roughly
+900 KB against the 450 MB footprint. This is the seam four tickets consume, so its parser
+has to be right rather than clever, and escapes, unicode and number handling are exactly
+where a hand-rolled reader goes quietly wrong. The mapping is still hand-written rather
+than `@Serializable`, because annotations give neither of the two things the ticket asks
+for: unknown fields *kept* rather than ignored, and a rejection that names a field path.
+
+*Two rules that shape the design.* Unknown fields survive a round trip, because a newer
+companion app handing a manifest to an older service must get its data back rather than a
+silently trimmed one; they live in `extras` and are re-emitted last, so a future field can
+never shadow one we own. And loading is all or nothing — a half-read cast is worse than
+none, since the reader would hear some characters correctly and the rest as the narrator
+with no way to tell which.
+
+*Two checks the ticket did not ask for but the type system cannot make.* Duplicate
+character ids are rejected: casting keys on the id, and a duplicate shows up only as one
+character occasionally speaking in another's voice. And `ManifestStore` percent-encodes the
+book id when naming files — ids come from a fingerprint and *should* be hex, but nothing
+says so, and a `/` would write outside the store. Both have tests.
+
+*Writes are atomic*, via a temp file and rename. A manifest half-written when the process
+died would fail validation on next read and lose the book's cast.
+
+*What is left before this is Done:* nothing in this ticket's own scope. It is `In review`
+rather than `Done` because its declared dependency QUI-001 does not exist, so the schema
+has never been exercised by a real consumer — the first of QUI-007, QUI-008 or QUI-011 to
+land is what will actually prove the shape is right. It is deliberately frozen now anyway,
+which is the point of a seam (CLAUDE.md §2.3).
 
 ---
 
