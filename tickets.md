@@ -18,7 +18,7 @@ already `In progress`.
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
-| QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
+| QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
@@ -108,7 +108,7 @@ Scenario: <name>
 > and the module-boundary checks. Those need an Android SDK, which this environment cannot
 > reach — `dl.google.com` is denied by the network egress policy.
 
-**Status:** Todo · **Owner:** — · **Epic:** Foundations · **Depends on:** —
+**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Foundations · **Depends on:** —
 **PRD:** §2
 
 ### User story
