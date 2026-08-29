@@ -8,6 +8,7 @@
 # Speaker labels are gold. The slice deliberately runs no attribution on device: QUI-019
 # isolates the listening experience from the accuracy of Tier 1, which QUI-028 measured at
 # 58.5% precision and which would otherwise be what anyone hears.
+# cast: narrator=female, Sarah=female, Thomas=male
 NARRATION	CHAPTER ONE
 NARRATION	The rain had not let up since morning, and the windows of the reading room were grey with it.
 NARRATION	Sarah crossed to the window, moving slowly, and stood there a while without saying anything at all.

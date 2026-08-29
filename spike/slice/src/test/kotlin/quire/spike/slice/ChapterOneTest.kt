@@ -78,7 +78,7 @@ class ChapterOneTest {
 
     private fun read(): List<Pair<String, List<Segment>>> {
         val entries = book()
-        val casting = Casting(
+        val casting = Casting.untyped(
             entries.flatMap { e -> e.spans.mapNotNull { it.speakerId } },
             voiceCount = 904,
         )

@@ -29,7 +29,7 @@ class ChunkPlanTest {
         )),
     ))
 
-    private val casting = Casting(listOf("Sarah"), voiceCount = 904)
+    private val casting = Casting.untyped(listOf("Sarah"), voiceCount = 904)
 
     private fun plan(vararg chunks: String): List<List<Segment>> {
         val matcher = Matcher(book)
@@ -78,7 +78,7 @@ class ChunkPlanTest {
 
     @Test
     fun `characters are cast away from the narrator and from each other`() {
-        val cast = Casting(listOf("Sarah", "Thomas", "Mr Ashcombe"), voiceCount = 904).cast
+        val cast = Casting.untyped(listOf("Sarah", "Thomas", "Mr Ashcombe"), voiceCount = 904).cast
         assertEquals(3, cast.values.distinct().size)
         assertTrue(cast.values.all { it >= 452 }, "characters crowd the narrator: $cast")
     }

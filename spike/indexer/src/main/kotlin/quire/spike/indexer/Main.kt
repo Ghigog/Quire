@@ -10,8 +10,13 @@ import quire.index.Matcher
 import quire.index.Schema
 import quire.index.SqliteBookIndex
 import quire.model.Kind
+import quire.model.characters.Character
+import quire.model.characters.CharacterManifest
+import quire.model.characters.Gender
+import quire.model.characters.ManifestCodec
 import quire.spike.slice.Casting
 import quire.spike.slice.ChunkPlan
+import quire.spike.slice.VoiceProfile
 
 private const val USAGE = """
 quire-indexer-spike (QUI-019)
@@ -62,6 +67,29 @@ private fun build(fixture: File, out: File, epub: File? = null) {
     println("  speakers   ${speakers.joinToString(", ").ifEmpty { "none" }}")
     println("  dialogue   ${entries.flatMap { it.spans }.count { it.kind == Kind.DIALOGUE }} spans")
     println("  wrote      ${out.path} (${out.length()} bytes)")
+
+    // The cast, in QUI-005's frozen shape. The service needs it to know that Sarah is a
+    // woman; without it, casting is distinct-but-arbitrary and the device test heard a
+    // male Sarah. QUI-007 will generate this from a scan instead of a fixture header.
+    val cast = Labelled.cast(fixture)
+    val manifest = File(out.parentFile, "characters.json")
+    manifest.writeText(ManifestCodec.encode(CharacterManifest(
+        schemaVersion = CharacterManifest.VERSION,
+        bookId = digest(fixture.readBytes()).take(16),
+        generatedAt = System.currentTimeMillis(),
+        narrator = Character(
+            id = "narrator", displayName = "Narrator",
+            gender = cast["narrator"] ?: Gender.NEUTRAL, confidence = 1.0,
+        ),
+        characters = speakers.map { name ->
+            Character(
+                id = name, displayName = name,
+                gender = cast[name] ?: Gender.UNKNOWN, confidence = 1.0,
+                lineCount = entries.count { e -> e.spans.any { it.speakerId == name } },
+            )
+        },
+    )))
+    println("  cast       ${manifest.path} (${cast.entries.joinToString { "${it.key}=${it.value.name.lowercase()}" }})")
 
     // The book and the index come out of one fixture on purpose: if they could drift, a
     // wrong voice on device would be ambiguous between a bad match and a bad fixture.
@@ -114,10 +142,22 @@ private fun replay(db: File, trace: File) {
 private fun read(fixture: File) {
     val rows = Labelled.load(fixture)
     val entries = Labelled.entries(rows)
-    val casting = Casting(entries.flatMap { e -> e.spans.mapNotNull { it.speakerId } }, 904)
+    val cast = Labelled.cast(fixture)
+    val profileFile = File(fixture.parentFile.parentFile, "voices/libritts_r-f0.tsv")
+    val profile = profileFile.takeIf { it.exists() }
+        ?.useLines { VoiceProfile.parse(it) }
+    val speakers = entries.flatMap { e -> e.spans.mapNotNull { it.speakerId } }.distinct()
+    val casting = Casting(
+        speakers.associateWith { cast[it] ?: Gender.UNKNOWN },
+        voiceCount = 904,
+        profile = profile,
+        narratorGender = cast["narrator"] ?: Gender.NEUTRAL,
+    )
     val matcher = Matcher(InMemoryBookIndex(fixture.nameWithoutExtension, entries))
 
-    println("reading ${fixture.name} — cast ${casting.cast}\n")
+    println("reading ${fixture.name}")
+    println("  voices: ${if (profile == null) "no profile — arbitrary" else "${profile.size} profiled"}")
+    println("  narrator=${casting.narrator}, ${casting.cast.entries.joinToString { "${it.key}=${it.value}" }}\n")
     var rescued = 0
     for (entry in entries) {
         for (chunk in hostChunks(entry.text)) {

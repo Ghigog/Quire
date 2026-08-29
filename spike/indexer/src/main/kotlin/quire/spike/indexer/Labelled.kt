@@ -2,6 +2,7 @@ package quire.spike.indexer
 
 import java.io.File
 import quire.index.Normalizer
+import quire.model.characters.Gender
 import quire.model.IndexEntry
 import quire.model.Kind
 import quire.model.VoiceSpan
@@ -19,6 +20,27 @@ import quire.model.VoiceSpan
 object Labelled {
 
     private const val NARRATION = "NARRATION"
+
+    /**
+     * The cast's genders, from a `# cast: Sarah=female, Thomas=male` header.
+     *
+     * It lives in the fixture rather than beside it because the book, the index and the
+     * manifest are all generated from this one file, and a cast declared somewhere else
+     * could disagree with the speakers actually used. QUI-007 replaces this with a real
+     * scan; the shape it produces — `characters.json` — is already the frozen one.
+     */
+    fun cast(file: File): Map<String, Gender> =
+        file.readLines()
+            .firstOrNull { it.startsWith("# cast:") }
+            ?.removePrefix("# cast:")
+            ?.split(',')
+            ?.mapNotNull { entry ->
+                val (name, gender) = entry.split('=', limit = 2).map(String::trim)
+                    .takeIf { it.size == 2 } ?: return@mapNotNull null
+                name to Gender.from(gender)
+            }
+            ?.toMap()
+            .orEmpty()
 
     /** `speaker<TAB>sentence`, `#` comments and blank lines ignored. */
     fun load(file: File): List<Pair<String?, String>> =

@@ -5,7 +5,10 @@ import android.util.Log
 import java.io.File
 import quire.index.Matcher
 import quire.index.SqliteBookIndex
+import quire.model.characters.Gender
+import quire.model.characters.ManifestCodec
 import quire.spike.slice.Casting
+import quire.spike.slice.VoiceProfile
 
 /**
  * The pre-built index the vertical slice ships, plus the matcher and casting that read it.
@@ -32,6 +35,8 @@ class SliceIndex private constructor(
     companion object {
         private const val TAG = "QuireSlice"
         private const val ASSET = "slice-index.db"
+        private const val MANIFEST = "characters.json"
+        private const val VOICES = "voices.tsv"
 
         /**
          * Open the shipped index, or null if the build carries none — in which case the
@@ -39,7 +44,7 @@ class SliceIndex private constructor(
          * correct behaviour for an unindexed book (QUI-029) and makes a missing asset
          * obvious by ear rather than by crash.
          */
-        fun open(context: Context, voiceCount: Int, narrator: Int): SliceIndex? = runCatching {
+        fun open(context: Context, voiceCount: Int): SliceIndex? = runCatching {
             // SQLite needs a real file, and an asset is a compressed stream, so it is
             // copied out once on first use.
             val file = File(context.filesDir, ASSET)
@@ -59,7 +64,25 @@ class SliceIndex private constructor(
                 .flatMap { entry -> entry.spans.mapNotNull { it.speakerId } }
                 .distinct()
 
-            val casting = Casting(speakers, voiceCount, narrator = narrator)
+            // The cast's genders and what the model's voices sound like. Without both, the
+            // casting is distinct but arbitrary — which on device meant a male Sarah.
+            val manifest = runCatching {
+                context.assets.open(MANIFEST).use { ManifestCodec.decode(it.readBytes().decodeToString()) }
+            }.getOrNull()
+            val profile = runCatching {
+                context.assets.open(VOICES).use { input ->
+                    VoiceProfile.parse(input.readBytes().decodeToString().lineSequence())
+                }
+            }.getOrNull()
+
+            val genders = speakers.associateWith { id ->
+                manifest?.characters?.firstOrNull { it.id == id }?.gender ?: Gender.UNKNOWN
+            }
+            val casting = Casting(
+                genders, voiceCount, profile,
+                narratorGender = manifest?.narrator?.gender ?: Gender.NEUTRAL,
+            )
+            Log.i(TAG, "voices ${profile?.size ?: 0} profiled, narrator ${casting.narrator}")
             Log.i(TAG, "index ${book.title}: ${index.size} entries, cast ${casting.cast}")
             SliceIndex(sql, Matcher(index), casting, book.title, index.size)
         }.onFailure { Log.w(TAG, "no slice index: ${it.message}") }.getOrNull()

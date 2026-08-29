@@ -250,7 +250,7 @@ class QuireProbeService : TextToSpeechService() {
     private fun slice(engine: TtsEngine): SliceIndex? {
         if (sliceVoices != engine.voiceCount) {
             slice?.close()
-            slice = SliceIndex.open(this, engine.voiceCount, NARRATOR_VOICE)
+            slice = SliceIndex.open(this, engine.voiceCount)
             sliceVoices = engine.voiceCount
         }
         return slice
@@ -266,6 +266,8 @@ class QuireProbeService : TextToSpeechService() {
     private fun plan(text: String, engine: TtsEngine): List<Segment> {
         val slice = slice(engine)
             ?: return listOf(Segment(text, null, NARRATOR_VOICE))
+        // Narration falls to the casting's narrator, not to voice 0: with a profile the
+        // narrator is chosen from a pool, and 0 might be anybody.
         val match = slice.matcher.match(text)
         val segments = ChunkPlan.of(text, match, slice.casting)
         Log.i(TAG, "match=${match.how} partial=${match.partial} " +
