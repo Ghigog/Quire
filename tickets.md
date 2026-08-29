@@ -1622,10 +1622,49 @@ several voices at the right character offsets. That needs QUI-027's normalised-t
 offset map. For the slice, a partial chunk takes its first span's voice — audibly right for
 the case in this scene, and wrong for a chunk that straddles a speaker change mid-clause.
 
-*What is left:* an Android `Sql` implementation over the platform's SQLite (QUI-021's
-worklog already owes this), shipping the built `.db` as an APK asset, and replacing the
-probe's quote inference with a matcher lookup. **None of that can be built here — this
-container has no Android SDK**, so those three land as code for the next device build.
+**2026-08-29 (later) — claude-opus-5.** All three pieces written. Reproduce with
+`gradle test` from the repository root: **43 tests, 0 failures**.
+
+*Casting and clipping went into `spike/slice`, deliberately not into the Android module.*
+That is where the bugs live, and there they are testable on a desktop in seconds rather
+than on a device by ear. `Casting` is QUI-011 in miniature — a deterministic speaker-id to
+voice-index map that spreads voices apart, because adjacent ids in `libritts_r` are
+neighbouring readers and sound alike. `ChunkPlan` cuts a chunk into voiced segments.
+
+*`OffsetMap` is QUI-027, prototyped.* Clipping needs normalised-to-raw offsets, which the
+index does not store, so the slice reconstructs them locally. It is one small class on
+purpose: QUI-027 lifts it into `core:index` and deletes this one. Its own test asserts the
+walk reproduces `Normalizer.normalize` exactly, and that assertion **caught a real bug** —
+`normalize(" ")` returns empty because the function trims, so a naive per-character walk
+drops every space in the book.
+
+*The case that decides whether any of this works* is a chunk like `" she said."` arriving
+after a line of speech. Its match carries both spans, so voicing it by the first span reads
+the speech tag in the character's voice. Clipping gets it right, and
+`ChunkPlanTest` pins it.
+
+*Measured, on the slice's own book* (`indexer read fixtures/slice/chapter-one.labels.tsv`):
+36 host chunks, cast `{Sarah=452, Thomas=903}` against narrator 0. **Five chunks contain no
+quote mark and are still correctly attributed** — `"quite still,"`, `"for a quarter of an
+hour,"`, `"on and off,"`, `"since breakfast,"`, `"in this house,"`. Those five are exactly
+what quote-mark inference reads in the wrong voice. One chunk,
+`" he said. "It is the answer to it.""`, changes voice *within itself*, which is the
+QUI-024 mechanic.
+
+*The book is generated, not sourced.* `fixtures/slice/chapter-one.labels.tsv` produces both
+the EPUB the reader opens and the index the service reads, so the two cannot drift and any
+wrong voice on device is the matcher's fault rather than the fixture's. It also keeps
+CLAUDE.md §8 satisfied — no real book goes near this repository.
+
+*Not verified: everything Android.* `AndroidSql`, `SliceIndex` and the rewritten
+`QuireProbeService.speak()` are **written but never compiled** — this container has no
+Android SDK. Writing them already surfaced one error a compiler would have caught in a
+second (`NARRATOR_VOICE` and `TAG` live in a *private* companion object and were referenced
+from another file), so expect more of that shape on the first build.
+
+*What is left:* build the APK, side-load `build/slice/chapter-one.epub`, and listen. Then
+QUI-019's remaining criteria, none of which can be taken here: TTFS against 800 ms, peak RSS
+against 1.2 GB, and page turns.
 
 ---
 
@@ -2323,6 +2362,13 @@ want a longer capture across a chapter boundary. Ticket stays `In progress` for 
 ---
 
 ## QUI-027 — Normalised-to-raw offset map
+
+> **Prototyped in the spike, 2026-08-29 (QUI-019).** `spike/slice/OffsetMap.kt` is a working
+> implementation, written because the vertical slice cannot voice a partial chunk without
+> one. Lift it into `core:index` and delete the spike copy. Two things it already knows:
+> the walk must handle whitespace itself, because `Normalizer.normalize(" ")` trims to
+> empty and a naive per-character walk drops every space; and asserting the walk reproduces
+> `normalize()` exactly is what caught that.
 
 **Status:** Todo · **Owner:** — · **Epic:** Index · **Depends on:** QUI-021, QUI-022
 **PRD:** §2 Phase 2

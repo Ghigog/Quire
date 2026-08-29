@@ -9,6 +9,11 @@ plugins {
 subprojects {
     apply(plugin = "org.jetbrains.kotlin.jvm")
 
+    // Named so the standalone spike builds can substitute these modules by coordinate
+    // through includeBuild — the Android probe has to run the *real* matcher, not a copy
+    // of it, or the spike stops proving anything (QUI-019).
+    group = "quire"
+
     repositories { mavenCentral() }
 
     extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {

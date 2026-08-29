@@ -4,31 +4,40 @@ import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess
 import quire.index.BookRecord
+import quire.index.InMemoryBookIndex
 import quire.index.IndexWriter
 import quire.index.Matcher
 import quire.index.Schema
 import quire.index.SqliteBookIndex
 import quire.model.Kind
+import quire.spike.slice.Casting
+import quire.spike.slice.ChunkPlan
 
 private const val USAGE = """
 quire-indexer-spike (QUI-019)
 
   build <labelled.tsv> <out.db>     write a dialogue index the TTS service can read
+                                    add --epub <out.epub> to emit the matching book
   replay <index.db> <trace.tsv>     replay a host trace against an index, resolving voices
+  read <labelled.tsv>               read the book the way a host does, printing each
+                                    chunk's voice — the slice, without a device
 
 The trace is a QUI-020 capture: one host chunk per row, `text` in the last column.
 """
 
 fun main(args: Array<String>) {
-    if (args.size < 3) { println(USAGE.trim()); exitProcess(2) }
+    if (args.size < 2) { println(USAGE.trim()); exitProcess(2) }
+    if (args[0] != "read" && args.size < 3) { println(USAGE.trim()); exitProcess(2) }
+    val epub = args.indexOf("--epub").takeIf { it > 0 }?.let { File(args[it + 1]) }
     when (args[0]) {
-        "build" -> build(File(args[1]), File(args[2]))
+        "build" -> build(File(args[1]), File(args[2]), epub)
         "replay" -> replay(File(args[1]), File(args[2]))
+        "read" -> read(File(args[1]))
         else -> { println(USAGE.trim()); exitProcess(2) }
     }
 }
 
-private fun build(fixture: File, out: File) {
+private fun build(fixture: File, out: File, epub: File? = null) {
     val rows = Labelled.load(fixture)
     val entries = Labelled.entries(rows)
     out.delete()
@@ -53,6 +62,13 @@ private fun build(fixture: File, out: File) {
     println("  speakers   ${speakers.joinToString(", ").ifEmpty { "none" }}")
     println("  dialogue   ${entries.flatMap { it.spans }.count { it.kind == Kind.DIALOGUE }} spans")
     println("  wrote      ${out.path} (${out.length()} bytes)")
+
+    // The book and the index come out of one fixture on purpose: if they could drift, a
+    // wrong voice on device would be ambiguous between a bad match and a bad fixture.
+    epub?.let {
+        Epub.write(rows, it, fixture.nameWithoutExtension)
+        println("  book       ${it.path} (${it.length()} bytes)")
+    }
 }
 
 /**
@@ -86,6 +102,48 @@ private fun replay(db: File, trace: File) {
         }
         println("\nresolved $resolved of $total chunks")
     }
+}
+
+/**
+ * Read the book as the host will, and print who says each clause.
+ *
+ * The chunking mirrors the captured trace: split at commas, separator kept on the front of
+ * the continuation. Every row with a speaker and no quote mark in it is a chunk that
+ * quote-mark inference would have read in the narrator's voice.
+ */
+private fun read(fixture: File) {
+    val rows = Labelled.load(fixture)
+    val entries = Labelled.entries(rows)
+    val casting = Casting(entries.flatMap { e -> e.spans.mapNotNull { it.speakerId } }, 904)
+    val matcher = Matcher(InMemoryBookIndex(fixture.nameWithoutExtension, entries))
+
+    println("reading ${fixture.name} — cast ${casting.cast}\n")
+    var rescued = 0
+    for (entry in entries) {
+        for (chunk in hostChunks(entry.text)) {
+            val segments = ChunkPlan.of(chunk, matcher.match(chunk), casting)
+            val voices = segments.joinToString(" | ") {
+                "${it.speakerId ?: "narrator"}(${it.voice})"
+            }
+            val quoteless = '"' !in chunk && segments.any { it.speakerId != null }
+            if (quoteless) rescued++
+            println("%-1s %-58s %s".format(
+                if (quoteless) "!" else " ", "\"" + chunk.trim().take(56) + "\"", voices))
+        }
+    }
+    println("\n! = a chunk with no quote mark in it that is still dialogue: $rescued of them.")
+    println("    Those are the chunks quote-mark inference reads in the wrong voice.")
+}
+
+/** Clause-level splitting of the shape `fixtures/host-traces` captured. */
+private fun hostChunks(text: String): List<String> {
+    val out = mutableListOf<String>()
+    var start = 0
+    text.forEachIndexed { i, c ->
+        if (c == ',' && i + 1 < text.length) { out += text.substring(start, i + 1); start = i + 1 }
+    }
+    out += text.substring(start)
+    return out.filter { it.isNotBlank() }
 }
 
 private fun digest(bytes: ByteArray): String =

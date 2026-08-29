@@ -35,4 +35,9 @@ dependencies {
 
     // Pure-Java bzip2 and tar, to unpack the model archives on device. Spike-only.
     implementation("org.apache.commons:commons-compress:1.28.0")
+
+    // The dialogue index and the slice's casting and clipping logic. Both pure Kotlin,
+    // both tested on the desktop — see spike/slice.
+    implementation("quire:index")
+    implementation("quire:slice")
 }

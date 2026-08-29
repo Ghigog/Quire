@@ -16,6 +16,8 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
+import quire.spike.slice.ChunkPlan
+import quire.spike.slice.Segment
 
 /**
  * QUI-020: a system TTS engine that answers questions rather than reading books.
@@ -116,8 +118,6 @@ class QuireProbeService : TextToSpeechService() {
 
     override fun onStop() {
         stopped = true
-        // A new reading session should not inherit the last one's quote state.
-        inQuote = false
         record("onStop")
     }
 
@@ -165,13 +165,17 @@ class QuireProbeService : TextToSpeechService() {
     }
 
     /**
-     * Speak one chunk, switching voice between narration and quoted speech.
+     * Speak one chunk in the voices the index assigns it.
      *
-     * The voice switching is a **demo, not attribution**: it splits on quote marks and
-     * alternates two speaker ids, which is what @Voice already does and what Quire exists
-     * to improve on. It is here because it exercises the mechanic QUI-024 needs — several
-     * voices inside a single `onSynthesizeText` call, presented to the host as one
-     * continuous utterance — and because hearing it is the point of this spike.
+     * Nothing here reads quote marks. The chunk is placed in the book by
+     * [quire.index.Matcher] and cut into voiced segments by [quire.spike.slice.ChunkPlan],
+     * so a continuation clause carrying no punctuation of its own still arrives with its
+     * speaker attached. That is the difference between this and @Voice's alternating
+     * voices, and the two device listens that found the quote-inference bug — in both
+     * directions, ADR-0002 §6 — were really finding the absence of this lookup.
+     *
+     * Several voices still go out inside one `onSynthesizeText` call as one continuous
+     * utterance, which is the mechanic QUI-024 needs.
      */
     private fun speak(
         engine: TtsEngine,
@@ -187,12 +191,12 @@ class QuireProbeService : TextToSpeechService() {
         val started = System.nanoTime()
         var audioMs = 0L
 
-        for ((span, isDialogue) in splitOnQuotes(text)) {
+        for (segment in plan(text, engine)) {
             if (stopped) break
+            val span = segment.text
             if (span.isBlank()) { spokenChars += span.length; continue }
 
-            val voice = if (isDialogue) dialogueVoice(engine) else NARRATOR_VOICE
-            val samples = runCatching { engine.synthesise(span, voice, speed) }
+            val samples = runCatching { engine.synthesise(span, segment.voice, speed) }
                 .onFailure { Log.w(TAG, "synthesis failed: ${it.message}") }
                 .getOrNull() ?: continue
             audioMs += samples.size * 1000L / engine.sampleRate
@@ -233,52 +237,40 @@ class QuireProbeService : TextToSpeechService() {
     }
 
     /**
-     * A second voice, chosen far from the narrator's.
+     * The shipped index, opened once against the loaded engine's voice range.
      *
-     * Speaker 1 sounds like speaker 0 — adjacent ids in `libritts_r` are neighbouring
-     * readers from the same corpus, which is why the first device test heard no voice
-     * change at all on a model carrying 904 of them. Halfway down the list is reliably a
-     * different person.
+     * Reopened when the engine changes, because casting depends on how many voices the
+     * model has: `libritts_r` offers 904 and `alan-low` exactly one, and a cast computed
+     * for the first is meaningless for the second.
      */
-    private fun dialogueVoice(engine: TtsEngine) =
-        if (engine.voiceCount > 1) engine.voiceCount / 2 else NARRATOR_VOICE
+    private var slice: SliceIndex? = null
+    private var sliceVoices = -1
+
+    @Synchronized
+    private fun slice(engine: TtsEngine): SliceIndex? {
+        if (sliceVoices != engine.voiceCount) {
+            slice?.close()
+            slice = SliceIndex.open(this, engine.voiceCount, NARRATOR_VOICE)
+            sliceVoices = engine.voiceCount
+        }
+        return slice
+    }
 
     /**
-     * Whether we are inside a quotation, carried **across** utterances.
+     * Cut one chunk into the segments to synthesise, each with its voice.
      *
-     * The host splits at commas, so a line of dialogue arrives as several chunks and only
-     * the first carries the opening quote. Deciding narration-versus-speech per chunk, in
-     * isolation, therefore reverts to the narrator on the second clause and stays
-     * there — observed on device, and the reason this field exists.
-     *
-     * It is a patch on a fundamentally weak signal. Quire proper does not infer speech
-     * from quote marks at all: it looks the speaker up by position in the index, which is
-     * state that survives chunking by construction rather than by a flag like this one.
+     * With no index — a build shipping no asset, or a book we never indexed — everything
+     * falls to the narrator. That is the correct failure shape (QUI-029): the reader is no
+     * worse off than with an ordinary TTS engine, and it is audible rather than fatal.
      */
-    @Volatile private var inQuote = false
-
-    /** Split into runs of narration and quoted speech, preserving every character. */
-    private fun splitOnQuotes(text: String): List<Pair<String, Boolean>> {
-        val out = mutableListOf<Pair<String, Boolean>>()
-        val sb = StringBuilder()
-        for (c in text) {
-            val opens = c == '\u201C' || (c == '"' && !inQuote)
-            val closes = c == '\u201D' || (c == '"' && inQuote)
-            when {
-                closes && inQuote -> {
-                    sb.append(c)
-                    out += sb.toString() to true
-                    sb.clear(); inQuote = false
-                }
-                opens && !inQuote -> {
-                    if (sb.isNotEmpty()) out += sb.toString() to false
-                    sb.clear(); sb.append(c); inQuote = true
-                }
-                else -> sb.append(c)
-            }
-        }
-        if (sb.isNotEmpty()) out += sb.toString() to inQuote
-        return out
+    private fun plan(text: String, engine: TtsEngine): List<Segment> {
+        val slice = slice(engine)
+            ?: return listOf(Segment(text, null, NARRATOR_VOICE))
+        val match = slice.matcher.match(text)
+        val segments = ChunkPlan.of(text, match, slice.casting)
+        Log.i(TAG, "match=${match.how} partial=${match.partial} " +
+            "voices=${segments.joinToString("/") { it.speakerId ?: "narrator" }}")
+        return segments
     }
 
     /**

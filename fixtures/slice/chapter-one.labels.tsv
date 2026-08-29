@@ -1,0 +1,25 @@
+# The vertical slice's book (QUI-019): one short chapter, a narrator and two characters.
+#
+# Prose written for this repository — nothing here comes from a real book (CLAUDE.md §8).
+# Both the EPUB the reader opens and the index the service reads are generated from this
+# one file, so the two cannot drift and a failure is always the matcher's rather than the
+# fixture's.
+#
+# Speaker labels are gold. The slice deliberately runs no attribution on device: QUI-019
+# isolates the listening experience from the accuracy of Tier 1, which QUI-028 measured at
+# 58.5% precision and which would otherwise be what anyone hears.
+NARRATION	CHAPTER ONE
+NARRATION	The rain had not let up since morning, and the windows of the reading room were grey with it.
+NARRATION	Sarah crossed to the window, moving slowly, and stood there a while without saying anything at all.
+Sarah	"You have been standing there, quite still, for a quarter of an hour," she said.
+Thomas	"I have been thinking, on and off, since breakfast," Thomas replied, without turning from the desk.
+Sarah	"You have been avoiding the letter."
+NARRATION	He set down his pen at last.
+Thomas	"It is not the letter I am avoiding," he said. "It is the answer to it."
+NARRATION	The clock in the hall struck four, and neither of them moved.
+Sarah	"Then read it to me," said Sarah, "and we will be afraid of it together."
+NARRATION	Thomas laughed, which surprised them both.
+Thomas	"That is the first sensible thing, in this house, that anyone has said today."
+NARRATION	He took the envelope from the drawer, and turned it over once, and did not open it.
+Sarah	"Go on."
+NARRATION	Outside, the rain kept on as it had all morning, indifferent to the pair of them.
