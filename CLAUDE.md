@@ -219,27 +219,30 @@ Knowing its edges saves a lot of wasted work.
 **Available:** JDK 21 and Gradle 8.14 (`gradle test` at the root runs the whole JVM suite
 in seconds), Python 3.11 with pip, and outbound HTTPS to GitHub release assets and PyPI.
 
-**Whether you can build the APK depends on the environment's network policy — check, do
-not assume.** On 2026-08-29 a session could not, and the cause was not a missing SDK but a
-blocked host: `dl.google.com` is rejected by the proxy with a 403, and Gradle's `google()`
-repository *is* `dl.google.com/dl/android/maven2`. So the Android Gradle Plugin itself
-cannot be resolved and the build dies before it reaches any of our code. `maven.google.com`
-looks reachable but only redirects there, and AGP is published nowhere else — Maven Central
-and the Gradle plugin portal both 404.
+**You can build the APK, but the SDK is not in the image.** Run
+`./tools/install-android-sdk.sh` once per session — roughly 460 MB and a couple of minutes —
+then `./tools/build-slice-index.sh` and `cd spike/ttsbinding && ../../gradlew assembleDebug`.
 
-**Test it in one command rather than inferring it:**
+This depends on **`dl.google.com` being on the environment's allowed-domain list**, added
+2026-08-29. It is the single point of failure and it is not obvious when it fails: Gradle's
+`google()` repository *is* `dl.google.com/dl/android/maven2`, so without it the Android
+Gradle Plugin cannot resolve and the build dies before reaching any of our code.
+`maven.google.com` only redirects there, and AGP is published nowhere else — Maven Central
+and the plugin portal both 404. The install script checks the host first and says so.
+
+Test it directly rather than inferring it, and use a **real path**: `https://dl.google.com/`
+alone returns nothing useful because it redirects to `www.google.com`, which is blocked
+independently.
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' https://dl.google.com/   # 000 means blocked
+curl -sS -o /dev/null -w '%{http_code}\n' -r 0-100 \
+  https://dl.google.com/android/repository/repository2-3.xml   # 206 means available
 ```
 
-If it is blocked, **push and let CI build it**. GitHub's runners ship the SDK, and
-`.github/workflows/ci.yml` assembles the probe and attaches the APK and its matching EPUB to
-the run (QUI-001, first green run 2026-08-29). Handing over unbuilt Android sources is now
-the fallback, not the answer — and if you do, say in the ticket that the blocked host is
-why, because it is a setting someone can change rather than a fact about the tooling.
-A session on 2026-08-28 built the probe clean from this same repository
-(`spike/ttsbinding/README.md`), so an environment allowing that host works fine.
+**If the host is ever blocked again, push instead of giving up.** GitHub's runners ship the
+SDK, and `.github/workflows/ci.yml` assembles the probe and attaches the APK and its
+matching EPUB to the run. That path stays available whatever the container can reach, and
+it is also what proves the Android sources compile on a machine that is not this one.
 
 Either way, **a green `gradle test` says nothing about whether the Android code compiles**:
 the root build does not include `spike/ttsbinding` at all.
