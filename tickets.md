@@ -647,6 +647,12 @@ Scenario: The book is readable during the scan
 
 ## QUI-008 — Tier 1 heuristic dialogue attribution
 
+> **Measured 2026-08-29, and it points at the cheapest win in the project.** Tier 1 over the
+> slice's own book attributed 3 of 9 dialogue spans (33%, in line with PDNC's 39.4%), at 3/3
+> precision. Three of the six misses carry a pronoun tag — `" she said.`, `" he said.` — and
+> a pronoun plus the cast's gender from `characters.json` resolves them outright. That is
+> 33% → 67% on this chapter with no model loaded. See `docs/architecture.md` §5.
+
 **Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005
 **PRD:** §3.1
 
