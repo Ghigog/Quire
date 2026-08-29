@@ -17,7 +17,7 @@ already `In progress`.
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | claude-opus-5 | — |
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | claude-opus-5 | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
-| QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | Todo | — | QUI-020, QUI-021, QUI-022, QUI-024 |
+| QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In progress | claude-opus-5 | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
@@ -1518,7 +1518,7 @@ calibration. The ticket stays `In progress`.
 
 ## QUI-019 — Vertical slice: NeoReader Read Aloud in three voices
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-020, QUI-021, QUI-022, QUI-024
+**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** QUI-020, QUI-021, QUI-022, QUI-024
 **PRD:** §1, §2 · **Timebox:** 1 week
 
 > Rewritten for PRD v1.2. The v1.1 version of this ticket was a standalone player on a
@@ -1583,7 +1583,49 @@ Scenario: Page turns do not break it
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — claude-opus-5.** Started with the index rather than the audio, on the
+reasoning that tuning voice switching is wasted while the speaker data underneath it is
+absent. Reproduce with `gradle :spike:indexer:test` from the repository root.
+
+Added `spike/indexer`, which plays the companion app's role: it builds a real
+`dialogue_index.db` with `core:index`'s own `IndexWriter`, so what ships to the device is
+what the service reads rather than a stand-in. It has a `replay` command that feeds a
+captured host trace through the matcher and prints the voice each chunk resolves to.
+
+Added `fixtures/host-traces/neoreader-epub-shape.labels.tsv`: gold speaker labels for the
+same scene as the existing trace, as whole sentences. The pairing is what makes the slice
+checkable without a device — the trace is what the host *sends*, the labels are what the
+book *says*, and the index is the thing that has to connect them.
+
+*Measured:* replaying the 15-chunk trace against the 8-entry index resolves **14 of 15**.
+The miss is `"1"`, a page number the host emitted between the heading and the prose; it is
+not in the book, so falling through to the narrator is the correct answer. One RELOCATED to
+find the opening heading, then the cursor carries the remaining chunks forward.
+
+The result that matters:
+
+```
+FORWARD   " avoiding the letter,"    Sarah
+FORWARD   " she said."               Sarah
+```
+
+Neither clause contains a quote mark. Both are attributed to Sarah, because the speaker
+comes from position in the index rather than from evidence in the chunk. That is the
+failure recorded in ADR-0002 §6 — observed on device, twice, in both directions — not
+patched but structurally absent. Three tests in `SceneReplayTest` hold it there.
+
+*Known gap, and it lands on this ticket.* `MatchResult.partial` is true for most chunks,
+because hosts stop inside a sentence. Spans then cover the whole entry rather than the part
+spoken, so a partial chunk can be given the *right* voice but cannot yet be split into
+several voices at the right character offsets. That needs QUI-027's normalised-to-raw
+offset map. For the slice, a partial chunk takes its first span's voice — audibly right for
+the case in this scene, and wrong for a chunk that straddles a speaker change mid-clause.
+
+*What is left:* an Android `Sql` implementation over the platform's SQLite (QUI-021's
+worklog already owes this), shipping the built `.db` as an APK asset, and replacing the
+probe's quote inference with a matcher lookup. **None of that can be built here — this
+container has no Android SDK**, so those three land as code for the next device build.
 
 ---
 

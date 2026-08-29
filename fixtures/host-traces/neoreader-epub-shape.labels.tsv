@@ -1,0 +1,16 @@
+# Gold speaker labels for the scene in neoreader-epub-shape.tsv, one sentence per row.
+#
+# The trace is what the host *sends* — clauses, split at commas, with leading spaces. This
+# is what the book *says* — whole sentences, which is the unit the index stores. Pairing
+# the two is what makes the vertical slice checkable without a device: build an index from
+# this file, replay the trace against it, and every chunk should resolve to the right voice.
+#
+# Same repo-authored prose as the trace, so nothing here comes from a real book (CLAUDE.md §8).
+NARRATION	CHAPTER TWO
+NARRATION	The rain had not let up since morning.
+NARRATION	Sarah crossed to the window, moving slowly, and stood there a while without saying anything at all.
+Sarah	"I know," said Sarah.
+NARRATION	Thomas did not turn from the desk.
+Sarah	"You have been avoiding the letter," she said.
+NARRATION	He responded at last.
+NARRATION	The clock in the hall struck four, and none of them moved.
