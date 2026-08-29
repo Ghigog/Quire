@@ -1741,6 +1741,29 @@ the EPUB the reader opens and the index the service reads, so the two cannot dri
 wrong voice on device is the matcher's fault rather than the fixture's. It also keeps
 CLAUDE.md §8 satisfied — no real book goes near this repository.
 
+**2026-08-29 — device result, dylangrowcoot.** Piper `libritts_r` on the Note Air5 C,
+build `0.3-20260829-592073f`, reading `chapter-one.epub` through NeoReader's Read Aloud.
+
+**Three distinct voices, driven by the index.** That is the architecture working on hardware
+for the first time: the speaker comes from position in a pre-built index, not from
+punctuation in the chunk, and it survives the host's clause-level chunking.
+
+**The casting is arbitrary, and audibly so.** The narrator is a woman, Sarah is a man,
+Thomas is a woman. Not a bug — `Casting` spreads speaker ids across the model's range to
+make voices *distinct*, and has no idea what any of them sound like. QUI-005's manifest
+carries `gender` precisely for this and nothing consumes it yet; that is QUI-011.
+
+*Still unconfirmed on device*, and both matter more than the casting: whether a character's
+voice holds across a comma (`quite still,`, `on and off,`) and whether the speech tag
+`" she said.` drops back to the narrator. The desktop tests assert both; nobody has yet
+said they heard them.
+
+*Two installation findings, the second expensive.* The screen is a `ScrollView` and the
+build stamp sits above the fold, which is easy to miss. And the first container-built APK
+was signed with a freshly generated per-machine debug key, so it could not install over the
+previous build — the uninstall wiped app storage and took every downloaded model with it.
+Fixed by committing a shared debug key; a build from any machine now installs as an update.
+
 *Not verified: everything Android.* `AndroidSql`, `SliceIndex` and the rewritten
 `QuireProbeService.speak()` are **written but never compiled** — this container has no
 Android SDK. Writing them already surfaced one error a compiler would have caught in a
