@@ -23,7 +23,7 @@ already `In progress`.
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
-| QUI-005 | `characters.json` schema and manifest store | Attribution | Todo | — | QUI-001 |
+| QUI-005 | `characters.json` schema and manifest store | Attribution | In progress | session-visibility-check | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005, QUI-018 |
@@ -370,7 +370,7 @@ Scenario: Persistence does not stall rendering
 
 ## QUI-005 — `characters.json` schema and manifest store
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
+**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.1
 
 ### User story
