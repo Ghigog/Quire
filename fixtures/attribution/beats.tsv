@@ -1,5 +1,8 @@
 # Modern style: action beats instead of speech tags. Tier 1's action-beat rule earns
 # its keep here, and its false positives show up here too.
+# Genders for QUI-008's pronoun rule. Declared here because the fixture is the gold
+# data; QUI-007 will produce them from a scan instead.
+# cast: Dana=female, Marcus=male
 NARRATION	The kitchen smelled of burnt sugar.
 Dana	Dana set the pan in the sink and ran the tap over it. "That is the second one this week."
 Marcus	Marcus did not look up from his phone. "Third."

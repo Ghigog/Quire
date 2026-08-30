@@ -1,4 +1,7 @@
 # Classic style: explicit speech tags, most lines resolvable by Tier 1 alone.
+# Genders for QUI-008's pronoun rule. Declared here because the fixture is the gold
+# data; QUI-007 will produce them from a scan instead.
+# cast: Sarah=female, Thomas=male, Mr Ashcombe=male
 NARRATION	The rain had not let up since morning, and the windows of the reading room were grey with it.
 Sarah	"You have been standing there for a quarter of an hour," said Sarah.
 Thomas	"I have been thinking," Thomas replied.

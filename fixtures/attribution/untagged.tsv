@@ -1,5 +1,8 @@
 # The honest test: a long exchange that drops speech tags entirely.
 # Tier 1 cannot resolve most of this and should say so rather than guess.
+# Genders for QUI-008's pronoun rule. Declared here because the fixture is the gold
+# data; QUI-007 will produce them from a scan instead.
+# cast: Ellen=female, Robert=male
 NARRATION	They walked the length of the platform twice before either of them spoke.
 Ellen	"You will miss it," said Ellen.
 Robert	"There is another at nine."
