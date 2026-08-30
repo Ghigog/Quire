@@ -26,7 +26,7 @@ already `In progress`.
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | Todo | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
-| QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | Todo | — | QUI-005, QUI-018 |
+| QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In progress | session-visibility-check | QUI-005, QUI-018 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
 | QUI-011 | Automatic voice casting | Audio | Todo | — | QUI-007, QUI-010 |
@@ -653,7 +653,7 @@ Scenario: The book is readable during the scan
 > a pronoun plus the cast's gender from `characters.json` resolves them outright. That is
 > 33% → 67% on this chapter with no model loaded. See `docs/architecture.md` §5.
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005
+**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Attribution · **Depends on:** QUI-005
 **PRD:** §3.1
 
 ### User story
