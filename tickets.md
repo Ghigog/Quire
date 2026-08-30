@@ -719,7 +719,60 @@ Scenario: Throughput
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-08-29 — session-visibility-check.** `core/attribution/` and `AttributionResult` in
+`core/model/`. Reproduce with `./gradlew :core:attribution:test`; 13 tests, one per Gherkin
+scenario plus the pronoun rule and the scoring. Whole repository: 80 tests, 0 failures,
+boundaries clean.
+
+*Measured, on the labelled fixtures rather than on examples chosen to flatter it:*
+
+| fixture | gold | attributed | correct | coverage | precision |
+| --- | --- | --- | --- | --- | --- |
+| tagged | 10 | 9 | 8 | 90.0% | 88.9% |
+| untagged | 15 | 3 | 3 | 20.0% | 100.0% |
+| beats | 9 | 6 | 5 | 66.7% | 83.3% |
+| **all** | **34** | **18** | **16** | **52.9%** | **88.9%** |
+
+*The pronoun rule, scored against its own absence on identical text* — the only fair way to
+say what it bought, and the same flag trick QUI-028 used for action beats:
+
+```
+pronoun rule OFF: coverage 44.1%, precision 86.7%
+pronoun rule ON:  coverage 52.9%, precision 88.9%
+lift: +8.8 points of coverage, +3 lines
+```
+
+All three added lines were right, so precision *rose*. **That is less than the 33% → 67% I
+projected from the slice's own chapter**: nine spans was an anecdote and the chapter's mix
+of tags happened to favour the rule. The fixture number is the one to quote.
+
+*The rule declines more than it resolves, deliberately.* `she said` attributes only when the
+cast holds exactly one woman. With two, a pronoun narrows the field without choosing, and
+choosing anyway would be a guess wearing a confidence score — that is QUI-009's job. A
+speech verb is also required, so `She crossed to the window. "I know."` stays an action beat
+rather than being promoted to a tag. Both have tests, as does whole-word matching, because
+`he` inside `the` was an obvious way to get this quietly wrong.
+
+*Throughput:* 125,000 words in **183 ms** on the host, against the ticket's 2 s for 100k. A
+desktop number kept as a regression guard rather than an SLA claim (CLAUDE.md §1.6).
+
+*Confidences are left as the ticket specifies* — 0.95 direct, 0.75 beat, 0.85 pronoun — and
+are **known to be optimistic**: QUI-028 measured explicit tags at 68.6% precision on PDNC
+against the declared 0.95. Moving them without a measurement would swap one fiction for
+another, so the class documents the discrepancy and recalibration stays QUI-009's
+prerequisite.
+
+*What is left before this is Done.*
+
+1. **PDNC scoring.** These fixtures are 34 lines of prose written for this repository; PDNC
+   is 2,846 quotations from five novels. The scorer exists in `spike/pipeline` but points at
+   that module's own Tier 1, so pointing it here means editing QUI-018's files — not this
+   ticket's to touch (CLAUDE.md §2.2). Needs a small follow-up or QUI-018's owner.
+2. **Two implementations now exist.** `spike/pipeline/Tier1.kt` and this one. The spike is
+   throwaway by §3 and this ticket owns the behaviour, so QUI-018 should switch to
+   `core:attribution` and delete its copy before they drift.
+3. **Em-dash dialogue** is segmented but never scored — no fixture uses it.
 
 ---
 
