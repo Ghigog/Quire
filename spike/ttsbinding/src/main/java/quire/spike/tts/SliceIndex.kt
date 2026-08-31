@@ -5,6 +5,7 @@ import android.util.Log
 import java.io.File
 import quire.index.Matcher
 import quire.index.SqliteBookIndex
+import quire.index.identify.BookIdentifier
 import quire.model.characters.Gender
 import quire.model.characters.ManifestCodec
 import quire.spike.slice.Casting
@@ -27,6 +28,20 @@ class SliceIndex private constructor(
     val title: String,
     val entries: Int,
 ) {
+    /**
+     * Every imported book plus the casting each needs.
+     *
+     * One identifier across the shelf, because the reader may open any of them and we are
+     * told which only by the words that arrive.
+     */
+    class Library(
+        val identifier: BookIdentifier,
+        private val castings: Map<String, Casting>,
+    ) {
+        /** The casting for whichever book is locked, or null while still identifying. */
+        val casting: Casting? get() = identifier.bookId?.let { castings[it] }
+    }
+
     /** Start over from the top of the book. The host has begun a new reading session. */
     fun rewind() = matcher.seek(0)
 
@@ -44,6 +59,42 @@ class SliceIndex private constructor(
          * correct behaviour for an unindexed book (QUI-029) and makes a missing asset
          * obvious by ear rather than by crash.
          */
+        /**
+         * Every imported book, ready to be identified from the first few chunks.
+         *
+         * The reader does not tell us what they opened — the Android TTS API carries no
+         * book identity at all — so the service listens to the prose and works it out
+         * (QUI-023). Until it is sure, everything is narrated, which is also what an
+         * unimported book gets, so there is one behaviour and not two.
+         */
+        fun openLibrary(context: Context, voiceCount: Int): Library? = runCatching {
+            val books = BookImport.imported(context).mapNotNull { dir ->
+                runCatching {
+                    val manifest = ManifestCodec.decode(File(dir, "characters.json").readText())
+                    val sql = AndroidSql(File(dir, "index.db").path)
+                    val record = SqliteBookIndex.books(sql).first()
+                    Triple(record, SqliteBookIndex(sql, record.bookId), manifest)
+                }.getOrNull()
+            }
+            if (books.isEmpty()) return@runCatching null
+
+            val profile = runCatching {
+                context.assets.open(VOICES).use { VoiceProfile.parse(it.readBytes().decodeToString().lineSequence()) }
+            }.getOrNull()
+
+            Log.i(TAG, "library: ${books.size} imported book(s)")
+            Library(
+                identifier = BookIdentifier.over(books.map { (record, index, _) -> record to index }),
+                castings = books.associate { (record, _, manifest) ->
+                    record.bookId to Casting(
+                        manifest.characters.associate { it.id to it.gender },
+                        voiceCount, profile,
+                        narratorGender = manifest.narrator.gender,
+                    )
+                },
+            )
+        }.onFailure { Log.w(TAG, "library: ${it.message}") }.getOrNull()
+
         fun open(context: Context, voiceCount: Int): SliceIndex? = runCatching {
             // SQLite needs a real file, and an asset is a compressed stream, so it is
             // copied out once on first use.

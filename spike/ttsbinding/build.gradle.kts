@@ -101,5 +101,7 @@ dependencies {
     // The dialogue index and the slice's casting and clipping logic. Both pure Kotlin,
     // both tested on the desktop — see spike/slice.
     implementation("quire:index")
+    implementation("quire:attribution")
+    implementation("quire:epub")
     implementation("quire:slice")
 }

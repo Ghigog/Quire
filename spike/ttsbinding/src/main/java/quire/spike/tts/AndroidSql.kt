@@ -11,13 +11,21 @@ import quire.index.Sql
  * seconds. The schema and every statement live on that side; this supplies the driver and
  * nothing else, which is why it has no knowledge of tables or columns.
  *
- * Opened read-only: the index belongs to the companion app, and the TTS service having no
- * way to write it is the reason there is no locking problem between the two processes.
+ * Opened read-only unless [writable]. The service only ever reads; the importer is the one
+ * thing that writes, and keeping those apart is why there is no locking problem between
+ * them.
  */
-class AndroidSql(path: String) : Sql, AutoCloseable {
+class AndroidSql(path: String, writable: Boolean = false) : Sql, AutoCloseable {
 
     private val db: SQLiteDatabase =
-        SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY)
+        if (writable) {
+            // The importer needs this. Reading stays read-only, because the service must
+            // not be able to damage an index the importer owns — that separation is why
+            // there is no locking problem between the two.
+            SQLiteDatabase.openOrCreateDatabase(path, null)
+        } else {
+            SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY)
+        }
 
     override fun execute(statement: String) = db.execSQL(statement)
 

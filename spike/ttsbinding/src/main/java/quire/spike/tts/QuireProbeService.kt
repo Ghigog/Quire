@@ -273,13 +273,17 @@ class QuireProbeService : TextToSpeechService() {
      * for the first is meaningless for the second.
      */
     private var slice: SliceIndex? = null
+    private var library: SliceIndex.Library? = null
     private var sliceVoices = -1
 
     @Synchronized
     private fun slice(engine: TtsEngine): SliceIndex? {
         if (sliceVoices != engine.voiceCount) {
             slice?.close()
-            slice = SliceIndex.open(this, engine.voiceCount)
+            // Imported books first. The bundled fixture is the fallback, so a device with
+            // nothing imported still demonstrates the slice.
+            library = SliceIndex.openLibrary(this, engine.voiceCount)
+            slice = if (library == null) SliceIndex.open(this, engine.voiceCount) else null
             sliceVoices = engine.voiceCount
         }
         return slice
@@ -294,7 +298,16 @@ class QuireProbeService : TextToSpeechService() {
      */
     private fun plan(text: String, engine: TtsEngine): List<Segment> {
         val slice = slice(engine)
-            ?: return listOf(Segment(text, null, NARRATOR_VOICE))
+        library?.let { shelf ->
+            val match = shelf.identifier.accept(text)
+            val casting = shelf.casting
+                ?: return listOf(Segment(text, null, NARRATOR_VOICE))
+            val segments = ChunkPlan.of(text, match, casting)
+            Log.i(TAG, "book=${shelf.identifier.bookId} match=${match.how} " +
+                "voices=${segments.joinToString("/") { it.speakerId ?: "narrator" }}")
+            return segments
+        }
+        slice ?: return listOf(Segment(text, null, NARRATOR_VOICE))
         // Narration falls to the casting's narrator, not to voice 0: with a profile the
         // narrator is chosen from a pool, and 0 might be anybody.
         val match = slice.matcher.match(text)

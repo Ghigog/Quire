@@ -11,13 +11,7 @@ typealias Tier = quire.model.Tier
 typealias AttributionResult = quire.model.AttributionResult
 typealias Segment = quire.attribution.Segment
 
-/** A paragraph of the publication, addressed by locator. QUI-002's scheduling atom. */
-data class ParagraphUnit(
-    val locator: String,
-    val text: String,
-    val chapterIndex: Int,
-    val index: Int,
-)
+typealias ParagraphUnit = quire.model.Paragraph
 
 /** Confidence gates from PRD §3.1. Changing these requires a ticket. */
 object Thresholds {

@@ -40,3 +40,18 @@ object Thresholds {
     const val SLM_MIN = 0.65
     const val NARRATOR_FLOOR = 0.40
 }
+
+/**
+ * One paragraph of an imported book, in reading order.
+ *
+ * The unit the importer works in: attribution needs the sentences either side of a
+ * quotation, and those live in the same paragraph. Sentences come later, when the index is
+ * built — they are what the reader's app sends us, not what a book is made of.
+ */
+data class Paragraph(
+    /** `spineHref#p{index}`. */
+    val locator: String,
+    val text: String,
+    val chapterIndex: Int,
+    val index: Int,
+)

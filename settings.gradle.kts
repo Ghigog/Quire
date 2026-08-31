@@ -8,3 +8,6 @@ include(":spike:slice")
 
 // QUI-008: Tier 1 heuristic attribution.
 include(":core:attribution")
+
+// QUI-025: reads an imported book so the app can write itself a note about it.
+include(":core:epub")

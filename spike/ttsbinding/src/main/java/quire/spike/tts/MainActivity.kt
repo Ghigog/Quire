@@ -1,6 +1,7 @@
 package quire.spike.tts
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -27,6 +28,7 @@ class MainActivity : Activity() {
     private val work = Executors.newSingleThreadExecutor()
     private lateinit var log: TextView
     private lateinit var rows: LinearLayout
+    private lateinit var books: LinearLayout
 
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
@@ -69,6 +71,18 @@ class MainActivity : Activity() {
         )
         root.addView(button("Benchmark everything installed") { benchmarkAll() })
 
+        root.addView(heading("Your books"))
+        root.addView(
+            body(
+                "Send Quire a book and it reads it once — who is in it, how they speak, " +
+                    "which voice each gets — then tells you it is done. Quire never shows " +
+                    "you the book; keep reading in your own app and press its Read Aloud.",
+            ),
+        )
+        root.addView(button("Import a book (EPUB)") { pickBook() })
+        books = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(books)
+
         log = body("").apply { setTextIsSelectable(true) }
         root.addView(ScrollView(this).apply { addView(log) })
 
@@ -98,7 +112,58 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    /** Ask the system for a file. Any provider will do — Downloads, Drive, a cable. */
+    private fun pickBook() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            // Some providers label EPUBs octet-stream, so the filter cannot be strict.
+            type = "*/*"
+        }
+        runCatching { startActivityForResult(intent, PICK_BOOK) }
+            .onFailure { append("no file picker on this device: ${it.message}") }
+    }
+
+    @Deprecated("startActivityForResult is fine for a spike; androidx is not worth it here")
+    override fun onActivityResult(request: Int, result: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(request, result, data)
+        if (request != PICK_BOOK || result != RESULT_OK) return
+        val uri = data?.data ?: return
+        append("importing …")
+        work.execute {
+            val outcome = runCatching {
+                BookImport.run(this@MainActivity, uri) { phase ->
+                    runOnUiThread { append("  $phase") }
+                }
+            }
+            runOnUiThread {
+                outcome
+                    .onSuccess { append("done — ${it.summary}"); refresh() }
+                    .onFailure { append("import failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun refreshBooks() {
+        books.removeAllViews()
+        val imported = BookImport.imported(this)
+        if (imported.isEmpty()) {
+            books.addView(body("  nothing imported yet"))
+            return
+        }
+        for (dir in imported) {
+            val summary = BookImport.describe(dir)
+            books.addView(body("  $summary"))
+            books.addView(
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(button("Forget") { dir.deleteRecursively(); refresh() })
+                },
+            )
+        }
+    }
+
     private fun refresh() {
+        refreshBooks()
         rows.removeAllViews()
         val selected = Prefs.engineId(this)
 
@@ -203,5 +268,10 @@ class MainActivity : Activity() {
         gravity = Gravity.CENTER
         layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
         setOnClickListener { onClick() }
+    }
+
+    private companion object {
+        /** Request code for the system file picker. */
+        const val PICK_BOOK = 1
     }
 }

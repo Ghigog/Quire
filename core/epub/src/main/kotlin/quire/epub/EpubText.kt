@@ -1,24 +1,29 @@
-package quire.spike
+package quire.epub
 
 import org.jsoup.Jsoup
+import quire.model.Paragraph
 import org.jsoup.parser.Parser
 import java.io.File
 import java.util.zip.ZipFile
 
 /**
- * Minimal EPUB reader for the spike (QUI-018).
+ * Pulls the prose out of an EPUB, once, at import.
  *
- * This is *not* what ships: QUI-002 uses the Readium toolkit, which handles the
- * encryption, fallback chains, media overlays and CSS injection deliberately ignored
- * here. This exists so the attribution work can be driven from real books on a desktop
- * JVM without pulling in an Android dependency.
+ * **Not a reader.** Quire never renders a book — the reader's own app does that, and
+ * QUI-002's reader shell is deferred. This opens the file, extracts paragraphs in reading
+ * order so the cast can be worked out and an index built, and is finished with it. What
+ * the app keeps afterwards is the note it wrote itself, not the book.
  *
- * Locators are `spineHref#p{index}`, a stand-in for a real Readium locator. The shape
- * matters more than the format: everything downstream keys off it.
+ * Deliberately not Readium: encryption, fallback chains, media overlays and CSS injection
+ * all matter to something that displays a book and none of them matter to something that
+ * reads its words once. If an encrypted book ever needs importing, that is its own ticket.
+ *
+ * Locators are `spineHref#p{index}`. The shape matters more than the format — everything
+ * downstream keys off it.
  */
-object Epub {
+object EpubText {
 
-    fun paragraphs(epub: File): List<ParagraphUnit> {
+    fun paragraphs(epub: File): List<Paragraph> {
         ZipFile(epub).use { zip ->
             val opfPath = opfPath(zip)
             val opfDir = opfPath.substringBeforeLast('/', "")
@@ -39,7 +44,7 @@ object Epub {
                 doc.select("p, h1, h2, h3, h4, blockquote").mapNotNull { el ->
                     val text = el.text().trim()
                     if (text.isEmpty()) null
-                    else ParagraphUnit("$href#p${index}", text, chapterIndex, index++)
+                    else Paragraph("$href#p${index}", text, chapterIndex, index++)
                 }
             }
         }
