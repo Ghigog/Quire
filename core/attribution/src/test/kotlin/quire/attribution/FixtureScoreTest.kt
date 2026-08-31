@@ -48,19 +48,29 @@ class FixtureScoreTest {
         return manifest to rows
     }
 
-    private fun score(name: String, pronouns: Boolean = true): Score {
+    private fun score(name: String, pronouns: Boolean = true, turns: Boolean = true): Score {
         val (manifest, rows) = load(name)
-        val heuristic = Heuristic(manifest, pronouns = pronouns)
+        val cast = manifest.characters.map { it.id }
+
+        // Attributed as one book, not row by row: turn-taking needs to see the exchange,
+        // and scoring each line in isolation would measure a pass that cannot work.
+        val paragraphs = rows.mapIndexed { i, (_, text) -> "p$i" to text }
+        val tier1 = Heuristic(manifest, pronouns = pronouns).attributeAll(paragraphs)
+        val all = if (turns) Conversation.resolve(tier1, cast = cast) else tier1
+        val byParagraph = all.filter { it.kind == Kind.DIALOGUE }.groupBy {
+            it.locator.substringBefore("#s")
+        }
+
         var gold = 0
         var attributed = 0
         var correct = 0
-        for ((who, text) in rows) {
-            // Rows the fixture itself marks unresolvable, or that name two possible
-            // speakers, are not a fair target for a heuristic and are skipped.
-            if (who == "NARRATION" || who == "UNKNOWN" || '|' in who) continue
+        rows.forEachIndexed { i, (who, _) ->
+            // Rows the fixture marks unresolvable, or that name two possible speakers,
+            // are not a fair target for a heuristic.
+            if (who == "NARRATION" || who == "UNKNOWN" || '|' in who) return@forEachIndexed
             gold++
-            val dialogue = heuristic.attribute("p", text).filter { it.kind == Kind.DIALOGUE }
-            val guess = dialogue.firstNotNullOfOrNull { it.speakerId } ?: continue
+            val guess = byParagraph["p$i"]?.firstNotNullOfOrNull { it.speakerId }
+                ?: return@forEachIndexed
             attributed++
             if (guess == who) correct++
         }
@@ -72,8 +82,10 @@ class FixtureScoreTest {
         var withGold = 0; var withAttr = 0; var withCorrect = 0
         var withoutAttr = 0; var withoutCorrect = 0
         for (name in listOf("tagged", "untagged", "beats")) {
-            val on = score(name, pronouns = true)
-            val off = score(name, pronouns = false)
+            // Turn-taking off on both sides: it resolves nearly everything, so leaving it
+            // on would hide whatever the pronoun rule contributes behind a ceiling.
+            val on = score(name, pronouns = true, turns = false)
+            val off = score(name, pronouns = false, turns = false)
             withGold += on.gold; withAttr += on.attributed; withCorrect += on.correct
             withoutAttr += off.attributed; withoutCorrect += off.correct
         }
@@ -92,6 +104,25 @@ class FixtureScoreTest {
             "the pronoun rule added ${withAttr - withoutAttr} lines but only " +
                 "${withCorrect - withoutCorrect} were right",
         )
+    }
+
+    @Test
+    fun `turn-taking is scored against its own absence`() {
+        var gold = 0; var offAttr = 0; var offCorrect = 0; var onAttr = 0; var onCorrect = 0
+        for (name in listOf("tagged", "untagged", "beats")) {
+            val off = score(name, turns = false)
+            val on = score(name, turns = true)
+            gold += on.gold
+            offAttr += off.attributed; offCorrect += off.correct
+            onAttr += on.attributed; onCorrect += on.correct
+        }
+        println("turn-taking OFF: coverage %.1f%%, precision %.1f%%".format(
+            offAttr * 100.0 / gold, offCorrect * 100.0 / offAttr))
+        println("turn-taking ON : coverage %.1f%%, precision %.1f%%".format(
+            onAttr * 100.0 / gold, onCorrect * 100.0 / onAttr))
+        assertTrue(onAttr > offAttr, "turn-taking resolved nothing")
+        assertTrue(onCorrect.toDouble() / onAttr >= 0.85,
+            "precision fell to %.1f%%".format(onCorrect * 100.0 / onAttr))
     }
 
     @Test

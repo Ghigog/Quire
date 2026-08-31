@@ -56,7 +56,12 @@ fun main(args: Array<String>) {
 private fun export(book: File, out: File) {
     val units = Epub.paragraphs(book)
     val roster = Tier1.bootstrapRoster(units)
-    val results = Tier1.attribute(units, roster)
+    // Tier 1, then turn-taking. Most dialogue carries no tag at all, and an exchange the
+    // author tagged once is the common case rather than the exception.
+    val results = quire.attribution.Conversation.resolve(
+        Tier1.attribute(units, roster),
+        cast = roster.names.toList(),
+    )
 
     // Each paragraph is written before its own segments, with its text exactly as the
     // reader will see it. Segment text is trimmed, so rebuilding a paragraph by joining
