@@ -1,6 +1,7 @@
 package quire.spike
 
 import java.io.File
+import quire.attribution.Roster
 import kotlin.system.exitProcess
 
 private const val USAGE = """
@@ -77,9 +78,20 @@ private fun export(book: File, out: File) {
         }
     }
 
+    // The cast travels with the attribution: genders are what let the service voice
+    // Sarah as a woman, and re-deriving them downstream would be a second implementation
+    // of the thing that decides how the book sounds.
+    val manifest = File(out.parentFile ?: File("."), "characters.json")
+    manifest.writeText(
+        quire.model.characters.ManifestCodec.encode(
+            Roster.manifest(roster, bookId = book.nameWithoutExtension, generatedAt = System.currentTimeMillis()),
+        ),
+    )
+
     val dialogue = results.filter { it.kind == Kind.DIALOGUE }
     val named = dialogue.count { it.speakerId != null }
     println("${units.size} paragraphs, ${results.size} segments -> ${out.path}")
+    println("cast -> ${manifest.path}")
     println("roster: ${roster.names.sorted().joinToString(", ")}")
     println("dialogue spans %d, attributed %d (%s)".format(
         dialogue.size, named, pct(if (dialogue.isEmpty()) 0.0 else named.toDouble() / dialogue.size)))

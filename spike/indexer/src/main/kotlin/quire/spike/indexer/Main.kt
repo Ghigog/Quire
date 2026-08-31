@@ -26,6 +26,8 @@ quire-indexer-spike (QUI-019)
   replay <index.db> <trace.tsv>     replay a host trace against an index, resolving voices
   read <labelled.tsv>               read the book the way a host does, printing each
                                     chunk's voice — the slice, without a device
+  book <attributed.tsv> <out.db>    index a REAL book from the pipeline's export, using
+                                    the characters.json written beside it
 
 The trace is a QUI-020 capture: one host chunk per row, `text` in the last column.
 """
@@ -38,6 +40,7 @@ fun main(args: Array<String>) {
         "build" -> build(File(args[1]), File(args[2]), epub)
         "replay" -> replay(File(args[1]), File(args[2]))
         "read" -> read(File(args[1]))
+        "book" -> book(File(args[1]), File(args[2]))
         else -> { println(USAGE.trim()); exitProcess(2) }
     }
 }
@@ -130,6 +133,50 @@ private fun replay(db: File, trace: File) {
         }
         println("\nresolved $resolved of $total chunks")
     }
+}
+
+/**
+ * Index a real book from `quire-pipeline-spike export`.
+ *
+ * The cast comes from the `characters.json` the exporter wrote beside the TSV rather than
+ * being re-derived here: genders decide how the book sounds, and deriving them twice is
+ * how two answers appear.
+ */
+private fun book(tsv: File, out: File) {
+    val entries = Attributed.entries(tsv)
+    require(entries.isNotEmpty()) { "no entries in ${tsv.path}" }
+
+    val castFile = File(tsv.parentFile ?: File("."), "characters.json")
+    require(castFile.exists()) { "expected ${castFile.path} beside the export" }
+    val manifest = ManifestCodec.decode(castFile.readText())
+
+    out.delete()
+    Jdbc(out.path).use { sql ->
+        val writer = IndexWriter(sql)
+        writer.createSchema()
+        writer.write(
+            BookRecord(
+                bookId = manifest.bookId.take(16),
+                title = manifest.bookId,
+                author = "scanned",
+                entryCount = entries.size,
+                indexedAt = manifest.generatedAt,
+                schemaVersion = Schema.VERSION,
+                sourceDigest = digest(tsv.readBytes()),
+            ),
+            entries,
+        )
+    }
+
+    val voiced = entries.flatMap { it.spans }.count { it.speakerId != null }
+    val dialogue = entries.flatMap { it.spans }.count { it.kind == Kind.DIALOGUE }
+    println("indexed ${entries.size} sentences from ${tsv.name}")
+    println("  cast       ${manifest.characters.joinToString { "${it.id}=${it.gender.name.lowercase()}" }}")
+    println("  dialogue   $dialogue spans, $voiced with a speaker")
+    println("  wrote      ${out.path} (${out.length()} bytes)")
+    println()
+    println("Copy it to spike/ttsbinding/src/main/assets/slice-index.db, with characters.json,")
+    println("and rebuild the probe to read this book instead of the fixture.")
 }
 
 /**
