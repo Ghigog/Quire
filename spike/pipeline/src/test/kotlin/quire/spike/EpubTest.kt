@@ -1,5 +1,7 @@
 package quire.spike
 
+import quire.epub.EpubText
+
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -43,7 +45,7 @@ class EpubTest {
     @Test
     fun `reads spine order, skips empties, and produces addressable locators`() {
         val dir = File(System.getProperty("java.io.tmpdir"), "quire-epub-test").apply { mkdirs() }
-        val paragraphs = Epub.paragraphs(minimalEpub(dir))
+        val paragraphs = EpubText.paragraphs(minimalEpub(dir))
 
         assertEquals(listOf("One", "\"I know,\" said Sarah.", "The rain kept on.", "Thomas said, \"It is late.\""),
             paragraphs.map { it.text })

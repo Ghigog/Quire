@@ -2,6 +2,7 @@ package quire.spike
 
 import java.io.File
 import quire.attribution.Roster
+import quire.epub.EpubText
 import kotlin.system.exitProcess
 
 private const val USAGE = """
@@ -54,7 +55,7 @@ fun main(args: Array<String>) {
  * reconstructs the book. The indexer relies on that to rebuild sentences.
  */
 private fun export(book: File, out: File) {
-    val units = Epub.paragraphs(book)
+    val units = EpubText.paragraphs(book)
     val roster = Tier1.bootstrapRoster(units)
     // Tier 1, then turn-taking. Most dialogue carries no tag at all, and an exchange the
     // author tagged once is the common case rather than the exception.
@@ -151,7 +152,7 @@ private fun transcript(file: File) {
 }
 
 private fun epub(file: File) {
-    val units = Epub.paragraphs(file)
+    val units = EpubText.paragraphs(file)
     val roster = Tier1.bootstrapRoster(units)
     println("${units.size} paragraphs, ${units.map { it.chapterIndex }.distinct().size} spine items")
     println("roster from speech tags: ${roster.fromTags.keys.sorted().joinToString(", ")}")
