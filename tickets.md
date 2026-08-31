@@ -763,15 +763,51 @@ against the declared 0.95. Moving them without a measurement would swap one fict
 another, so the class documents the discrepancy and recalibration stays QUI-009's
 prerequisite.
 
+**2026-08-29 (later) — the two implementations are one.** `spike/pipeline` now runs
+`core:attribution` through a 55-line adapter; its 199 lines of duplicated rules are gone,
+and its own 12 tests pass against the core implementation unchanged. Root build 99 tests,
+spike 12, all green, boundaries clean.
+
+*Porting beat rewriting, measurably.* Swapping my `contains`-based tag matching for the
+spike's regexes — which had been scored against PDNC — took precision from **88.9% to
+100%** on the same fixtures and raised the pronoun rule's lift from +8.8 to **+11.8 points**
+(41.2% → 52.9%, four lines, all correct). The lesson is worth keeping: a fresh
+implementation is an unmeasured one wearing the measured one's numbers.
+
+*Two things the spike's tests caught that my port had quietly dropped*, both in `evidence`:
+a tag naming somebody outside the cast used to record the name, and a pronoun tag that
+cannot be pinned down used to say so. The second matters beyond tidiness — `pronoun speech
+tag` and `no tag` are very different prospects for the model, and QUI-009 chooses its
+targets by exactly that. `Tier.NONE` came back for the same reason: "Tier 1 declined, spend
+the model here" is not "this is narration", and folding them together looks harmless right
+up until it isn't.
+
+*`Roster` moved into core too*, because a heuristic that needs a manifest is useless on a
+book nobody has scanned. It discovers the cast from speech tags and adjacency, **and infers
+gender from the pronoun that stands in for each name** — without which an uploaded book has
+no genders, the pronoun rule cannot fire, and casting falls back to arbitrary speaker ids.
+That is the chain that put a male Sarah on the device.
+
+Two bugs found writing it, both from testing on real prose rather than on examples: the
+anaphora cursor was reset at every paragraph break, where anaphora routinely crosses them;
+and pronouns *inside* quotations were being counted, though `"You have been standing
+there," she said` has "you" inside and "she" outside, and only the second says anything
+about the speaker.
+
+*Measured end to end.* `export` over the slice's own book went **33.3% → 44.4%** — the
+`he said` lines now resolve to Thomas through the real pipeline, which was impossible while
+the improvement lived only in a module nothing called. Sarah's `she said` still does not:
+gender inference needs two pronoun sightings and this chapter gives her one. Conservative
+by design, and a novel supplies hundreds.
+
 *What is left before this is Done.*
 
 1. **PDNC scoring.** These fixtures are 34 lines of prose written for this repository; PDNC
    is 2,846 quotations from five novels. The scorer exists in `spike/pipeline` but points at
    that module's own Tier 1, so pointing it here means editing QUI-018's files — not this
    ticket's to touch (CLAUDE.md §2.2). Needs a small follow-up or QUI-018's owner.
-2. **Two implementations now exist.** `spike/pipeline/Tier1.kt` and this one. The spike is
-   throwaway by §3 and this ticket owns the behaviour, so QUI-018 should switch to
-   `core:attribution` and delete its copy before they drift.
+2. ~~**Two implementations now exist.**~~ Done, same day: the spike delegates and its copy
+   is deleted.
 3. **Em-dash dialogue** is segmented but never scored — no fixture uses it.
 
 ---

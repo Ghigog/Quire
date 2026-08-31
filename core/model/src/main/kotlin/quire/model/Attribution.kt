@@ -13,6 +13,16 @@ enum class Tier {
 
     /** Nobody was identified; read it in the narrator's voice. */
     NARRATOR,
+
+    /**
+     * This pass declined, and a later one should try.
+     *
+     * Distinct from [NARRATOR] on purpose: a line nobody resolved still needs the model,
+     * while a line decided to be narration does not. Both read in the narrator's voice
+     * today, so folding them together looks harmless right up until QUI-009 needs to know
+     * which lines to spend the SLM on.
+     */
+    NONE,
 }
 
 /**

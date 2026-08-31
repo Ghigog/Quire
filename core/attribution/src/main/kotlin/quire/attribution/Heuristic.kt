@@ -27,6 +27,13 @@ class Heuristic(
      * flag for the action-beat rule.
      */
     private val pronouns: Boolean = true,
+    /**
+     * Whether a name in the sentence before a quotation may attribute it.
+     *
+     * Switchable because QUI-028 measured that it trades precision for accuracy — it fires
+     * on quotations carrying no tag, which is exactly where it has no evidence.
+     */
+    private val actionBeats: Boolean = true,
 ) {
 
     /** Manifest names and aliases, folded, longest first so "Mr Ashcombe" beats "Ashcombe". */
@@ -54,33 +61,39 @@ class Heuristic(
         // Tags nearest the speech first: a trailing `," said Sarah` and a leading
         // `Sarah said, "` both sit adjacent to it, while an action beat is a weaker signal
         // further away and is tried last.
-        tagName(segment.after)?.let { return result(segment, it, DIRECT_TAG, Tier.HEURISTIC, "trailing tag") }
-        tagName(segment.before)?.let { return result(segment, it, DIRECT_TAG, Tier.HEURISTIC, "leading tag") }
-
-        if (pronouns) pronounSpeaker(segment.after)?.let {
-            return result(segment, it, PRONOUN_TAG, Tier.HEURISTIC, "pronoun tag, one candidate")
-        }
-        if (pronouns) pronounSpeaker(segment.before)?.let {
-            return result(segment, it, PRONOUN_TAG, Tier.HEURISTIC, "pronoun tag, one candidate")
+        Names.tagName(segment.before, segment.after)?.let { name ->
+            known(name)?.let { return result(segment, it, DIRECT_TAG, Tier.HEURISTIC, "speech tag") }
+            // A tag naming somebody the cast has never heard of. Recording the name is the
+            // difference between a transcript that explains a miss and one that shrugs —
+            // it is usually a minor character the scan missed, not a parsing failure.
+            return result(segment, null, 0.0, Tier.NONE, "tag names $name, not in cast")
         }
 
-        actionBeatName(segment.before)?.let {
-            return result(segment, it, ACTION_BEAT, Tier.HEURISTIC, "action beat")
+        // A pronoun tag we cannot pin down is not the same as no tag at all: the line is
+        // far more tractable for the model, which is what QUI-009 will choose targets by.
+        val pronoun = Names.tagPronoun(segment.before, segment.after)
+        if (pronoun != null) {
+            if (pronouns) {
+                pronounSpeaker(segment.before, segment.after)?.let {
+                    return result(segment, it, PRONOUN_TAG, Tier.HEURISTIC, "pronoun tag, one candidate")
+                }
+            }
+            return result(segment, null, 0.0, Tier.NONE, "pronoun speech tag")
         }
-        return result(segment, null, 0.0, Tier.NARRATOR, "no tag")
+
+        if (actionBeats) {
+            actionBeatName(segment.before)?.let {
+                return result(segment, it, ACTION_BEAT, Tier.HEURISTIC, "action beat")
+            }
+        }
+        return result(segment, null, 0.0, Tier.NONE, "no tag")
     }
 
-    /**
-     * A name adjacent to a speech verb: `said Sarah`, `Sarah said`, `Sarah replied quietly`.
-     *
-     * Requires the verb, not merely a name in the neighbourhood — `Sarah watched him.
-     * "Go on."` is an action beat and much weaker, and conflating the two is how a
-     * heuristic gets a reputation for confident nonsense.
-     */
-    private fun tagName(context: String): String? {
-        val window = context.take(TAG_WINDOW).lowercase()
-        if (SPEECH_VERBS.none { window.contains(it) }) return null
-        return byName.firstOrNull { (name, _) -> window.contains(name) }?.second
+    /** A manifest character for this name or alias, or null: never a new character. */
+    private fun known(name: String): String? {
+        val folded = name.lowercase()
+        return byName.firstOrNull { (candidate, _) -> candidate == folded }?.second
+            ?: byName.firstOrNull { (candidate, _) -> folded.endsWith(candidate) }?.second
     }
 
     /**
@@ -92,43 +105,28 @@ class Heuristic(
      * women in the room a pronoun narrows the field without choosing, and choosing anyway
      * would be a guess wearing a confidence score. Those go to QUI-009.
      */
-    private fun pronounSpeaker(context: String): String? {
-        val window = context.take(TAG_WINDOW).lowercase()
-        if (SPEECH_VERBS.none { window.contains(it) }) return null
-        val gender = when {
-            PRONOUNS_FEMALE.any { window.containsWord(it) } -> Gender.FEMALE
-            PRONOUNS_MALE.any { window.containsWord(it) } -> Gender.MALE
+    private fun pronounSpeaker(before: String, after: String): String? {
+        val gender = when (Names.tagPronoun(before, after)) {
+            "she" -> Gender.FEMALE
+            "he" -> Gender.MALE
             else -> return null
         }
         return byGender[gender]?.singleOrNull()
     }
 
-    /** A manifest name in a nearby sentence with no speech verb: weaker, and scored so. */
-    private fun actionBeatName(context: String): String? {
-        val window = context.takeLast(BEAT_WINDOW).lowercase()
-        return byName.firstOrNull { (name, _) -> window.contains(name) }?.second
-    }
+    /** A manifest name in the sentence before the quote, with no speech verb: weaker. */
+    private fun actionBeatName(before: String): String? =
+        Names.sentences(before).lastOrNull()
+            ?.let(Names::namesIn)
+            ?.firstNotNullOfOrNull(::known)
 
     private fun result(segment: Segment, speaker: String?, confidence: Double, tier: Tier, why: String) =
         AttributionResult(
             locator = segment.locator, text = segment.text, kind = segment.kind,
             speakerId = speaker, confidence = if (speaker == null) 0.0 else confidence,
-            tier = if (speaker == null && segment.kind == Kind.DIALOGUE) Tier.NARRATOR else tier,
+            tier = tier,
             evidence = why,
         )
-
-    /** Whole-word containment, so "he" does not match inside "the". */
-    private fun String.containsWord(word: String): Boolean {
-        var from = 0
-        while (true) {
-            val at = indexOf(word, from)
-            if (at < 0) return false
-            val beforeOk = at == 0 || !this[at - 1].isLetterOrDigit()
-            val afterOk = at + word.length >= length || !this[at + word.length].isLetterOrDigit()
-            if (beforeOk && afterOk) return true
-            from = at + 1
-        }
-    }
 
     companion object {
         /**
@@ -149,17 +147,5 @@ class Heuristic(
          */
         const val PRONOUN_TAG = 0.85
 
-        /** How far either side of a quotation a speech tag can sit, in characters. */
-        private const val TAG_WINDOW = 60
-        private const val BEAT_WINDOW = 120
-
-        private val SPEECH_VERBS = listOf(
-            "said", "says", "asked", "asks", "replied", "replies", "answered", "answers",
-            "cried", "shouted", "whispered", "murmured", "muttered", "added", "began",
-            "continued", "went on", "observed", "remarked", "insisted", "admitted",
-            "called", "returned", "put in", "demanded", "protested", "agreed",
-        )
-        private val PRONOUNS_FEMALE = listOf("she", "her")
-        private val PRONOUNS_MALE = listOf("he", "him", "his")
     }
 }

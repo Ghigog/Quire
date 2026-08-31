@@ -55,7 +55,7 @@ fun main(args: Array<String>) {
 private fun export(book: File, out: File) {
     val units = Epub.paragraphs(book)
     val roster = Tier1.bootstrapRoster(units)
-    val results = Tier1.attribute(units, roster.names)
+    val results = Tier1.attribute(units, roster)
 
     // Each paragraph is written before its own segments, with its text exactly as the
     // reader will see it. Segment text is trimmed, so rebuilding a paragraph by joining
@@ -124,9 +124,9 @@ private fun score(files: List<File>) {
 private fun transcript(file: File) {
     val labelled = Fixture.load(file)
     val units = labelled.map { it.unit }
-    val roster = Tier1.bootstrapRoster(units).names
-    println("roster (bootstrapped, no model): ${roster.sorted().joinToString(", ")}\n")
-    for (r in Tier1.attribute(units, roster)) {
+    val cast = Tier1.bootstrapRoster(units)
+    println("roster (bootstrapped, no model): ${cast.names.sorted().joinToString(", ")}\n")
+    for (r in Tier1.attribute(units, cast)) {
         val who = r.speakerId ?: if (r.kind == Kind.NARRATION) "—" else "???"
         println("%-10s %-4s %.2f  %-22s %s".format(
             who, r.tier.name.take(4), r.confidence, r.evidence, r.text.take(64)))
@@ -139,7 +139,7 @@ private fun epub(file: File) {
     println("${units.size} paragraphs, ${units.map { it.chapterIndex }.distinct().size} spine items")
     println("roster from speech tags: ${roster.fromTags.keys.sorted().joinToString(", ")}")
     println("roster from adjacency:   ${roster.fromAdjacency.filterValues { it >= Tier1.ADJACENCY_MIN }.keys.sorted().joinToString(", ")}")
-    val results = Tier1.attribute(units, roster.names)
+    val results = Tier1.attribute(units, roster)
     val dialogue = results.filter { it.kind == Kind.DIALOGUE }
     val attributed = dialogue.count { it.speakerId != null }
     println("dialogue spans: ${dialogue.size}, Tier 1 attributed: $attributed " +

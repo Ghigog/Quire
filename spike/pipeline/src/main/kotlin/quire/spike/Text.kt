@@ -18,39 +18,9 @@ object Text {
      * convention for multi-paragraph speech, where the opening quote is repeated and the
      * closing one omitted until the speech ends.
      */
-    fun segment(unit: ParagraphUnit): List<Segment> {
-        val text = unit.text
-        val spans = mutableListOf<Triple<Int, Int, Kind>>() // start, end, kind
-        var i = 0
-        var narrationStart = 0
-        while (i < text.length) {
-            val open = QUOTE_PAIRS.firstOrNull { text[i] == it.first }
-            if (open == null) { i++; continue }
-            // A closing curly quote never opens; a straight quote is ambiguous, so an
-            // apostrophe inside a word is excluded by requiring a non-letter before it.
-            if (i > 0 && text[i - 1].isLetterOrDigit()) { i++; continue }
-            val close = text.indexOf(open.second, startIndex = i + 1)
-            val end = if (close == -1) text.length else close + 1
-            if (narrationStart < i) spans += Triple(narrationStart, i, Kind.NARRATION)
-            spans += Triple(i, end, Kind.DIALOGUE)
-            narrationStart = end
-            i = end
-        }
-        if (narrationStart < text.length) spans += Triple(narrationStart, text.length, Kind.NARRATION)
-        if (spans.isEmpty()) spans += Triple(0, text.length, Kind.NARRATION)
-
-        return spans.mapIndexedNotNull { n, (start, end, kind) ->
-            val body = text.substring(start, end)
-            if (body.isBlank()) return@mapIndexedNotNull null
-            Segment(
-                locator = "${unit.locator}#s$n",
-                text = body.trim(),
-                kind = kind,
-                before = text.substring(0, start),
-                after = text.substring(end),
-            )
-        }
-    }
+    /** Delegates to `core:attribution`, which owns segmentation since QUI-008. */
+    fun segment(unit: ParagraphUnit): List<Segment> =
+        quire.attribution.Segmenter.segment(unit.locator, unit.text)
 
     /** Strip surrounding quote marks from a dialogue segment. */
     fun unquote(s: String): String =

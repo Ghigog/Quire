@@ -6,6 +6,7 @@ plugins {
 repositories { mavenCentral() }
 
 dependencies {
+    implementation("quire:attribution")
     implementation("org.jsoup:jsoup:1.21.1")
     testImplementation(kotlin("test"))
 }

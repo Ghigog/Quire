@@ -58,15 +58,17 @@ object Scorer {
                 val gold = lp.gold.getOrNull(i) ?: return@forEachIndexed
                 if (gold == Fixture.UNKNOWN_LABEL) return@forEachIndexed
                 score.scored++
-                if (pred.speakerId == null) return@forEachIndexed
+                // Bound to a local: AttributionResult lives in core:model now, and Kotlin
+                // will not smart-cast a public property across a module boundary.
+                val predicted = pred.speakerId ?: return@forEachIndexed
                 score.attributed++
                 val bucket = score.byEvidence.getOrPut(pred.evidence) { IntArray(2) }
                 bucket[0]++
-                if (matches(pred.speakerId, gold)) {
+                if (matches(predicted, gold)) {
                     score.correct++
                     bucket[1]++
                 } else {
-                    score.mistakes += "${pred.locator}: predicted ${pred.speakerId}, gold $gold " +
+                    score.mistakes += "${pred.locator}: predicted $predicted, gold $gold " +
                         "(${pred.evidence}) — \"${pred.text.take(48)}\""
                 }
             }

@@ -59,7 +59,8 @@ class HeuristicTest {
         val cast = manifest("Sarah" to Gender.FEMALE)
         val r = speaker(Heuristic(cast), "\"I know,\" said Gregor.")
         assertNull(r.speakerId)
-        assertEquals(Tier.NARRATOR, r.tier)
+        // NONE, not NARRATOR: Tier 1 declined, so QUI-009 should spend the model here.
+        assertEquals(Tier.NONE, r.tier)
         // The manifest the heuristic was handed is the manifest it still has: Gregor was
         // not added as a character, which is the failure mode a looser rule would have.
         assertEquals(listOf("Sarah"), cast.characters.map { it.id })
