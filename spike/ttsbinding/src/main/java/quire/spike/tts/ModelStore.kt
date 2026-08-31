@@ -31,14 +31,30 @@ data class Candidate(
         const val RELEASE_BASE =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
 
-        val all = listOf(
+        /**
+         * The engine, decided. ADR-0002 is accepted: `sherpa-onnx` running Piper
+         * `libritts_r` medium — 904 voices in 92 MB, and between 6x and 23x faster than
+         * every other multi-speaker model in the zoo.
+         */
+        val chosen = Candidate(
+            "piper", "Piper libritts_r (medium, 904 voices)",
+            "vits-piper-en_US-libritts_r-medium", 82_038_311, Kind.VITS,
+        )
+
+        /**
+         * The bake-off's losers, kept for two reasons and no others.
+         *
+         * A device that took part in the bake-off still has some of these on disk — up to
+         * 300 MB of them — and deleting a reader's files without asking is not ours to do,
+         * so they are listed when installed and offer nothing but Delete. And a saved
+         * preference may still name one, which [byId] has to resolve rather than crash on.
+         *
+         * They are not offered for download. That question is closed (ADR-0002 §7, §8).
+         */
+        val retired = listOf(
             Candidate(
                 "kitten", "Kitten nano (fp16)", "kitten-nano-en-v0_1-fp16",
                 26_855_312, Kind.KITTEN,
-            ),
-            Candidate(
-                "piper", "Piper libritts_r (medium, 904 voices)",
-                "vits-piper-en_US-libritts_r-medium", 82_038_311, Kind.VITS,
             ),
             // A single-speaker "low" model. Useless for casting, but it answers the
             // question the libritts_r number cannot: is RTF 0.35 the SoC's limit, or this
@@ -67,6 +83,8 @@ data class Candidate(
                 319_625_534, Kind.KOKORO,
             ),
         )
+
+        val all = listOf(chosen) + retired
 
         fun byId(id: String) = all.firstOrNull { it.id == id }
     }

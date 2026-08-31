@@ -2,6 +2,7 @@ package quire.spike.tts
 
 import android.app.Activity
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -9,6 +10,7 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
 import android.widget.LinearLayout
+import android.view.WindowInsets
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.concurrent.Executors
@@ -33,14 +35,14 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
             setPadding(24, 24, 24, 24)
         }
-        root.addView(heading("Quire TTS bake-off — QUI-017"))
+        root.addView(heading("Quire probe"))
         // Which build this is. The APK filename carries the same stamp, but it does not
         // survive installation, and a device with four probes on it needs to be sure.
         root.addView(body("build ${BuildConfig.BUILD_STAMP}"))
         root.addView(
             body(
-                "Download a candidate, select it, and NeoReader's Read Aloud speaks with it " +
-                    "instead of beeping. Benchmark measures RTF against the 0.15 budget.",
+                "Download the model, select it, and NeoReader's Read Aloud speaks with it " +
+                    "instead of beeping. The engine is decided (ADR-0002): Piper libritts_r.",
             ),
         )
 
@@ -70,7 +72,24 @@ class MainActivity : Activity() {
         log = body("").apply { setTextIsSelectable(true) }
         root.addView(ScrollView(this).apply { addView(log) })
 
-        setContentView(ScrollView(this).apply { addView(root) })
+        val scroller = ScrollView(this).apply {
+            addView(root)
+            // Without this the first lines sit *under* the status bar and are simply not
+            // there to be scrolled to — the title and the build stamp, which are the two
+            // things you look for first. fitsSystemWindows alone was not enough on the
+            // reference device, so the inset is also applied by hand.
+            fitsSystemWindows = true
+            setOnApplyWindowInsetsListener { view, insets ->
+                val top = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    insets.getInsets(WindowInsets.Type.systemBars()).top
+                } else {
+                    @Suppress("DEPRECATION") insets.systemWindowInsetTop
+                }
+                view.setPadding(0, top, 0, 0)
+                insets
+            }
+        }
+        setContentView(scroller)
         refresh()
     }
 
@@ -82,34 +101,49 @@ class MainActivity : Activity() {
     private fun refresh() {
         rows.removeAllViews()
         val selected = Prefs.engineId(this)
-        for (candidate in Candidate.all) {
-            val installed = ModelStore.isInstalled(this, candidate)
-            val mark = if (candidate.id == selected) "◆ " else "  "
-            val size = "%d MB".format(candidate.downloadBytes / 1024 / 1024)
-            rows.addView(body("$mark${candidate.label}  —  $size${if (installed) ", installed" else ""}"))
-            rows.addView(
-                LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    if (!installed) {
-                        addView(button("Download") { download(candidate) })
-                    } else {
+
+        row(Candidate.chosen, selected, retired = false)
+
+        // Losers of the bake-off, shown only while they are still taking up space on this
+        // device. Up to 300 MB of them, and deleting a reader's files unasked is not ours
+        // to do — so they are listed with nothing but Delete, and never offered again.
+        val leftovers = Candidate.retired.filter { ModelStore.isInstalled(this, it) }
+        if (leftovers.isNotEmpty()) {
+            rows.addView(body(""))
+            rows.addView(body("Retired candidates still on this device — ADR-0002 chose Piper:"))
+            for (candidate in leftovers) row(candidate, selected, retired = true)
+        }
+    }
+
+    private fun row(candidate: Candidate, selected: String?, retired: Boolean) {
+        val installed = ModelStore.isInstalled(this, candidate)
+        val mark = if (candidate.id == selected) "◆ " else "  "
+        val size = "%d MB".format(candidate.downloadBytes / 1024 / 1024)
+        rows.addView(body("$mark${candidate.label}  —  $size${if (installed) ", installed" else ""}"))
+        rows.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                if (!installed) {
+                    if (!retired) addView(button("Download") { download(candidate) })
+                } else {
+                    if (!retired) {
                         addView(button("Use this") {
                             Prefs.setEngineId(this@MainActivity, candidate.id)
                             append("selected: ${candidate.label}")
                             refresh()
                         })
                         addView(button("Benchmark") { benchmark(candidate) })
-                        addView(button("Delete") {
-                            ModelStore.uninstall(this@MainActivity, candidate)
-                            if (Prefs.engineId(this@MainActivity) == candidate.id) {
-                                Prefs.setEngineId(this@MainActivity, null)
-                            }
-                            refresh()
-                        })
                     }
-                },
-            )
-        }
+                    addView(button("Delete") {
+                        ModelStore.uninstall(this@MainActivity, candidate)
+                        if (Prefs.engineId(this@MainActivity) == candidate.id) {
+                            Prefs.setEngineId(this@MainActivity, null)
+                        }
+                        refresh()
+                    })
+                }
+            },
+        )
     }
 
     private fun download(candidate: Candidate) {
