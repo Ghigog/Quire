@@ -44,6 +44,8 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
+| QUI-032 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
+| QUI-033 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-032 |
 
 Next free ID: **QUI-031**
 
@@ -3056,3 +3058,192 @@ Scenario: A candidate that fails is reported, not worked around
 ### Worklog
 - _(empty)_
 
+
+---
+
+## QUI-032 — Cast discovery precision on real books
+
+**Status:** In review · **Epic:** Spike · **Owner:** session-visibility-check · **Depends on:** QUI-008
+
+### User story
+
+As a reader who has just imported a novel, I want the cast Quire shows me to be the people
+in the book, so that I trust it enough to press Read Aloud.
+
+### Context (why)
+
+Importing a real novel (*The Witcher*, 2026-08-31) produced a cast of **157 characters**.
+Almost none of them were people. That is the first thing a reader sees after an import, and
+it is the screen the whole product hangs off — a roster that is visibly nonsense makes the
+voices that follow unbelievable before a word is spoken.
+
+Attribution accuracy hid this completely. QUI-028 scored Tier 1 at 58.5% precision on PDNC
+and said nothing about the roster, because invented names are never in speech-tag position:
+they cost nothing on the attribution metric and everything on the screen. The cast needed
+its own number.
+
+Fixtures could not provide it. `fixtures/attribution/*.tsv` is hand-written to exercise the
+rules, so it contains no adverb opening a sentence, no interjection opening a line of
+speech, and none of the density of capitalised nouns real prose carries. PDNC ships
+`character_info.csv` — every character in 28 novels, with aliases and gender — which is
+exactly the ground truth this needs (`docs/prior-art.md` §3; evaluation only, never
+committed).
+
+### Description (what)
+
+`spike/pipeline` gains a `cast` command that scores `Roster.scan` against PDNC's character
+lists: how many of the cast it finds, how much of what it reports is invented, and whether
+the genders it infers are right. Two defects the measurement exposed are fixed in
+`core:attribution`, so a book imported on device reports a cast of plausible size.
+
+### Requirements (how)
+
+- `spike/pipeline`: `Pdnc.cast`, `Pdnc.characters`, and a `cast` subcommand in `Main.kt`.
+  Recall is scored against PDNC's `major` and `intermediate` characters only — a one-line
+  footman does not need his own voice. Name matching reuses the existing word-subset rule.
+- `core/attribution/Names.kt`: `withoutQuotedText`, blanking quoted spans.
+- `core/attribution/Roster.kt`: use it on the adjacency context; retune `ADJACENCY_MIN`.
+- Out of scope: alias merging (`Elizabeth` and `Miss Bennet` still count as two), raising
+  gender coverage, and anything model-based — see QUI-006/QUI-031.
+- No new dependency. PDNC is cloned by the person running the command and never committed.
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: The cast is scored against real novels rather than fixtures
+  Given a local clone of PDNC
+  When `quire-pipeline-spike cast pdnc/data/*` is run
+  Then it reports found, real, precision, recall and gender accuracy per novel and overall
+
+Scenario: A word that opens a line of speech is not admitted as a character
+  Given a paragraph of back-and-forth dialogue with no speech tags
+  When the roster is scanned
+  Then the first word of each quotation is absent from the cast
+
+Scenario: Precision on real prose is measured and improved
+  Given the 28 PDNC novels
+  When the cast is scored before and after this change
+  Then precision rises and both numbers are recorded in the Worklog
+
+Scenario: Recall on the characters that matter is not sacrificed for it
+  Given the same 28 novels
+  When recall over major and intermediate characters is scored
+  Then it stays within 6 points of the pre-change number, and the exact cost is recorded
+```
+
+### Worklog
+
+**2026-08-31 — session-visibility-check**
+
+Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, whole corpus:
+
+| | found | real | precision | recall | gender acc. |
+| --- | --- | --- | --- | --- | --- |
+| before | 2342 | 962 | 41.1% | 88.1% | 88.2% |
+| + quoted text blanked | 1469 | 850 | 57.9% | 84.6% | 89.3% |
+| + `ADJACENCY_MIN` 2 → 8 | **768** | **651** | **84.8%** | **82.3%** | **90.9%** |
+
+Invented characters fell from 1380 to 117 — **49 per novel to 4.2**. Recall over major and
+intermediate characters cost 5.8 points; those are found by their speech tags almost
+without exception, and adjacency was mostly admitting people who are talked *about*.
+
+**Defect 1 — the context around a quotation contains the neighbouring quotation.**
+`Segment.before` and `.after` are the whole rest of the paragraph, so on a line of
+back-and-forth the adjacency scan reads the quote beside it, whose first word is capitalised
+because the speech starts there. `"Absolutely." "And another thing."` reported a character
+called Absolutely. `Names.withoutQuotedText` blanks quoted spans first.
+
+**Defect 2 — two sightings is not corroboration in a novel.** A threshold tuned on
+four-paragraph fixtures is meaningless at 200,000 words. Swept 2→20: the knee is at 8, and
+past it only recall moves. It is a count rather than a rate, so a very short book is
+stricter than intended; nothing in the corpus made that worth fixing.
+
+**One rule was tried and rejected on the evidence.** Requiring a candidate to appear
+mid-sentence somewhere in the book — the position where English does not force a capital —
+looked like the principled discriminator between `Geralt` and `Suddenly`. On top of the
+retuned threshold it *lost*: 84.5% precision and 80.7% recall against 84.8% and 82.3%. It is
+not in the diff.
+
+**The finding that matters more than the fix.** Gender is inferred for only **58.7%** of the
+real cast; the rest are `UNKNOWN`, and `Casting` then falls back to spreading raw speaker
+ids, which picks a voice of arbitrary sex. That is exactly the report from the device — a
+book of men read in women's voices — and it is not a casting bug. When a gender *is*
+inferred it is right 90.9% of the time, so the problem is coverage, not accuracy. Needs its
+own ticket.
+
+Reproduce:
+
+```bash
+git clone --depth 1 https://github.com/Priya22/project-dialogism-novel-corpus.git /tmp/pdnc
+cd spike/pipeline && gradle installDist
+./build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast /tmp/pdnc/data/* 
+```
+
+`gradle test` at the root: 30 tests, all green. Not measured against a PRD §5 SLA — this
+changes what import reports, not what it costs. `In review` rather than `Done`: the number
+that prompted it came off a device, and only a re-import of the same book closes it.
+
+---
+
+## QUI-033 — Gender coverage for the inferred cast
+
+**Status:** Todo · **Epic:** Spike · **Owner:** — · **Depends on:** QUI-032
+
+### User story
+
+As a reader of a book with a mostly male cast, I want the men to sound like men, so that the
+voices carry information instead of contradicting the page.
+
+### Context (why)
+
+QUI-032 measured gender inference across PDNC's 28 novels: when the scan claims a gender it
+is right **90.9%** of the time, but it claims one for only **58.7%** of the real cast. The
+other 41.3% arrive at `Casting` as `Gender.UNKNOWN`, where `candidatesFor` finds no pool and
+`spreadOverIds` picks a voice of arbitrary sex — distinct, but as likely wrong as right.
+
+This is the device report from 2026-08-31 explained: *The Witcher*'s men read in women's
+voices. It is not a casting bug — QUI-011's pools work — it is that most of the cast never
+reaches them. Accuracy is already good enough to ship; coverage is what is missing.
+
+### Description (what)
+
+More of the cast arrives with a gender. Afterwards the same PDNC measurement reports
+materially higher coverage without giving back accuracy, and a book whose characters are
+all one sex is not voiced as a mix.
+
+### Requirements (how)
+
+- `core/attribution/Roster.kt` — the evidence currently counted is one pattern: a pronoun
+  standing in for a name later in the same paragraph, gated by `GENDER_MIN` and
+  `GENDER_MAJORITY`. Candidate sources of more: titles already in `Names.TITLES`
+  (`Mr`/`Mrs`/`Miss`/`Lady`/`Sir` decide it outright), possessives (`Geralt's sword … his`),
+  and pronouns in the paragraph *after* the one that names the character.
+- Retune `GENDER_MIN` and `GENDER_MAJORITY` against the corpus rather than by argument;
+  they were chosen before there was anything to tune them on.
+- `spike/pipeline cast` already reports the `gknown` column. Both numbers move together or
+  the change is not an improvement.
+- Out of scope: what to do with a character who genuinely has no gender in the text, and
+  any model-based inference (QUI-006/QUI-031).
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: Coverage rises without costing accuracy
+  Given the 28 PDNC novels
+  When `quire-pipeline-spike cast pdnc/data/*` is run
+  Then gender coverage is materially above 58.7%
+  And gender accuracy is not below 90.9%
+
+Scenario: A title decides a gender on its own
+  Given a character the book only ever calls "Mrs. Bennet"
+  When the roster is scanned
+  Then she is FEMALE without needing a pronoun
+
+Scenario: A single-sex cast is voiced as one
+  Given a book whose named characters are all men
+  When the cast is voiced
+  Then no character is cast from the female pool
+```
+
+### Worklog
+- _(empty)_
