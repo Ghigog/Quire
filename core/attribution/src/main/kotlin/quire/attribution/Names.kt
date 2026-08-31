@@ -83,6 +83,30 @@ internal object Names {
         }.toList()
     }
 
+    /**
+     * The same text with every quoted span blanked out.
+     *
+     * A segment's `before` and `after` are the *whole* rest of the paragraph, so on a line
+     * of pure back-and-forth they carry the neighbouring quotations — and the first word of
+     * a quotation is capitalised because it begins the speech, not because it is a name.
+     * That is what made `"Dammit." "Quite so."` report a character called Dammit.
+     */
+    fun withoutQuotedText(text: String): String {
+        val out = StringBuilder(text)
+        var i = 0
+        while (i < out.length) {
+            val pair = QUOTE_PAIRS.firstOrNull { it.first == out[i] }
+            if (pair == null) { i++; continue }
+            val close = out.indexOf(pair.second.toString(), i + 1)
+            val end = if (close < 0) out.length else close + 1
+            for (j in i until end) out[j] = ' '
+            i = end
+        }
+        return out.toString()
+    }
+
+    private val QUOTE_PAIRS = listOf('"' to '"', '\u201c' to '\u201d', '\u00ab' to '\u00bb')
+
     /** Trim a raw regex hit down to a plausible name, or null if it is not one. */
     fun clean(raw: String): String? {
         var words = raw.trim().split(Regex("\\s+"))

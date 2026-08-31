@@ -29,11 +29,13 @@ class RosterTest {
         val once = Roster.scan(paragraphs("Sarah set down the cup. \"I know.\""))
         assertTrue("Sarah" !in once.names, "one adjacency should not be enough")
 
-        val twice = Roster.scan(paragraphs(
-            "Sarah set down the cup. \"I know.\"",
-            "Sarah turned to the window. \"And yet.\"",
+        // ADJACENCY_MIN is a measured number, not a chosen one — see its doc comment — so
+        // the test asks for exactly as many sightings as the rule currently demands.
+        val enough = Roster.scan(paragraphs(
+            *(1..Roster.ADJACENCY_MIN).map { "Sarah turned to the window. \"And yet.\"" }
+                .toTypedArray(),
         ))
-        assertTrue("Sarah" in twice.names)
+        assertTrue("Sarah" in enough.names)
     }
 
     @Test

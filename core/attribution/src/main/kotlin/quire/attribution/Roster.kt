@@ -21,8 +21,18 @@ import quire.model.characters.Gender
  */
 object Roster {
 
-    /** A name must sit beside this many quotes before adjacency alone admits it. */
-    const val ADJACENCY_MIN = 2
+    /**
+     * A name must sit beside this many quotes before adjacency alone admits it.
+     *
+     * It was 2, and a real novel imported on 2026-08-31 reported 157 characters. Measured
+     * across PDNC's 28 novels (`spike/pipeline cast`), raising it to 8 takes precision from
+     * 57.9% to 84.8% and costs 2.3 points of recall on the characters PDNC calls major or
+     * intermediate — those are nearly all found by their speech tags anyway, and adjacency
+     * mostly admits people who are talked *about*. Past 8 the curve flattens and only
+     * recall moves. It is a count rather than a rate, so a very short book is stricter than
+     * this number was tuned for; nothing in the corpus made that worth the complexity.
+     */
+    const val ADJACENCY_MIN = 8
 
     /** How many pronoun sightings must agree before a gender is claimed. */
     const val GENDER_MIN = 2
@@ -61,9 +71,12 @@ object Roster {
                 if (tagged != null) {
                     tags.merge(tagged, 1, Int::plus)
                 } else {
+                    // The context either side is the *whole* rest of the paragraph, so on a
+                    // back-and-forth line it carries the neighbouring quotations. Their
+                    // first word is capitalised because speech starts there.
                     val nearby = listOfNotNull(
-                        Names.sentences(segment.before).lastOrNull(),
-                        Names.sentences(segment.after).firstOrNull(),
+                        Names.sentences(Names.withoutQuotedText(segment.before)).lastOrNull(),
+                        Names.sentences(Names.withoutQuotedText(segment.after)).firstOrNull(),
                     ).flatMap(Names::namesIn)
                     for (name in nearby) adjacency.merge(name, 1, Int::plus)
                 }
