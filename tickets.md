@@ -13,14 +13,14 @@ already `In progress`.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | claude-opus-5 | — |
+| QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
-| QUI-018 | Headless pipeline spike | Spike | In progress | claude-opus-5 | — |
+| QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
-| QUI-021 | Dialogue index schema and store | Index | In review | claude-opus-5 | QUI-001 |
-| QUI-022 | Text normalisation and cursor matcher | Index | In review | claude-opus-5 | QUI-021 |
+| QUI-021 | Dialogue index schema and store | Index | In review | quire-setup-docs | QUI-001 |
+| QUI-022 | Text normalisation and cursor matcher | Index | In review | quire-setup-docs | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
@@ -1398,8 +1398,7 @@ candidate model, runs a fixed workload, and reports latency, throughput and peak
 resident memory. The output is three ADRs and a table of numbers.
 
 ### Requirements (how)
-- Owns: `spike/bakeoff/`, `docs/adr/0001-slm-runtime.md`, `docs/adr/0002-tts-engine.md`,
-  `docs/adr/0003-memory-arbitration.md`
+- Owns: `spike/bakeoff/`, `docs/adr/0001-slm-runtime.md`, `docs/adr/0002-tts-engine.md`
 - Target device is the Onyx Boox Note Air5 C (`docs/device-profile.md`).
 - SLM candidates: Llama 3.2 1B and Qwen 2.5 1.5B, Q4_K_M, via `llama.cpp` JNI and via
   ExecuTorch. Measure: load time, peak RSS, and **prompt-eval tokens/s separately from
@@ -1548,7 +1547,7 @@ original bake-off is now QUI-031.
 
 ## QUI-018 — Headless end-to-end pipeline spike
 
-**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** QUI-017 (partial)
+**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017 (partial)
 **PRD:** §3 · **Timebox:** 4 days
 
 > Started ahead of QUI-017 on the Tier 1 half only, which needs no model and therefore no
@@ -1909,7 +1908,7 @@ probe builds: no module in the root build compiles against the Android SDK.
 
 ## QUI-021 — Dialogue index schema and store
 
-**Status:** In review · **Owner:** claude-opus-5 · **Epic:** Index · **Depends on:** QUI-001
+**Status:** In review · **Owner:** quire-setup-docs · **Epic:** Index · **Depends on:** QUI-001
 **PRD:** §2 Phase 1
 
 ### User story
@@ -2025,7 +2024,7 @@ than four repeating sentences, which compress better than a real novel will.
 
 ## QUI-022 — Text normalisation and cursor matcher
 
-**Status:** In review · **Owner:** claude-opus-5 · **Epic:** Index · **Depends on:** QUI-021
+**Status:** In review · **Owner:** quire-setup-docs · **Epic:** Index · **Depends on:** QUI-021
 **PRD:** §2 Phase 2
 
 ### User story
@@ -2462,7 +2461,7 @@ Scenario: A failing app is demoted, not hidden
 
 ## QUI-020 — TTS service registration and NeoReader binding
 
-**Status:** In progress · **Owner:** claude-opus-5 · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** quire-setup-docs · **Epic:** Spike · **Depends on:** —
 **PRD:** §1, §2 Phase 2, §3 · **Timebox:** 2 days
 
 ### User story
