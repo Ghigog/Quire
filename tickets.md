@@ -46,8 +46,11 @@ already `In progress`.
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
 | QUI-032 | Voice descriptor in `characters.json` | Attribution | In review | — | QUI-005 |
 | QUI-033 | Accent: listening test and per-character variants | Spike | Todo | — | QUI-032 |
+| QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
+| QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
+| QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | In review | session-visibility-check | — |
 
-Next free ID: **QUI-034**
+Next free ID: **QUI-037**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -3055,7 +3058,6 @@ Scenario: A candidate that fails is reported, not worked around
 ```
 
 ### Worklog
-- _(empty)_
 
 
 ---
@@ -3121,6 +3123,91 @@ Scenario: An unrecognised source degrades
   Given a character whose voice source is "imported"
   When the manifest is loaded
   Then the source reads as auto and the load does not fail
+**2026-09-02 — session-visibility-check (not claimed; context only)**
+
+[ADR-0008](docs/adr/0008-analysis-runs-on-device.md) puts this ticket on the critical path:
+cloud analysis was costed and rejected, so on-device is the only route to the accuracy the
+product needs, and this bake-off decides whether that route exists.
+
+One thing to carry into the design, because it moves the target by an order of magnitude:
+**do not budget for one model call per line.** ~3,000 unresolved quotations per novel against
+QUI-007's 30-minute budget is ~2 decisions/second on a 750G, which is not reachable. One call
+**per scene** — cast in context, list of speakers returned — amortises nearly all the
+prefill, and is also the better answer for quality, since a model that sees the whole scene
+resolves turn-taking from context rather than guessing line by line. Measure per-scene
+throughput, not per-line.
+
+
+---
+
+## QUI-034 — Cast discovery precision on real books
+
+**Status:** In review · **Epic:** Spike · **Owner:** session-visibility-check · **Depends on:** QUI-008
+
+### User story
+
+As a reader who has just imported a novel, I want the cast Quire shows me to be the people
+in the book, so that I trust it enough to press Read Aloud.
+
+### Context (why)
+
+Importing a real novel (*The Witcher*, 2026-08-31) produced a cast of **157 characters**.
+Almost none of them were people. That is the first thing a reader sees after an import, and
+it is the screen the whole product hangs off — a roster that is visibly nonsense makes the
+voices that follow unbelievable before a word is spoken.
+
+Attribution accuracy hid this completely. QUI-028 scored Tier 1 at 58.5% precision on PDNC
+and said nothing about the roster, because invented names are never in speech-tag position:
+they cost nothing on the attribution metric and everything on the screen. The cast needed
+its own number.
+
+Fixtures could not provide it. `fixtures/attribution/*.tsv` is hand-written to exercise the
+rules, so it contains no adverb opening a sentence, no interjection opening a line of
+speech, and none of the density of capitalised nouns real prose carries. PDNC ships
+`character_info.csv` — every character in 28 novels, with aliases and gender — which is
+exactly the ground truth this needs (`docs/prior-art.md` §3; evaluation only, never
+committed).
+
+### Description (what)
+
+`spike/pipeline` gains a `cast` command that scores `Roster.scan` against PDNC's character
+lists: how many of the cast it finds, how much of what it reports is invented, and whether
+the genders it infers are right. Two defects the measurement exposed are fixed in
+`core:attribution`, so a book imported on device reports a cast of plausible size.
+
+### Requirements (how)
+
+- `spike/pipeline`: `Pdnc.cast`, `Pdnc.characters`, and a `cast` subcommand in `Main.kt`.
+  Recall is scored against PDNC's `major` and `intermediate` characters only — a one-line
+  footman does not need his own voice. Name matching reuses the existing word-subset rule.
+- `core/attribution/Names.kt`: `withoutQuotedText`, blanking quoted spans.
+- `core/attribution/Roster.kt`: use it on the adjacency context; retune `ADJACENCY_MIN`.
+- Out of scope: alias merging (`Elizabeth` and `Miss Bennet` still count as two), raising
+  gender coverage, and anything model-based — see QUI-006/QUI-031.
+- No new dependency. PDNC is cloned by the person running the command and never committed.
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: The cast is scored against real novels rather than fixtures
+  Given a local clone of PDNC
+  When `quire-pipeline-spike cast pdnc/data/*` is run
+  Then it reports found, real, precision, recall and gender accuracy per novel and overall
+
+Scenario: A word that opens a line of speech is not admitted as a character
+  Given a paragraph of back-and-forth dialogue with no speech tags
+  When the roster is scanned
+  Then the first word of each quotation is absent from the cast
+
+Scenario: Precision on real prose is measured and improved
+  Given the 28 PDNC novels
+  When the cast is scored before and after this change
+  Then precision rises and both numbers are recorded in the Worklog
+
+Scenario: Recall on the characters that matter is not sacrificed for it
+  Given the same 28 novels
+  When recall over major and intermediate characters is scored
+  Then it stays within 6 points of the pre-change number, and the exact cost is recorded
 ```
 
 ### Worklog
@@ -3225,3 +3312,265 @@ Scenario: The per-character cost is known
 
 ### Worklog
 - _(empty)_
+**2026-08-31 — session-visibility-check**
+
+Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, whole corpus:
+
+| | found | real | precision | recall | gender acc. |
+| --- | --- | --- | --- | --- | --- |
+| before | 2342 | 962 | 41.1% | 88.1% | 88.2% |
+| + quoted text blanked | 1469 | 850 | 57.9% | 84.6% | 89.3% |
+| + `ADJACENCY_MIN` 2 → 8 | **768** | **651** | **84.8%** | **82.3%** | **90.9%** |
+
+Invented characters fell from 1380 to 117 — **49 per novel to 4.2**. Recall over major and
+intermediate characters cost 5.8 points; those are found by their speech tags almost
+without exception, and adjacency was mostly admitting people who are talked *about*.
+
+**Defect 1 — the context around a quotation contains the neighbouring quotation.**
+`Segment.before` and `.after` are the whole rest of the paragraph, so on a line of
+back-and-forth the adjacency scan reads the quote beside it, whose first word is capitalised
+because the speech starts there. `"Absolutely." "And another thing."` reported a character
+called Absolutely. `Names.withoutQuotedText` blanks quoted spans first.
+
+**Defect 2 — two sightings is not corroboration in a novel.** A threshold tuned on
+four-paragraph fixtures is meaningless at 200,000 words. Swept 2→20: the knee is at 8, and
+past it only recall moves. It is a count rather than a rate, so a very short book is
+stricter than intended; nothing in the corpus made that worth fixing.
+
+**One rule was tried and rejected on the evidence.** Requiring a candidate to appear
+mid-sentence somewhere in the book — the position where English does not force a capital —
+looked like the principled discriminator between `Geralt` and `Suddenly`. On top of the
+retuned threshold it *lost*: 84.5% precision and 80.7% recall against 84.8% and 82.3%. It is
+not in the diff.
+
+**The finding that matters more than the fix.** Gender is inferred for only **58.7%** of the
+real cast; the rest are `UNKNOWN`, and `Casting` then falls back to spreading raw speaker
+ids, which picks a voice of arbitrary sex. That is exactly the report from the device — a
+book of men read in women's voices — and it is not a casting bug. When a gender *is*
+inferred it is right 90.9% of the time, so the problem is coverage, not accuracy. Needs its
+own ticket.
+
+Reproduce:
+
+```bash
+git clone --depth 1 https://github.com/Priya22/project-dialogism-novel-corpus.git /tmp/pdnc
+cd spike/pipeline && gradle installDist
+./build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast /tmp/pdnc/data/* 
+```
+
+`gradle test` at the root: 30 tests, all green. Not measured against a PRD §5 SLA — this
+changes what import reports, not what it costs. `In review` rather than `Done`: the number
+that prompted it came off a device, and only a re-import of the same book closes it.
+
+---
+
+## QUI-035 — Gender coverage for the inferred cast
+
+**Status:** Todo · **Epic:** Spike · **Owner:** — · **Depends on:** QUI-034
+
+### User story
+
+As a reader of a book with a mostly male cast, I want the men to sound like men, so that the
+voices carry information instead of contradicting the page.
+
+### Context (why)
+
+QUI-034 measured gender inference across PDNC's 28 novels: when the scan claims a gender it
+is right **90.9%** of the time, but it claims one for only **58.7%** of the real cast. The
+other 41.3% arrive at `Casting` as `Gender.UNKNOWN`, where `candidatesFor` finds no pool and
+`spreadOverIds` picks a voice of arbitrary sex — distinct, but as likely wrong as right.
+
+This is the device report from 2026-08-31 explained: *The Witcher*'s men read in women's
+voices. It is not a casting bug — QUI-011's pools work — it is that most of the cast never
+reaches them. Accuracy is already good enough to ship; coverage is what is missing.
+
+### Description (what)
+
+More of the cast arrives with a gender. Afterwards the same PDNC measurement reports
+materially higher coverage without giving back accuracy, and a book whose characters are
+all one sex is not voiced as a mix.
+
+### Requirements (how)
+
+- `core/attribution/Roster.kt` — the evidence currently counted is one pattern: a pronoun
+  standing in for a name later in the same paragraph, gated by `GENDER_MIN` and
+  `GENDER_MAJORITY`. Candidate sources of more: titles already in `Names.TITLES`
+  (`Mr`/`Mrs`/`Miss`/`Lady`/`Sir` decide it outright), possessives (`Geralt's sword … his`),
+  and pronouns in the paragraph *after* the one that names the character.
+- Retune `GENDER_MIN` and `GENDER_MAJORITY` against the corpus rather than by argument;
+  they were chosen before there was anything to tune them on.
+- `spike/pipeline cast` already reports the `gknown` column. Both numbers move together or
+  the change is not an improvement.
+- Out of scope: what to do with a character who genuinely has no gender in the text, and
+  any model-based inference (QUI-006/QUI-031).
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: Coverage rises without costing accuracy
+  Given the 28 PDNC novels
+  When `quire-pipeline-spike cast pdnc/data/*` is run
+  Then gender coverage is materially above 58.7%
+  And gender accuracy is not below 90.9%
+
+Scenario: A title decides a gender on its own
+  Given a character the book only ever calls "Mrs. Bennet"
+  When the roster is scanned
+  Then she is FEMALE without needing a pronoun
+
+Scenario: A single-sex cast is voiced as one
+  Given a book whose named characters are all men
+  When the cast is voiced
+  Then no character is cast from the female pool
+```
+
+### Worklog
+
+**2026-09-02 — session-visibility-check (not claimed; read before starting)**
+
+**This ticket's framing may be obsolete.** It exists because `Casting` uses gender to select
+a *pool* of speakers, so a character with no gender gets a voice of arbitrary sex. Under
+[ADR-0009](docs/adr/0009-voices-are-generated.md) there are no pools: a voice is generated
+from a description, and gender becomes one input to a pitch and timbre target rather than a
+selector.
+
+The underlying problem is real either way — 58.7% coverage means most of the cast reaches
+casting with nothing said about how they sound. But "infer a binary gender for more of the
+cast" may be the wrong shape of fix, and "infer a pitch and timbre target for more of the
+cast" the right one, which would subsume this ticket. Settle that before writing code.
+
+---
+
+## QUI-036 — Voice foundry: generate a voice, don't pick one
+
+**Status:** In review · **Epic:** Spike · **Owner:** session-visibility-check · **Depends on:** —
+
+### User story
+
+As a reader, I want each character to have a voice built for *them* — their pitch, their
+pace, ideally their accent — so that the cast sounds like people rather than like a list of
+strangers reading in turn.
+
+### Context (why)
+
+The product has been assuming a character gets *assigned* one of the engine's 904 speakers
+(QUI-011, `spike/slice/Casting.kt`). That caps the cast at 904 fixed voices, none of them
+chosen for the character, and it makes the analysis output an opaque integer.
+
+The intent stated on 2026-09-02 is different and stronger: the app should read the book,
+form an idea of what each character *sounds like*, and then **make** that voice. This
+ticket asks whether the engine ADR-0002 already chose can do that at all, before anything
+is designed around the assumption.
+
+Answering it first matters because a "no" would reopen ADR-0002.
+
+### Description (what)
+
+A host probe that patches the shipped Piper model and reports what comes out, plus the
+finding written down either way. Nothing ships from this ticket; it decides whether the
+foundry is a real design or a dead end.
+
+### Requirements (how)
+
+- `spike/hostbench/voicelab.py`, alongside `bench.py`, reusing its `load()` and
+  `voiceprofile.median_f0` so the numbers are comparable with the F0 fixture.
+- Two probes: `blend` (speaker-embedding interpolation) and `accent` (espeak variant).
+- Every comparison repeated and reported against its own spread — see the Worklog.
+- No new dependency beyond `onnx`, host-only, never shipped. Patched models are written
+  under `spike/hostbench/models/`, which is gitignored.
+- Out of scope: choosing what a character should sound like (that is the analysis, QUI-006
+  / QUI-035), the manifest schema change, and anything on the device.
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: A voice that was never trained can be synthesised
+  Given the shipped libritts_r model
+  When a row of the speaker table is replaced with an interpolation of two speakers
+  Then the model produces well-formed speech at that row
+  And its median F0 lies between the two parents by more than the run-to-run spread
+
+Scenario: The stochastic baseline is established before any difference is claimed
+  Given the same speaker and the same sentence
+  When synthesis is repeated
+  Then the spread between identical runs is measured and printed
+  And no difference smaller than that spread is reported as a finding
+
+Scenario: Whether accent is reachable is answered with evidence
+  Given the phonemiser variant patched in the model metadata
+  When the same speaker is synthesised across English variants
+  Then any variant whose phoneme stream differs is identified against the noise floor
+  And the limits of the probe are stated rather than implied
+```
+
+### Worklog
+
+**2026-09-02 — session-visibility-check**
+
+**Yes, and it is cheaper than expected.** Both levers are editable fields inside the model
+file. No second model, no new runtime, no cloud, nothing added to the 450 MB footprint.
+
+**Timbre.** `emb_g.weight` is a `[904, 512]` float initializer in the ONNX graph — the
+speaker lookup table, 1.8 MB of the 92 MB model. **A voice is 512 floats: 2 KB.** Writing
+an untrained row and addressing it by `sid` produces working speech:
+
+```
+control — spk659 repeated 5x: F0 116.5 Hz, sd 2.16 Hz
+
+real spk659 (male)      116.7        blend t=0.00 (invented)   111.4
+real spk192 (female)    195.1        blend t=0.25 (invented)   125.3
+                                     blend t=0.50 (invented)   154.2
+                                     blend t=0.75 (invented)   173.6
+                                     blend t=1.00 (invented)   200.5
+```
+
+Endpoints land on the parents; the invented middle moves monotonically in steps of 14–29 Hz
+against a 2.16 Hz noise floor. Linear interpolation only reaches the line between two
+speakers — the space is 512-dimensional with 904 anchors, so this is the crudest possible
+use of it.
+
+**Accent lives in the phonemiser, not the speaker vector.** The model is `en-US` and the
+espeak-ng variant is read from the ONNX `metadata_props["voice"]`. Note the trap: the
+model's own `.onnx.json` carries an `espeak.voice` field that **sherpa-onnx does not read**
+— patching it changes nothing and looks like the whole idea failing. The bundled
+`espeak-ng-data` (19 MB, already shipping) contains `en-GB-x-rp`, `en-GB-scotland`,
+`en-GB-x-gbclan` (Lancashire), `en-GB-x-gbcwmd` (West Midlands), `en-029` (Caribbean) and
+`en-US-nyc`. Patched, they reach the model:
+
+| espeak voice | mean s | sd | vs en-US |
+| --- | --- | --- | --- |
+| en-US | 4.28 | 0.25 | — |
+| en-GB-x-rp | 4.32 | 0.25 | +0.03s (0.1 sd) |
+| **en-GB-scotland** | 5.67 | 0.44 | **+1.39s (3.9 sd)** |
+| en-GB-x-gbclan | 4.17 | 0.24 | −0.11s (0.4 sd) |
+| en-GB-x-gbcwmd | 4.40 | 0.33 | +0.12s (0.4 sd) |
+| **en-029** | 5.45 | 0.51 | **+1.17s (2.9 sd)** |
+| en-US-nyc | 4.10 | 0.18 | −0.18s (0.8 sd) |
+
+**A wrong result, recorded because it is the instructive part.** The first version compared
+one waveform per accent and found every variant "differed" at rms ~0.14. The control found
+en-US differs *from itself* by rms 0.149 — `noise_scale` and `noise_w` are both 0.333, so
+Piper's duration and waveform are stochastic per call. The single-shot A/B could not have
+returned anything else. Everything above is repeated 10× and quoted against its own spread.
+
+**What is not established.** Nothing here was listened to. F0 and duration prove the audio
+is well-formed and that the phoneme stream genuinely changed; they cannot hear whether a
+blended embedding sounds like a person or like mush, nor whether `en-GB-scotland` phonemes
+through an `en-US`-trained model sound Scottish or merely wrong — that combination is
+out-of-distribution for the model and is the likeliest place for this to fall down. Duration
+is also blind to RP and Lancashire, which differ in vowel quality rather than phoneme count;
+their null rows above mean "this probe cannot see it", not "nothing happened".
+
+**This is why the status is `In review` and not `Done`.** It needs an ear on the reference
+device. Two follow-ups it justifies, neither started: a `VoiceSpec` in the character
+manifest so the analysis records *what a character should sound like* rather than a speaker
+integer, and a foundry that realises a spec — today by nearest-neighbour plus blending plus
+`length_scale` for pace, later by better use of the 512 dimensions.
+
+Reproduce:
+
+```bash
+cd spike/hostbench && ./fetch-models.sh
+python3 voicelab.py blend
+python3 voicelab.py accent
+```

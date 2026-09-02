@@ -112,6 +112,7 @@ because it does.
 /tickets.md           ← the backlog and the single source of truth for work in flight
 /docs/PRD.md          ← the product requirement document
 /docs/adr/            ← architecture decision records (one file per decision)
+/docs/handoff.md      ← the state of the thinking: the frame, the open questions
 /docs/schema/         ← frozen data contracts (characters.json), the fan-out seams of §2.3
 /docs/architecture.md ← how the pipeline actually fits together (kept in sync with code)
 /docs/device-profile.md ← the reference device and what it forces on the design

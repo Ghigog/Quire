@@ -302,10 +302,14 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
 2. **Editions.** Two EPUBs of the same novel differ in whitespace, hyphenation and
    footnotes. How far normalisation carries across editions is unmeasured; worst case the
    user must index the exact file they read.
-3. ~~**Voice pool size.**~~ **Answered 2026-08-29 — ADR-0002 accepted.** Piper
-   `libritts_r` medium carries **904 speakers in one 92 MB model**, so casting is an
-   integer lookup against a single resident engine and cast size costs nothing in memory.
-   QUI-011 gets simpler than planned.
+3. ~~**Voice pool size.**~~ **Answered twice, and the second answer replaces the first.**
+   2026-08-29, ADR-0002: Piper `libritts_r` medium carries **904 speakers in one 92 MB
+   model**, so casting is an integer lookup against a single resident engine. 2026-09-02,
+   [ADR-0009](adr/0009-voices-are-generated.md): the pool is not a pool. `emb_g.weight` is
+   an editable `[904, 512]` table in the ONNX graph — **a voice is 512 floats** — and an
+   untrained row synthesises cleanly, so a character's voice is *generated* from a
+   description rather than picked. QUI-011 does not get simpler; it changes shape, from
+   pool selection to spec realisation.
 4. **Scene boundaries.** No longer only a tie-breaking nicety: ADR-0006 makes the scene the
    unit the model is prompted with, so segmentation is on the critical path rather than
    deferred. Chapter breaks, scene-break markup and blank-line runs are the cheap signals;
@@ -319,7 +323,16 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
    Unindexed books, PDFs included, fall through to the narrator and Quire behaves as an
    ordinary TTS engine. Correct failure shape, silent about it. Explicitly out of scope
    until the main path works well.
-7. **How far does attribution generalise?** Accuracy figures in the literature are on
+7. **Does a generated voice sound like a person?** QUI-034 proved the mechanism and
+   measured nothing about quality — no one has listened. A blended embedding could be a
+   plausible new speaker or an averaged mush, and F0 cannot tell them apart. The same
+   question, harder, for accent: Scots phonemes through an `en-US`-trained model are
+   out-of-distribution by construction. Both need an ear on the reference device, and both
+   gate [ADR-0009](adr/0009-voices-are-generated.md).
+8. **How do you get from a description to 512 floats?** The unsolved half of the foundry.
+   `fixtures/voices/libritts_r-f0.tsv` gives one measured axis for all 904 speakers; a
+   searchable space needs more. See [`handoff.md`](handoff.md) §5.
+9. **How far does attribution generalise?** Accuracy figures in the literature are on
    PDNC's domain — 22 English novels, mostly literary fiction. Translated prose,
    action-beat-heavy genre fiction and first-person narration are all under-represented,
    and a reader's library is not a benchmark. QUI-028 measures out-of-domain accuracy

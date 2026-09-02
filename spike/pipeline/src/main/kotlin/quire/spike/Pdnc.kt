@@ -1,6 +1,8 @@
 package quire.spike
 
 import java.io.File
+import quire.attribution.Roster
+import quire.model.characters.Gender
 
 /**
  * Scores Tier 1 against the Project Dialogism Novel Corpus (QUI-028, QUI-018).
@@ -77,5 +79,101 @@ object Pdnc {
             .filter { it.isNotBlank() }.toSet()
         if (p.isEmpty() || g.isEmpty()) return false
         return p == g || p.containsAll(g) || g.containsAll(p)
+    }
+
+    // ---- cast discovery (QUI-032) ------------------------------------------------
+
+    /** One PDNC character: every name the novel calls them by, and their gender. */
+    data class GoldCharacter(
+        val mainName: String,
+        val aliases: Set<String>,
+        val gender: String,
+        val category: String,
+    )
+
+    data class CastScore(
+        val novel: String,
+        val found: Int,
+        val real: Int,
+        val junk: List<String>,
+        val expected: Int,
+        val recalled: Int,
+        val genderScored: Int,
+        val genderRight: Int,
+        val genderMissing: Int,
+    ) {
+        /** Share of real characters the scan dared assign a gender to at all. */
+        val genderCoverage get() =
+            if (real == 0) 0.0 else (real - genderMissing) * 100.0 / real
+        val precision get() = if (found == 0) 0.0 else real * 100.0 / found
+        val recall get() = if (expected == 0) 0.0 else recalled * 100.0 / expected
+        val genderAccuracy get() = if (genderScored == 0) 0.0 else genderRight * 100.0 / genderScored
+    }
+
+    fun characters(novelDir: File): List<GoldCharacter> =
+        Csv.parse(File(novelDir, "character_info.csv").readText()).mapNotNull { row ->
+            val main = row["Main Name"]?.trim().orEmpty()
+            if (main.isEmpty()) return@mapNotNull null
+            // The Aliases column holds a Python set or list literal.
+            val aliases = Regex("'([^']*)'").findAll(row["Aliases"].orEmpty())
+                .map { it.groupValues[1] }.filter { it.isNotBlank() }.toSet()
+            GoldCharacter(
+                mainName = main,
+                aliases = aliases + main,
+                gender = row["Gender"]?.trim().orEmpty(),
+                category = row["Category"]?.trim().orEmpty(),
+            )
+        }
+
+    /**
+     * Score the roster itself, rather than what it attributes.
+     *
+     * A cast is the first thing a reader sees after an import, and a wrong one is visible
+     * in a way a wrong attribution is not: the app said the book has 157 people in it.
+     * Recall is measured against the characters PDNC calls major or intermediate — a
+     * one-line footman does not need his own voice, and counting him as a miss would
+     * flatter nothing.
+     */
+    fun cast(novelDir: File): CastScore {
+        val (paragraphs, _) = load(novelDir)
+        val gold = characters(novelDir)
+        val scan = Roster.scan(paragraphs.map { it.locator to it.text })
+        val manifest = Roster.manifest(scan, novelDir.name, 0L)
+
+        val junk = mutableListOf<String>()
+        var real = 0
+        var genderScored = 0
+        var genderRight = 0
+        var genderMissing = 0
+        val hit = mutableSetOf<String>()
+        for (character in manifest.characters) {
+            val match = gold.firstOrNull { g -> g.aliases.any { matches(character.id, it) } }
+            if (match == null) { junk += character.id; continue }
+            real++
+            hit += match.mainName
+            val expected = when (match.gender) {
+                "M" -> Gender.MALE
+                "F" -> Gender.FEMALE
+                else -> null
+            }
+            if (character.gender == Gender.UNKNOWN) genderMissing++
+            if (expected != null && character.gender != Gender.UNKNOWN) {
+                genderScored++
+                if (character.gender == expected) genderRight++
+            }
+        }
+
+        val wanted = gold.filter { it.category == "major" || it.category == "intermediate" }
+        return CastScore(
+            novel = novelDir.name,
+            found = manifest.characters.size,
+            real = real,
+            junk = junk,
+            expected = wanted.size,
+            recalled = wanted.count { it.mainName in hit },
+            genderScored = genderScored,
+            genderRight = genderRight,
+            genderMissing = genderMissing,
+        )
     }
 }

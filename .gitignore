@@ -3,6 +3,8 @@ build/
 local.properties
 *.iml
 .idea/
+__pycache__/
+*.pyc
 spike/ttsbinding/libs/
 spike/hostbench/models/
 spike/ttsbinding/src/main/assets/

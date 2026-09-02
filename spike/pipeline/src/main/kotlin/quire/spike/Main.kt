@@ -14,6 +14,10 @@ quire-pipeline-spike (QUI-018)
   epub <book.epub>            attribute a real book and print the same transcript
   pdnc <pdnc/data/Novel>...   score Tier 1 against PDNC, split by quotation type
                               add --no-beats to disable the action-beat rule
+  cast <pdnc/data/Novel>...   score the roster itself: how much of the cast it finds,
+                              how much of it is junk, and whether the genders are right
+                              (gknown: the share it dared assign a gender at all)
+                              add --junk to list the invented characters
   export <book.epub> <out.tsv>  attribute a real book and write the segments for
                               spike/indexer to turn into a dialogue index
 
@@ -38,6 +42,7 @@ fun main(args: Array<String>) {
         "roster" -> roster(files)
         "epub" -> epub(files.first())
         "pdnc" -> pdnc(files)
+        "cast" -> cast(files, verbose = "--junk" in flags)
         "export" -> export(files[0], files.getOrElse(1) { File("attributed.tsv") })
         else -> { println(USAGE.trim()); exitProcess(2) }
     }
@@ -104,6 +109,40 @@ private fun export(book: File, out: File) {
     println()
     println("Tier 1 only. QUI-028 measured it at 58.5%% precision on PDNC, so expect a")
     println("meaningful share of these to be wrong -- which is what listening is for.")
+}
+
+/**
+ * How good is the cast we show the reader?
+ *
+ * Attribution accuracy says nothing about this: a roster can be 90% junk and still get
+ * every tagged line right, because the junk is never in tag position. It is the number the
+ * reader actually sees, so it gets measured on real novels rather than on fixtures written
+ * to exercise the rules.
+ */
+private fun cast(dirs: List<File>, verbose: Boolean) {
+    println("Cast discovery vs PDNC character_info.csv\n")
+    println("%-28s %6s %6s %6s %6s %8s %8s".format(
+        "novel", "found", "real", "prec", "recall", "gender", "gknown"))
+    var found = 0; var real = 0; var expected = 0; var recalled = 0
+    var genderScored = 0; var genderRight = 0; var genderMissing = 0
+    for (dir in dirs) {
+        val s = Pdnc.cast(dir)
+        found += s.found; real += s.real; expected += s.expected; recalled += s.recalled
+        genderScored += s.genderScored; genderRight += s.genderRight
+        genderMissing += s.genderMissing
+        println("%-28s %6d %6d %5.1f%% %5.1f%% %7.1f%% %7.1f%%".format(
+            s.novel.take(28), s.found, s.real, s.precision, s.recall,
+            s.genderAccuracy, s.genderCoverage))
+        if (verbose && s.junk.isNotEmpty()) println("    junk: " + s.junk.joinToString(", "))
+    }
+    if (dirs.size > 1) {
+        println("%-28s %6d %6d %5.1f%% %5.1f%% %7.1f%% %7.1f%%".format(
+            "ALL", found, real,
+            if (found == 0) 0.0 else real * 100.0 / found,
+            if (expected == 0) 0.0 else recalled * 100.0 / expected,
+            if (genderScored == 0) 0.0 else genderRight * 100.0 / genderScored,
+            if (real == 0) 0.0 else (real - genderMissing) * 100.0 / real))
+    }
 }
 
 private fun pct(d: Double) = "%.1f%%".format(d * 100)

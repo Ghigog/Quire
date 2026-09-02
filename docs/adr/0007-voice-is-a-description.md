@@ -4,6 +4,8 @@
 **Date:** 2026-09-02
 **Ticket:** QUI-032, QUI-033
 **Deciders:** dylangrowcoot, local-model-voice-accents
+**Superseded in part by:** [ADR-0009](0009-voices-are-generated.md), which shows the speaker table is writable, so a
+voice need not be one of the 904 at all. Read them together.
 
 ## Context
 
