@@ -3057,7 +3057,20 @@ Scenario: A candidate that fails is reported, not worked around
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-02 — session-visibility-check (not claimed; context only)**
+
+[ADR-0005](docs/adr/0005-analysis-runs-on-device.md) puts this ticket on the critical path:
+cloud analysis was costed and rejected, so on-device is the only route to the accuracy the
+product needs, and this bake-off decides whether that route exists.
+
+One thing to carry into the design, because it moves the target by an order of magnitude:
+**do not budget for one model call per line.** ~3,000 unresolved quotations per novel against
+QUI-007's 30-minute budget is ~2 decisions/second on a 750G, which is not reachable. One call
+**per scene** — cast in context, list of speakers returned — amortises nearly all the
+prefill, and is also the better answer for quality, since a model that sees the whole scene
+resolves turn-taking from context rather than guessing line by line. Measure per-scene
+throughput, not per-line.
 
 
 ---
@@ -3247,7 +3260,19 @@ Scenario: A single-sex cast is voiced as one
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-02 — session-visibility-check (not claimed; read before starting)**
+
+**This ticket's framing may be obsolete.** It exists because `Casting` uses gender to select
+a *pool* of speakers, so a character with no gender gets a voice of arbitrary sex. Under
+[ADR-0006](docs/adr/0006-voices-are-generated.md) there are no pools: a voice is generated
+from a description, and gender becomes one input to a pitch and timbre target rather than a
+selector.
+
+The underlying problem is real either way — 58.7% coverage means most of the cast reaches
+casting with nothing said about how they sound. But "infer a binary gender for more of the
+cast" may be the wrong shape of fix, and "infer a pitch and timbre target for more of the
+cast" the right one, which would subsume this ticket. Settle that before writing code.
 
 ---
 
