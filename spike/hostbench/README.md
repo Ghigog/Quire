@@ -79,3 +79,36 @@ the Piper runs.
 - Speaker id is the midpoint of the model's range, not 0. Adjacent ids in `libritts_r` are
   neighbouring readers from one corpus and sound alike — the mistake the first device test
   made.
+
+## `voicelab.py` — inventing a voice instead of picking one (QUI-034)
+
+`bench.py` asks which engine to ship. `voicelab.py` asks a different question: whether the
+engine we shipped can produce a voice that is not one of its 904 speakers.
+
+Both levers turned out to be editable fields inside the model file, needing no new runtime:
+
+- **Timbre** — `emb_g.weight` is a `[904, 512]` initializer in the ONNX graph. A voice is
+  512 floats, 2 KB. Writing a row that was never trained produces a working voice.
+- **Accent** — the espeak-ng variant lives in the ONNX `metadata_props["voice"]`. The
+  model's `.onnx.json` is **not read by sherpa-onnx**; patching it changes nothing, which
+  is worth knowing before you spend an afternoon on it as this file's author did.
+
+```bash
+./fetch-models.sh
+python3 voicelab.py blend     # interpolate two speakers, measure the pitch of the result
+python3 voicelab.py accent    # swap the phonemiser, measure whether it reaches the model
+```
+
+### The measurement trap in this one
+
+Piper is stochastic — `noise_scale` and `noise_w` are both 0.333 — so two *identical* calls
+differ by rms ~0.15 and by ±10k samples. The first version of this probe compared one
+waveform per accent and duly found that every variant "differed"; the control found that
+en-US differs from itself by the same amount. Nothing here is single-shot: every comparison
+is repeated and quoted against its own spread, and `blend` prints the control before the
+result.
+
+Duration also only sees accents that change how many phonemes a word has. Scots (+1.4 s,
+3.9 sd) and Caribbean (+1.2 s, 2.9 sd) clear the noise; RP and Lancashire do not, because
+they differ in vowel *quality* and rhoticity rather than phoneme count. That is this
+probe's blind spot, not a null result — it takes an ear on the device to settle.

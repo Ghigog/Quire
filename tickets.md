@@ -46,6 +46,7 @@ already `In progress`.
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
 | QUI-032 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
 | QUI-033 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-032 |
+| QUI-034 | Voice foundry: generate a voice, don't pick one | Spike | In review | session-visibility-check | — |
 
 Next free ID: **QUI-031**
 
@@ -3247,3 +3248,139 @@ Scenario: A single-sex cast is voiced as one
 
 ### Worklog
 - _(empty)_
+
+---
+
+## QUI-034 — Voice foundry: generate a voice, don't pick one
+
+**Status:** In review · **Epic:** Spike · **Owner:** session-visibility-check · **Depends on:** —
+
+### User story
+
+As a reader, I want each character to have a voice built for *them* — their pitch, their
+pace, ideally their accent — so that the cast sounds like people rather than like a list of
+strangers reading in turn.
+
+### Context (why)
+
+The product has been assuming a character gets *assigned* one of the engine's 904 speakers
+(QUI-011, `spike/slice/Casting.kt`). That caps the cast at 904 fixed voices, none of them
+chosen for the character, and it makes the analysis output an opaque integer.
+
+The intent stated on 2026-09-02 is different and stronger: the app should read the book,
+form an idea of what each character *sounds like*, and then **make** that voice. This
+ticket asks whether the engine ADR-0002 already chose can do that at all, before anything
+is designed around the assumption.
+
+Answering it first matters because a "no" would reopen ADR-0002.
+
+### Description (what)
+
+A host probe that patches the shipped Piper model and reports what comes out, plus the
+finding written down either way. Nothing ships from this ticket; it decides whether the
+foundry is a real design or a dead end.
+
+### Requirements (how)
+
+- `spike/hostbench/voicelab.py`, alongside `bench.py`, reusing its `load()` and
+  `voiceprofile.median_f0` so the numbers are comparable with the F0 fixture.
+- Two probes: `blend` (speaker-embedding interpolation) and `accent` (espeak variant).
+- Every comparison repeated and reported against its own spread — see the Worklog.
+- No new dependency beyond `onnx`, host-only, never shipped. Patched models are written
+  under `spike/hostbench/models/`, which is gitignored.
+- Out of scope: choosing what a character should sound like (that is the analysis, QUI-006
+  / QUI-033), the manifest schema change, and anything on the device.
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: A voice that was never trained can be synthesised
+  Given the shipped libritts_r model
+  When a row of the speaker table is replaced with an interpolation of two speakers
+  Then the model produces well-formed speech at that row
+  And its median F0 lies between the two parents by more than the run-to-run spread
+
+Scenario: The stochastic baseline is established before any difference is claimed
+  Given the same speaker and the same sentence
+  When synthesis is repeated
+  Then the spread between identical runs is measured and printed
+  And no difference smaller than that spread is reported as a finding
+
+Scenario: Whether accent is reachable is answered with evidence
+  Given the phonemiser variant patched in the model metadata
+  When the same speaker is synthesised across English variants
+  Then any variant whose phoneme stream differs is identified against the noise floor
+  And the limits of the probe are stated rather than implied
+```
+
+### Worklog
+
+**2026-09-02 — session-visibility-check**
+
+**Yes, and it is cheaper than expected.** Both levers are editable fields inside the model
+file. No second model, no new runtime, no cloud, nothing added to the 450 MB footprint.
+
+**Timbre.** `emb_g.weight` is a `[904, 512]` float initializer in the ONNX graph — the
+speaker lookup table, 1.8 MB of the 92 MB model. **A voice is 512 floats: 2 KB.** Writing
+an untrained row and addressing it by `sid` produces working speech:
+
+```
+control — spk659 repeated 5x: F0 116.5 Hz, sd 2.16 Hz
+
+real spk659 (male)      116.7        blend t=0.00 (invented)   111.4
+real spk192 (female)    195.1        blend t=0.25 (invented)   125.3
+                                     blend t=0.50 (invented)   154.2
+                                     blend t=0.75 (invented)   173.6
+                                     blend t=1.00 (invented)   200.5
+```
+
+Endpoints land on the parents; the invented middle moves monotonically in steps of 14–29 Hz
+against a 2.16 Hz noise floor. Linear interpolation only reaches the line between two
+speakers — the space is 512-dimensional with 904 anchors, so this is the crudest possible
+use of it.
+
+**Accent lives in the phonemiser, not the speaker vector.** The model is `en-US` and the
+espeak-ng variant is read from the ONNX `metadata_props["voice"]`. Note the trap: the
+model's own `.onnx.json` carries an `espeak.voice` field that **sherpa-onnx does not read**
+— patching it changes nothing and looks like the whole idea failing. The bundled
+`espeak-ng-data` (19 MB, already shipping) contains `en-GB-x-rp`, `en-GB-scotland`,
+`en-GB-x-gbclan` (Lancashire), `en-GB-x-gbcwmd` (West Midlands), `en-029` (Caribbean) and
+`en-US-nyc`. Patched, they reach the model:
+
+| espeak voice | mean s | sd | vs en-US |
+| --- | --- | --- | --- |
+| en-US | 4.28 | 0.25 | — |
+| en-GB-x-rp | 4.32 | 0.25 | +0.03s (0.1 sd) |
+| **en-GB-scotland** | 5.67 | 0.44 | **+1.39s (3.9 sd)** |
+| en-GB-x-gbclan | 4.17 | 0.24 | −0.11s (0.4 sd) |
+| en-GB-x-gbcwmd | 4.40 | 0.33 | +0.12s (0.4 sd) |
+| **en-029** | 5.45 | 0.51 | **+1.17s (2.9 sd)** |
+| en-US-nyc | 4.10 | 0.18 | −0.18s (0.8 sd) |
+
+**A wrong result, recorded because it is the instructive part.** The first version compared
+one waveform per accent and found every variant "differed" at rms ~0.14. The control found
+en-US differs *from itself* by rms 0.149 — `noise_scale` and `noise_w` are both 0.333, so
+Piper's duration and waveform are stochastic per call. The single-shot A/B could not have
+returned anything else. Everything above is repeated 10× and quoted against its own spread.
+
+**What is not established.** Nothing here was listened to. F0 and duration prove the audio
+is well-formed and that the phoneme stream genuinely changed; they cannot hear whether a
+blended embedding sounds like a person or like mush, nor whether `en-GB-scotland` phonemes
+through an `en-US`-trained model sound Scottish or merely wrong — that combination is
+out-of-distribution for the model and is the likeliest place for this to fall down. Duration
+is also blind to RP and Lancashire, which differ in vowel quality rather than phoneme count;
+their null rows above mean "this probe cannot see it", not "nothing happened".
+
+**This is why the status is `In review` and not `Done`.** It needs an ear on the reference
+device. Two follow-ups it justifies, neither started: a `VoiceSpec` in the character
+manifest so the analysis records *what a character should sound like* rather than a speaker
+integer, and a foundry that realises a spec — today by nearest-neighbour plus blending plus
+`length_scale` for pace, later by better use of the 512 dimensions.
+
+Reproduce:
+
+```bash
+cd spike/hostbench && ./fetch-models.sh
+python3 voicelab.py blend
+python3 voicelab.py accent
+```
