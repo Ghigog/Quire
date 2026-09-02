@@ -43,6 +43,74 @@ class ManifestTest {
     }
 
     @Test
+    fun `a manifest with voice descriptors round trips`() {
+        val withVoice = example().replace(
+            "\"lineCount\": 118",
+            """"lineCount": 118,
+      "voice": {
+        "speakerId": 447,
+        "espeakVoice": "en-GB-scotland",
+        "lengthScale": 1.05,
+        "targetF0Hz": 118.0,
+        "description": "Laconic, low, unhurried. Rarely raises his voice.",
+        "source": "auto"
+      }""",
+        )
+
+        val once = ManifestCodec.decode(withVoice)
+        val twice = ManifestCodec.decode(ManifestCodec.encode(once))
+        assertEquals(once, twice)
+
+        val sarah = once.characters.first { it.id == "sarah" }.voice
+        assertEquals(447, sarah?.speakerId)
+        assertEquals("en-GB-scotland", sarah?.espeakVoice)
+        assertEquals(1.05, sarah?.lengthScale)
+        assertEquals(118.0, sarah?.targetF0Hz)
+        assertEquals("Laconic, low, unhurried. Rarely raises his voice.", sarah?.description)
+        assertEquals(VoiceSource.AUTO, sarah?.source)
+
+        assertNull(once.characters.first { it.id == "thomas" }.voice, "voice is absent, not defaulted, when nobody wrote one")
+    }
+
+    @Test
+    fun `a manifest without voice descriptors still loads, voice absent`() {
+        val manifest = ManifestCodec.decode(example())
+        assertNull(manifest.narrator.voice)
+        manifest.characters.forEach { assertNull(it.voice) }
+    }
+
+    @Test
+    fun `a field inside voice this reader does not know still survives a round trip`() {
+        // Modelling an *older* reader here: this schema's own additionalProperties rule means
+        // a field a future ticket adds to voice must not be dropped by a build that predates it.
+        val withUnknownVoiceField = example().replace(
+            "\"lineCount\": 118",
+            """"lineCount": 118,
+      "voice": { "speakerId": 447, "toneQuality": "gravelly" }""",
+        )
+
+        val once = ManifestCodec.decode(withUnknownVoiceField)
+        val twice = ManifestCodec.decode(ManifestCodec.encode(once))
+        assertEquals(once, twice)
+
+        val voice = once.characters.first { it.id == "sarah" }.voice
+        assertEquals(447, voice?.speakerId)
+        assertTrue("toneQuality" in voice!!.extras)
+    }
+
+    @Test
+    fun `an unrecognised voice source degrades to auto`() {
+        val imported = example().replace(
+            "\"lineCount\": 118",
+            """"lineCount": 118,
+      "voice": { "source": "imported" }""",
+        )
+
+        val manifest = ManifestCodec.decode(imported)
+        assertEquals(VoiceSource.AUTO, manifest.characters.first { it.id == "sarah" }.voice?.source)
+    }
+
+    @Test
     fun `an out of range confidence is rejected, naming the field path`() {
         val broken = example().replace("\"confidence\": 0.94", "\"confidence\": 1.4")
         val failure = assertFailsWith<ManifestException> { ManifestCodec.decode(broken) }

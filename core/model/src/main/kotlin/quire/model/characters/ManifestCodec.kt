@@ -32,7 +32,10 @@ object ManifestCodec {
         setOf("schemaVersion", "bookId", "generatedAt", "narrator", "characters")
     private val CHARACTER_KEYS = setOf(
         "id", "displayName", "aliases", "gender", "ageBand",
-        "traits", "confidence", "firstSeenLocator", "lineCount",
+        "traits", "confidence", "firstSeenLocator", "lineCount", "voice",
+    )
+    private val VOICE_KEYS = setOf(
+        "speakerId", "espeakVoice", "lengthScale", "targetF0Hz", "description", "source",
     )
 
     fun decode(text: String): CharacterManifest {
@@ -103,7 +106,20 @@ object ManifestCodec {
             put("confidence", JsonPrimitive(character.confidence))
             character.firstSeenLocator?.let { put("firstSeenLocator", JsonPrimitive(it)) }
             put("lineCount", JsonPrimitive(character.lineCount))
+            character.voice?.let { put("voice", encode(it)) }
             putAll(character.extras)
+        },
+    )
+
+    private fun encode(voice: Voice) = JsonObject(
+        buildMap {
+            voice.speakerId?.let { put("speakerId", JsonPrimitive(it)) }
+            voice.espeakVoice?.let { put("espeakVoice", JsonPrimitive(it)) }
+            voice.lengthScale?.let { put("lengthScale", JsonPrimitive(it)) }
+            voice.targetF0Hz?.let { put("targetF0Hz", JsonPrimitive(it)) }
+            voice.description?.let { put("description", JsonPrimitive(it)) }
+            put("source", JsonPrimitive(voice.source.name.lowercase()))
+            putAll(voice.extras)
         },
     )
 
@@ -126,9 +142,23 @@ object ManifestCodec {
             confidence = confidence,
             firstSeenLocator = obj["firstSeenLocator"]?.jsonPrimitive?.contentOrNullSafe(),
             lineCount = lineCount,
+            voice = obj["voice"]?.let {
+                voice(it as? JsonObject ?: throw ManifestException("$path.voice", "expected an object"))
+            },
             extras = obj.extrasOutside(CHARACTER_KEYS),
         )
     }
+
+    private fun voice(obj: JsonObject): Voice = Voice(
+        speakerId = obj["speakerId"]?.jsonPrimitive?.intOrNull,
+        espeakVoice = obj["espeakVoice"]?.jsonPrimitive?.contentOrNullSafe(),
+        lengthScale = obj["lengthScale"]?.jsonPrimitive?.doubleOrNull,
+        targetF0Hz = obj["targetF0Hz"]?.jsonPrimitive?.doubleOrNull,
+        description = obj["description"]?.jsonPrimitive?.contentOrNullSafe(),
+        // An unrecognised value is a newer writer's, not a corruption: degrade quietly.
+        source = VoiceSource.from(obj["source"]?.jsonPrimitive?.contentOrNullSafe()),
+        extras = obj.extrasOutside(VOICE_KEYS),
+    )
 
     private fun JsonObject.extrasOutside(known: Set<String>) =
         JsonObject(filterKeys { it !in known })

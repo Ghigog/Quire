@@ -42,8 +42,35 @@ data class Character(
     /** Where they first speak or are named, as a `chapter#p3#s1` locator. */
     val firstSeenLocator: String? = null,
     val lineCount: Int = 0,
+    /** ADR-0007: how this character sounds, or null if nobody has designed it yet. */
+    val voice: Voice? = null,
     val extras: JsonObject = JsonObject(emptyMap()),
 )
+
+/**
+ * ADR-0007 — a voice is a stored description, not a speaker id. Every field is optional:
+ * this is the shape the upfront scan (job C) and the drawer write into, not a value that
+ * has to exist for casting to fall back on the id alone.
+ */
+data class Voice(
+    val speakerId: Int? = null,
+    /** An espeak-ng variant name from the model's bundled data. Stored as written, never validated. */
+    val espeakVoice: String? = null,
+    val lengthScale: Double? = null,
+    val targetF0Hz: Double? = null,
+    val description: String? = null,
+    val source: VoiceSource = VoiceSource.AUTO,
+    val extras: JsonObject = JsonObject(emptyMap()),
+)
+
+enum class VoiceSource {
+    AUTO, USER;
+
+    companion object {
+        fun from(raw: String?) =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: AUTO
+    }
+}
 
 /**
  * Enums degrade rather than fail.

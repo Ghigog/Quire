@@ -44,7 +44,7 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
-| QUI-032 | Voice descriptor in `characters.json` | Attribution | In progress | fix-tickets-ownership | QUI-005 |
+| QUI-032 | Voice descriptor in `characters.json` | Attribution | In review | — | QUI-005 |
 | QUI-033 | Accent: listening test and per-character variants | Spike | Todo | — | QUI-032 |
 
 Next free ID: **QUI-034**
@@ -3062,7 +3062,7 @@ Scenario: A candidate that fails is reported, not worked around
 
 ## QUI-032 — Voice descriptor in `characters.json`
 
-**Status:** In progress · **Owner:** fix-tickets-ownership · **Epic:** Attribution · **Depends on:** QUI-005
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005
 **PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md)
 
 ### User story
@@ -3124,7 +3124,37 @@ Scenario: An unrecognised source degrades
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-02 — fix-tickets-ownership.** Landed the shape exactly as ADR-0007 §Decision 1:
+`speakerId`, `espeakVoice`, `lengthScale`, `targetF0Hz`, `description`, `source`, all
+optional, on `docs/schema/characters.schema.json` and on `Character.voice` in
+`core/model/src/main/kotlin/quire/model/characters/Manifest.kt`. `ManifestCodec` reads and
+writes the object; an absent `voice` is omitted entirely rather than written as an empty
+object, so a manifest nobody has designed voices for is byte-for-byte what it was before
+this ticket.
+
+`espeakVoice` is stored as written and never validated, per the ticket's own requirement —
+the resolvable identifiers live in the model's bundled `espeak-ng-data`, not in this schema.
+`source` degrades an unrecognised value to `auto`, the same pattern `gender` already uses.
+`Voice` carries its own `extras`, so a field a *future* ticket adds inside `voice` survives
+a round trip through this reader too, not just fields beside it — the schema's
+`additionalProperties: true` promise applies one level deeper now.
+
+No `schemaVersion` bump, as the ticket requires: purely additive, and the round-trip rule
+already covers it.
+
+Four new tests in `ManifestTest.kt`, one per Gherkin scenario. Reproduce with:
+
+```bash
+./gradlew :core:model:test
+```
+
+All 11 tests in `ManifestTest.kt` pass. Also ran the full JVM suite (`./gradlew test`) to
+confirm nothing downstream broke — `Character`'s only other consumer,
+`core/attribution/Roster.kt`, uses named arguments and was untouched.
+
+Status set to `In review`: this is a schema/model change with no consumer yet
+(QUI-007 writes it, QUI-011 reads it), so nothing exists to exercise it end-to-end.
 
 ---
 

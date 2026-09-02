@@ -27,7 +27,21 @@
         "traits": { "type": "array", "items": { "type": "string" } },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "firstSeenLocator": { "type": "string", "description": "Where they first speak, as chapter#p3#s1." },
-        "lineCount": { "type": "integer", "minimum": 0 }
+        "lineCount": { "type": "integer", "minimum": 0 },
+        "voice": { "$ref": "#/definitions/voice" }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "description": "ADR-0007: a voice is a stored description, not a speaker id. Every field is optional.",
+      "additionalProperties": true,
+      "properties": {
+        "speakerId": { "type": "integer", "minimum": 0, "description": "Index into the TTS engine's speaker table." },
+        "espeakVoice": { "type": "string", "minLength": 1, "description": "Stored as written, not validated against a list: resolvable identifiers are a property of the model file's bundled espeak-ng-data, not of this schema." },
+        "lengthScale": { "type": "number", "exclusiveMinimum": 0, "description": "Synthesis rate, relative to the model's default." },
+        "targetF0Hz": { "type": "number", "exclusiveMinimum": 0 },
+        "description": { "type": "string", "description": "Prose a human reads in the drawer and a model writes during the scan." },
+        "source": { "enum": ["auto", "user"], "description": "An unrecognised value degrades to auto rather than failing the load." }
       }
     }
   }
