@@ -270,3 +270,28 @@ control holds. Where a spike needs a book, generate it — `spike/indexer` emits
 its index from one labelled fixture, so the two cannot drift and no real book ever lands in
 the repository (§8).
 
+---
+
+## 10. Working economically
+
+Every tool call re-sends the whole conversation, so a token added early is paid for again on
+every turn after it. This repository makes that easy to get wrong: `CLAUDE.md`, `tickets.md`
+and the ADRs are all long, and reading one in full to change three lines is a bill that
+recurs for the rest of the session.
+
+**Before doing something materially more expensive than the alternative, say so in one
+sentence and name the substitute.** Then do whatever is chosen. Advise, don't refuse, and
+don't give the same advice twice in one session.
+
+The moves that cost most here, and what to do instead:
+
+| Instead of | Do |
+| --- | --- |
+| Pasting a previous session's transcript | Pointing at its handoff note in `/docs/handoff/` |
+| Reading `tickets.md` or a long ADR whole | `grep -n` for the heading, then `sed -n` for its range |
+| A subagent for work this session can do inline | Doing it inline — a subagent starts cold and re-derives what is already loaded |
+| Carrying one session across several tickets | One session per ticket, per §2.1, then `/clear` |
+| A reasoning model for mechanical edits | Switching down for that stretch, back up for design |
+
+The portable version of this, for `~/.claude/CLAUDE.md` and for new projects, is
+[`docs/claude-global-memory.md`](docs/claude-global-memory.md).
