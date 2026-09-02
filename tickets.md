@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | qui-028-scoring-harness | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
@@ -2742,11 +2742,11 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **Partially done, unclaimed.** The Tier 1 baseline exists and is scored (see Worklog);
-> the bake-off this ticket is actually for has not started. `Todo` rather than
-> `In progress` because nobody is working it — the claim is free to take.
+> **In progress, host side only.** The scoring harness and the Tier 1 baseline exist; the
+> encoder candidate is blocked on a model file this container cannot reach (Worklog,
+> 2026-09-02). The SLM candidate is still unstarted.
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** qui-028-scoring-harness · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
