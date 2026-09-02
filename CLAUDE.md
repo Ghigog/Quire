@@ -115,6 +115,7 @@ because it does.
 /docs/schema/         ← frozen data contracts (characters.json), the fan-out seams of §2.3
 /docs/architecture.md ← how the pipeline actually fits together (kept in sync with code)
 /docs/device-profile.md ← the reference device and what it forces on the design
+/docs/handoff/       ← dated notes handing a live design thread to the next session
 /core/                ← pure-Kotlin/JVM modules: model, index (testable without a device)
 /fixtures/            ← labelled test data shared across tickets (attribution golds)
 /spike/               ← timeboxed throwaway harnesses; never shipped, never depended on

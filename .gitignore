@@ -29,3 +29,4 @@ audio-cache/
 # Built indexes are derived from committed fixtures — regenerate, do not store.
 *.db
 
+__pycache__/

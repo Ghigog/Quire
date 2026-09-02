@@ -208,7 +208,16 @@ The 750G has no i8mm, so a 1B Q4 model generates slowly. Attributing ~3,000 dial
 with a fresh ~300-token window each lands in the hours. Therefore:
 
 - Attribution runs **chapter-at-a-time with KV-cache reuse**, not line-at-a-time.
+- The *prompt* is **one scene**, not one quotation, and it returns a list of speakers.
+  This is a quality decision as much as a throughput one — turn-taking is a property of the
+  scene, and a model shown one line in isolation knows less than the reader does. See
+  [ADR-0006](adr/0006-three-attribution-jobs.md), which also separates the three jobs that
+  "attribution" was bundling and establishes that **voice design does not wait for
+  per-line attribution**: explicit speech tags supply enough confidently-attributed lines
+  to describe a character before the hard half of the work starts.
 - Generation is **constrained to a single token** — an index into the candidate speakers.
+  Superseded for Tier 2/3 by the scene-list output above; still right for a single
+  disambiguation.
 - **Tier 1 coverage helps but cannot rescue us.** Every line the heuristics resolve is a
   line the model never sees — but measured on PDNC, explicit speech tags account for only
   30.1% of quotations across 28 novels, and 11.6% in the worst book. The 44.4% coverage
@@ -297,8 +306,10 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
    `libritts_r` medium carries **904 speakers in one 92 MB model**, so casting is an
    integer lookup against a single resident engine and cast size costs nothing in memory.
    QUI-011 gets simpler than planned.
-4. **Scene boundaries** for the 0.40–0.64 "most active speaker" band. Chapter breaks are a
-   crude proxy. Deferred until QUI-009 has fixture data.
+4. **Scene boundaries.** No longer only a tie-breaking nicety: ADR-0006 makes the scene the
+   unit the model is prompted with, so segmentation is on the critical path rather than
+   deferred. Chapter breaks, scene-break markup and blank-line runs are the cheap signals;
+   none is implemented.
 5. **RTF and battery SLAs** are retained in PRD §4 but not restated by v1.2 — confirm.
    Now urgent rather than tidy: ADR-0002 is accepted at RTF 0.354 against a budget of 0.15,
    as a recorded deviation, because no faster multi-speaker engine exists. QUI-016's power
@@ -315,3 +326,11 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
    separately for this reason. The tiered fallback means a hard book degrades toward
    ordinary single-voice TTS rather than toward wrong voices, which is the right shape of
    failure, but the size of the degradation is unmeasured.
+8. **Is accent a shippable axis?** [ADR-0007](adr/0007-voice-is-a-description.md) shows the
+   espeak-ng variant baked into the Piper ONNX metadata reaches the model — six English
+   accents ship inside `libritts_r` at zero footprint, and each changes the phoneme stream.
+   Two things stand between that and a feature. `libritts_r` was trained on en-US phonemes,
+   so an out-of-distribution stream may sound like the accent or like a broken American,
+   and only a listen tells them apart. And sherpa-onnx exposes no runtime override for the
+   variant, so per-character accent currently implies one loaded engine per accent, which
+   fits nothing. Both are QUI-033.

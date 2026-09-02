@@ -44,8 +44,10 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
+| QUI-032 | Voice descriptor in `characters.json` | Attribution | Todo | — | QUI-005 |
+| QUI-033 | Accent: listening test and per-character variants | Spike | Todo | — | QUI-032 |
 
-Next free ID: **QUI-031**
+Next free ID: **QUI-034**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -3056,3 +3058,141 @@ Scenario: A candidate that fails is reported, not worked around
 ### Worklog
 - _(empty)_
 
+
+---
+
+## QUI-032 — Voice descriptor in `characters.json`
+
+**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005
+**PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md)
+
+### User story
+As a reader, I want each character's voice to be *described* rather than numbered, so that
+the drawer can tell me why Geralt sounds the way he does and let me change it in words I
+understand.
+
+### Context (why)
+ADR-0002 makes casting a speaker id into one 904-voice model, and QUI-011 currently treats
+that id as the entirety of a voice. The upfront scan has read the book and knows far more —
+ADR-0006 makes voice design (job C) a first-class job that runs in the scan, and ADR-0007
+records that a voice has four axes of which the id is one.
+
+`characters.json` is a frozen fan-out seam (CLAUDE.md §2.3), so the field lands early,
+small, and before QUI-007 and QUI-011 are built against the old shape.
+
+### Description (what)
+The character manifest gains an optional `voice` object on every character and on the
+narrator, carrying the speaker id, the espeak variant, a rate, a target F0 and a prose
+description, plus whether a human or the scan chose it. Nothing consumes it yet; this
+ticket freezes the shape.
+
+### Requirements (how)
+- Owns: `docs/schema/characters.schema.json`, and the manifest model and round-trip test in
+  `core/` that QUI-005 landed.
+- Shape exactly as ADR-0007 §Decision 1. Every field optional.
+- No `schemaVersion` bump: the schema's `additionalProperties: true` round-trip rule
+  already covers readers that predate the field, and a bump would force QUI-005's store to
+  migrate for a purely additive change.
+- `source` is `auto` or `user`. An unrecognised value degrades to `auto`, matching how
+  `gender` degrades to `unknown`.
+- `espeakVoice` is stored as written and **not validated against a list**. The resolvable
+  identifiers come from the model's bundled `espeak-ng-data`, which is a property of the
+  model file, not of the schema.
+- Out of scope: writing descriptors (QUI-007 job C), consuming them (QUI-011), whether
+  accents are shippable (QUI-033).
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: A manifest with voice descriptors round-trips
+  Given a manifest whose characters carry a voice object
+  When it is written and read back by the manifest store
+  Then every voice field survives unchanged
+
+Scenario: A manifest without voice descriptors still loads
+  Given a manifest written before this ticket
+  When it is loaded
+  Then it loads without error and every character's voice is absent
+
+Scenario: An older reader preserves the field
+  Given a manifest carrying a voice object
+  When it is loaded by a reader that does not know the field and written back out
+  Then the voice object is still present in the output
+
+Scenario: An unrecognised source degrades
+  Given a character whose voice source is "imported"
+  When the manifest is loaded
+  Then the source reads as auto and the load does not fail
+```
+
+### Worklog
+- _(empty)_
+
+---
+
+## QUI-033 — Accent: listening test and per-character variants
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-032
+**PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md) · **Timebox:** 2 days
+
+### User story
+As a reader, I want a character who is written as Scottish to sound Scottish, so that the
+cast is distinguishable by more than timbre.
+
+### Context (why)
+ADR-0007 establishes by measurement that the espeak-ng variant baked into the Piper ONNX
+metadata reaches the model: six English accents ship inside `libritts_r` already, at zero
+footprint, and each one demonstrably changes the phoneme stream. `spike/hostbench/voiceprobe.py`
+proves it deterministically — the `en-us` control comes back bit-identical through the same
+patch path, so the differences are the variant and not the patching.
+
+What the probe cannot say is whether it *sounds* like an accent. `libritts_r` was trained on
+en-US phonemes; Scots phonemes are out-of-distribution input, and the result may be a
+Scottish reader or an American one falling over. Durations and F0 cannot tell those apart.
+Only ears can, and this is the cheapest high-value listen available.
+
+There is also a blocking engineering question ADR-0007 could not answer: sherpa-onnx exposes
+no runtime override for the variant, so a per-character accent currently implies one loaded
+engine per accent — 2,524 ms load and 314 MB RSS each (ADR-0002), which fits nothing.
+
+### Description (what)
+Synthesise the same lines through each shipped variant, listen to them on the reference
+device, and record which are usable. Separately, determine whether one loaded engine can
+switch variant between utterances; if it cannot, say what accents would actually cost.
+
+### Requirements (how)
+- Owns: `spike/hostbench/voiceprobe.py` (already landed), any WAV export added to it, and
+  the device-side listening procedure recorded in this ticket's worklog.
+- Use the same speaker id across variants, so what changes is pronunciation and not timbre.
+- Listen on the Note Air5 C through its own speaker, not on desktop headphones. A phoneme
+  artefact that is obvious on studio monitors may be inaudible on an e-reader, and the
+  reverse.
+- Judge each variant on one axis only: **would a reader accept this as that accent, or does
+  it sound broken?** Not "is it a good accent".
+- For the runtime question, exhaust the cheap options before concluding: sherpa-onnx's VITS
+  config (`lexicon`, `data_dir`, `dict_dir`), whether two `OfflineTts` instances over the
+  same weights share memory, and what a metadata patch plus reload actually costs on device.
+- Out of scope: non-English variants; training or fine-tuning anything; shipping accents,
+  which needs its own ticket once this reports.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Every shipped variant is heard
+  Given the six English espeak variants bundled with libritts_r
+  When the same lines are synthesised through each and played on the reference device
+  Then the worklog records, per variant, whether it is usable or sounds broken
+
+Scenario: The out-of-distribution risk is answered plainly
+  Given the listening results
+  When they are written up
+  Then ADR-0007 is amended to say whether accent is a shippable axis or is dropped
+  And a negative result is recorded as a negative result, not worked around
+
+Scenario: The per-character cost is known
+  Given an attempt to switch espeak variant on a loaded engine
+  When the cheap options are exhausted
+  Then the worklog states the achievable mechanism and its cost in load time and RSS
+  And if none is affordable, ADR-0007 records that accent is per-book rather than per-character
+```
+
+### Worklog
+- _(empty)_

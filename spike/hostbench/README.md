@@ -12,6 +12,7 @@ a build, an install and a listen.
 python3 -m pip install sherpa-onnx
 python3 bench.py                                    # matrix over every fetched model
 python3 bench.py --paired vctk libritts_r           # interleaved A/B for close calls
+python3 voiceprobe.py --mode accent                 # espeak variant, deterministic (QUI-033)
 ```
 
 ## What it can and cannot tell you
@@ -79,3 +80,24 @@ the Piper runs.
 - Speaker id is the midpoint of the model's range, not 0. Adjacent ids in `libritts_r` are
   neighbouring readers from one corpus and sound alike — the mistake the first device test
   made.
+
+## voiceprobe.py — the axes outside the speaker table
+
+`bench.py` asks how fast a model is. `voiceprobe.py` asks what a voice can be *made to do*:
+speaking rate (`length_scale`) and accent (the espeak-ng variant Piper bakes into the ONNX
+metadata as `voice`). See [ADR-0007](../../docs/adr/0007-voice-is-a-description.md).
+
+Two things it does that are worth copying into any future audio probe here.
+
+**It pins `noise_scale` and `noise_scale_w` to zero.** Piper samples durations per call, so
+three identical runs spread 0.38 s — wider than most effects worth testing. With sampling
+off, synthesis is exactly reproducible and waveforms can be compared sample for sample, so
+"did this knob reach the model" becomes a yes/no rather than a significance test.
+
+**It re-saves the model through the same path for the control.** The `en-us` row is the
+model's own variant patched back onto itself; it returns bit-identical output, which is
+what makes a difference on any other row attributable to the variant rather than to the
+patching.
+
+It says whether a knob reaches the model. It cannot say how the result sounds — the caveat
+at the top of this file, in its strongest form.
