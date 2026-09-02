@@ -125,6 +125,7 @@ because it does.
 /spike/slice/         ← pure-Kotlin casting and span clipping for the vertical slice
 /spike/pipeline/      ← Tier 1 attribution and scoring against PDNC
 /spike/ttsbinding/    ← the Android TTS probe; the only module needing an SDK
+/spike/attribution-bakeoff/ ← scores an attribution candidate against PDNC, holdouts apart
 /tools/               ← documented fetch and build scripts for artefacts git does not hold
 ```
 
