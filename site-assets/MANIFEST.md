@@ -1,7 +1,7 @@
 # Site assets — Pneumaturgy studio site
 
 Art collected from ten repositories for the studio site, prepared for the web.
-16 files, 1.8 MB total, nothing over 400 KB.
+15 files, 1.7 MB total, nothing over 400 KB.
 
 Logos are 512×512 PNG. Images are max 1600 px on the long edge, JPG where
 photographic and PNG where they carry transparency or flat colour. No WebP.
@@ -28,7 +28,6 @@ any repository other than this branch.
 | `navi-logo.png` | Navi | `navi-agent` → `navilogofinal.png` | 512² RGBA | Clean transparent mark. Ready to use. |
 | `orison-logo.png` | Orison | `orison` → `resources/assets/orisonlogo2.png` | 500² RGBA | **Near-white mark** — see below. |
 | `theoryforge-01.png` | Theory Forge | `lol-theory` → `src/assets/hero.png` | 343×361 | **Under size** — see below. |
-| `cerdo-logo.png` | Cerdo | `cerdo` → `Assets/cerdito.png` | 128² | **4× upscale** — see below. |
 | `cerdo-01.png` | Cerdo | rendered from `Assets/DiceImages/dice6.svg` | vector | Rasterised sprite. |
 | `pneumaturgy-logo.png` | *(the studio itself)* | `by_jove_godot` → `assets/art/images/PneumaturgyLogo.png` | 500² RGBA | Bonus — see below. |
 
@@ -41,14 +40,22 @@ There is not one image file in the repository — no logo, no icon, no
 screenshot, and no Android app module that could produce one. Nothing was
 prepared for it. It needs art made.
 
-### Shipwright is not a Pneumaturgy project
+### Seven Sages is yours, but it has no art above 128×32
 `Ghigog/Shipwright` is a fork of `HarbourMasters/Shipwright` — Ship of
-Harkinian, the Ocarina of Time PC port. Its art is that project's branding
-(`docs/shiptitle.*.png`) and game textures derived from the original game.
-Nothing was taken from it. Putting it on the studio site under the `sevensages`
-slug would present someone else's project, and Nintendo-derived assets, as
-studio work. If Seven Sages is a separate project of yours, it is in a
-different repository than the one on the list.
+Harkinian, the Ocarina of Time PC port — and its **default branch is
+upstream's**, which is all a shallow clone sees. The studio's own work is on
+the `mod/seven-sages` branch: a substantial body of C++ (cutscenes, message
+pools, co-op) under `soh/soh/Enhancements/`.
+
+So the project is real and it is yours. What it does not have is art. The only
+original image on that branch is
+`soh/assets/custom/objects/object_mag/gTitleSevenSagesSubtitleTex.rgba32.png`
+at **128×32** — an N64 title-screen subtitle strip, far under the 400 px floor
+and a text banner rather than a mark. Everything else that looks like branding
+(`docs/shiptitle.*.png`, `soh/macosx/sohIcon.png` at 1024²) is Ship of
+Harkinian's, and the game textures are derived from the original game.
+
+Nothing was taken. Seven Sages needs art made, the same as Quire.
 
 ### Orison's mark is white and will vanish on a light page
 `orison-logo.png` is a white line sigil on transparency — average luminance of
@@ -57,20 +64,21 @@ effectively invisible on a white card. I have left it exactly as it is in the
 repository rather than inventing a backdrop for it. Either place it on a dark
 plate, or have a dark-ink version drawn.
 
-### Three logos are not transparent
-`mollusk-logo.png` (near-white `#f4f5fa` ground), `cerdo-logo.png` (cream
-ground) and, unavoidably, anything derived from them carry a solid background
-from the source file. They sit fine on a light page and will show a visible box
-on a dark one. Keying the background out would have left halos on the soft
-gradients, so I did not.
+### `mollusk-logo.png` is not transparent
+It carries a near-white `#f4f5fa` ground from the source file. It sits fine on
+a light page and will show a visible box on a dark one. Keying the background
+out would have left halos on the soft gradient, so I did not.
 
-### Cerdo's logo is a 4× upscale
-The project's canonical icon (`project.godot` → `config/icon`) is
-`Assets/cerdito.png` at **128×128**. There is no larger version in the
-repository. The APK ships a 432×432 adaptive-icon foreground, but it is a
-washed-out grey auto-generation by the Godot exporter and looks worse. So
-`cerdo-logo.png` is the 128 px original enlarged with Lanczos. The art is flat
-enough that it holds up, but it is not a true 512 px asset.
+### Cerdo already has better art on the site — no logo shipped
+The repository's canonical icon (`project.godot` → `config/icon`) is
+`Assets/cerdito.png` at **128×128**, and there is nothing larger in it. But the
+site already carries `assets/Cerdo/CerdoLogo.png` at **500×500**, plus two
+screenshots (`Untitled.png`, `Untitled_1.png`, 479×852). That existing logo is
+better than anything this repository can produce, so **no `cerdo-logo.png` is
+included** — a 4× upscale of a 128 px source would have been a worse duplicate.
+
+`cerdo-01.png` (the rasterised die) is kept because the site has no equivalent,
+but Cerdo is the one project here that was already covered.
 
 ### Theory Forge has no logo and no screenshot
 `lol-theory` contains only a 343×361 decorative graphic, which is below your
@@ -126,7 +134,21 @@ Neither was used.
 | Mollusk | ⚠️ opaque | diagram only | no screenshot exists |
 | Navi | ✅ | ❌ | no screenshot exists |
 | Orison | ⚠️ white-on-transparent | ❌ | no screenshot exists |
-| Cerdo | ⚠️ upscaled from 128 px | sprite only | no screenshot exists |
+| Cerdo | already on the site (500²) | already on the site | none — best source is 128 px |
 | Theory Forge | ❌ | ⚠️ 343 px | needs a screenshot from a networked machine |
 | Quire | ❌ | ❌ | no art of any kind in the repo |
-| Seven Sages | — | — | repo on the list is an upstream fork |
+| Seven Sages | ❌ | ❌ | own work is on `mod/seven-sages`; only art is 128×32 |
+
+
+---
+
+## Where these go on the site
+
+`Pneumaturgy/web` already uses `assets/<Project>/<Name>.png` — for example
+`assets/Cerdo/CerdoLogo.png`, referenced from `index.html` as
+`src="assets/Cerdo/CerdoLogo.png"`. These files are named by the flat
+`<slug>-logo.png` convention that was asked for, so they will need renaming
+into that per-project layout on the way in.
+
+`pneumaturgy-logo.png` (512² transparent) is a larger version of what the site
+currently has as `assets/flame.png` (163×352), if that is wanted.
