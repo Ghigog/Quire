@@ -44,7 +44,7 @@ already `In progress`.
 | QUI-014 | Sentence-level highlighting | Reader | **Deferred → V3.0** | — | QUI-024 covers the host-side part |
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
-| QUI-032 | Voice descriptor in `characters.json` | Attribution | Todo | — | QUI-005 |
+| QUI-032 | Voice descriptor in `characters.json` | Attribution | In progress | fix-tickets-ownership | QUI-005 |
 | QUI-033 | Accent: listening test and per-character variants | Spike | Todo | — | QUI-032 |
 
 Next free ID: **QUI-034**
@@ -3062,7 +3062,7 @@ Scenario: A candidate that fails is reported, not worked around
 
 ## QUI-032 — Voice descriptor in `characters.json`
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005
+**Status:** In progress · **Owner:** fix-tickets-ownership · **Epic:** Attribution · **Depends on:** QUI-005
 **PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md)
 
 ### User story
