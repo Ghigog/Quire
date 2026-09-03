@@ -13,6 +13,13 @@ than anything needing a new runtime:
 
     python3 voicelab.py blend    # interpolate two speakers, measure the pitch of the result
     python3 voicelab.py accent   # swap the phonemiser, measure whether it reaches the model
+    python3 voicelab.py blend --wav-dir out    # ...and keep the audio to listen to
+
+F0 says an invented voice sits between its parents. It cannot say whether the voice is a
+*person* — interpolating two speaker embeddings could as easily land on a smeared average
+of two readers as on a third one. `--wav-dir` writes the blend ramp with both parents
+either side of it, which is the arrangement that makes that audible: play them in order
+and hear whether the middle belongs in the sequence.
 
 A WARNING ABOUT MEASUREMENT, because it invalidated the first run of this file. Piper is
 stochastic: `noise_scale` and `noise_w` are 0.333, so two identical calls differ by rms
@@ -29,6 +36,7 @@ from onnx import numpy_helper
 
 import bench
 from voiceprofile import median_f0
+from wavout import write_wav
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 BASE = os.path.join(ROOT, "vits-piper-en_US-libritts_r-medium")
@@ -60,7 +68,13 @@ def _say(tts, sid, n=1):
     return durations, samples, rate
 
 
-def blend(repeats):
+def _keep(wav_dir, name, samples, rate):
+    """Write one take of the ramp, when `--wav-dir` asked for it."""
+    if wav_dir:
+        print(f"  {'':28} wrote {write_wav(wav_dir, name, samples, rate)}")
+
+
+def blend(repeats, wav_dir=None):
     """Write interpolated rows into the speaker table and see what comes out."""
     dst, path = _copy("blend")
     slots = [0, 1, 2, 3, 4]
@@ -85,14 +99,25 @@ def blend(repeats):
     print(f"  control — spk{MALE} repeated {repeats}x: "
           f"F0 {statistics.mean(f0s):.1f} Hz, sd {statistics.stdev(f0s):.2f} Hz\n")
 
+    # File names put the parents at either end of the ramp — 00 and 06 around 01..05 —
+    # so the directory sorts into the order the comparison has to be heard in, and each
+    # name carries its own F0 for a tester holding nothing but a file list.
     print(f"  {'voice':28} {'F0 Hz':>7}")
-    for sid, label in ((MALE, f"real spk{MALE} (male)"), (FEMALE, f"real spk{FEMALE} (female)")):
+    for index, (sid, sex, label) in enumerate(
+            ((MALE, "male", f"real spk{MALE} (male)"),
+             (FEMALE, "female", f"real spk{FEMALE} (female)"))):
         _, s, rate = _say(tts, sid)
-        print(f"  {label:28} {median_f0(s, rate):>7.1f}")
+        f0 = median_f0(s, rate)
+        print(f"  {label:28} {f0:>7.1f}")
+        side = "a" if index == 0 else "b"
+        _keep(wav_dir, f"blend-{index * 6:02d}-parent-{side}-real-spk{sid}-{sex}-{f0:.0f}hz",
+              s, rate)
     print()
-    for slot, t in zip(slots, ts):
+    for index, (slot, t) in enumerate(zip(slots, ts), start=1):
         _, s, rate = _say(tts, slot)
-        print(f"  {f'blend t={t:.2f} (invented)':28} {median_f0(s, rate):>7.1f}")
+        f0 = median_f0(s, rate)
+        print(f"  {f'blend t={t:.2f} (invented)':28} {f0:>7.1f}")
+        _keep(wav_dir, f"blend-{index:02d}-t{t * 100:03.0f}-invented-{f0:.0f}hz", s, rate)
 
 
 def accent(repeats):
@@ -137,7 +162,12 @@ if __name__ == "__main__":
     p.add_argument("probe", choices=["blend", "accent"])
     p.add_argument("--repeats", type=int, default=10,
                    help="runs per condition; the spread is what makes a difference readable")
+    p.add_argument("--wav-dir", help="write the blend ramp and both parents here (blend only; "
+                                     "voiceprobe.py --mode accent exports the accent audio)")
     args = p.parse_args()
     if not os.path.isdir(BASE):
         sys.exit(f"{BASE} not found — run ./fetch-models.sh first")
-    (blend if args.probe == "blend" else accent)(args.repeats)
+    if args.probe == "blend":
+        blend(args.repeats, args.wav_dir)
+    else:
+        accent(args.repeats)
