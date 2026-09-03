@@ -13,6 +13,7 @@ python3 -m pip install sherpa-onnx
 python3 bench.py                                    # matrix over every fetched model
 python3 bench.py --paired vctk libritts_r           # interleaved A/B for close calls
 python3 voiceprobe.py --mode accent                 # espeak variant, deterministic (QUI-033)
+python3 voiceprobe.py --mode accent --wav-dir out   # ...and keep the audio to listen to
 ```
 
 ## What it can and cannot tell you
@@ -98,6 +99,7 @@ Both levers turned out to be editable fields inside the model file, needing no n
 ./fetch-models.sh
 python3 voicelab.py blend     # interpolate two speakers, measure the pitch of the result
 python3 voicelab.py accent    # swap the phonemiser, measure whether it reaches the model
+python3 voicelab.py blend --wav-dir out    # ...and keep the ramp to listen to
 ```
 
 ### The measurement trap in this one
@@ -137,3 +139,34 @@ patching.
 
 It says whether a knob reaches the model. It cannot say how the result sounds — the caveat
 at the top of this file, in its strongest form.
+
+## Getting the audio off this machine
+
+`--wav-dir` is how the caveat gets answered rather than just restated. Both probes take it,
+both write mono 16-bit PCM through `wavout.py`, and both write the waveform the row above
+was *measured* from — no second synthesis, no normalisation, so the file and the number
+describe the same take.
+
+`voiceprobe.py --mode accent` writes one file per espeak variant, same speaker and same
+sentence throughout, so what changes between two files is pronunciation and nothing else.
+`voicelab.py blend` writes the interpolation ramp with both parent speakers either side of
+it, numbered `00` and `06` around `01`–`05`, because "is this a third person or an average
+of two?" is a question about the sequence rather than about any one file in it.
+
+**The accent files are the deterministic render**, noise pinned off. That is what makes two
+variants comparable at all, and it is not how the app will render: judge pronunciation from
+them, not naturalness.
+
+Names are long on purpose. A tester scrolling a flat list on the device has the file name
+and nothing else — no table, no console log, no this file — so each name carries its
+position in the listening order, the condition, and the measurement:
+
+```
+accent-05-en-gb-scotland-scots-spk447.wav
+blend-03-t050-invented-156hz.wav
+```
+
+CI renders both probes on every push and attaches the directory as **`voice-probe-wavs`**,
+next to `quire-probe-apk`. The probes' console output is in there too, as `accent-probe.txt`
+and `blend-probe.txt`, since that is the only place the numbers behind each file are
+written down. Nothing needs building locally to get a listen: download the artifact.
