@@ -32,3 +32,6 @@ audio-cache/
 *.db
 
 __pycache__/
+
+# QUI-028: PDNC carries no licence and is never committed (tools/fetch-pdnc.sh fetches it).
+pdnc/

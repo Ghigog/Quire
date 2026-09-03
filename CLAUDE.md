@@ -123,7 +123,7 @@ because it does.
 /spike/hostbench/     ← screens TTS candidates on the build machine (Python + sherpa-onnx)
 /spike/indexer/       ← builds a dialogue index, and the EPUB that matches it
 /spike/slice/         ← pure-Kotlin casting and span clipping for the vertical slice
-/spike/pipeline/      ← Tier 1 attribution and scoring against PDNC
+/spike/pipeline/      ← Tier 1 attribution, and the PDNC harness every candidate is scored by
 /spike/ttsbinding/    ← the Android TTS probe; the only module needing an SDK
 /tools/               ← documented fetch and build scripts for artefacts git does not hold
 ```

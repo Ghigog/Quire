@@ -16,7 +16,11 @@ kotlin { jvmToolchain(21) }
 
 application {
     mainClass.set("quire.spike.MainKt")
-    applicationDefaultJvmArgs = listOf("-Dfile.encoding=UTF-8")
+    // Java 18+ takes stdout's encoding from the console rather than from file.encoding, and
+    // these tables print em dashes and curly quotes straight out of the corpus.
+    applicationDefaultJvmArgs = listOf(
+        "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
+    )
 }
 
 tasks.test {

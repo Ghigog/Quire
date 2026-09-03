@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
@@ -763,8 +763,8 @@ rather than being promoted to a tag. Both have tests, as does whole-word matchin
 desktop number kept as a regression guard rather than an SLA claim (CLAUDE.md §1.6).
 
 *Confidences are left as the ticket specifies* — 0.95 direct, 0.75 beat, 0.85 pronoun — and
-are **known to be optimistic**: QUI-028 measured explicit tags at 68.6% precision on PDNC
-against the declared 0.95. Moving them without a measurement would swap one fiction for
+are **known to be optimistic**: QUI-028 measured explicit tags at 89.9% precision on PDNC
+against the declared 0.95 (68.6% before its 2026-09-02 re-measurement). Moving them without a measurement would swap one fiction for
 another, so the class documents the discrepancy and recalibration stays QUI-009's
 prerequisite.
 
@@ -1665,6 +1665,12 @@ still holds for scheduling and synthesis; it now names the exception.
 **2026-08-28 — scored against PDNC, and the hand-written numbers do not survive.**
 Reproduce: clone PDNC, then
 `quire-pipeline-spike pdnc <pdnc>/data/Emma <pdnc>/data/TheSignOfTheFour …`
+
+> **Superseded 2026-09-02 by QUI-028.** The scorer behind this table matched gold
+> quotations to predicted segments by text, and so measured 2,846 of 37,131 — 7.7% of PDNC,
+> self-selected for being short and cleanly punctuated. Re-scored against PDNC's byte spans
+> over all 28 novels, Tier 1 is **26.8% coverage at 84.9% precision**. The table below is
+> kept as the record of what was believed; do not quote it.
 
 Measured over 2,846 matched quotations from five novels:
 
@@ -2742,11 +2748,12 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **Partially done, unclaimed.** The Tier 1 baseline exists and is scored (see Worklog);
-> the bake-off this ticket is actually for has not started. `Todo` rather than
-> `In progress` because nobody is working it — the claim is free to take.
+> **In progress, unclaimed — the host-side half is done.** The corpus fetch, the harness,
+> the Tier 1 baseline and the out-of-domain holdouts landed 2026-09-02 and are on `main`.
+> Both model candidates are blocked on model files no session container can reach; the
+> Worklog names them exactly. The claim is free to take by whoever has the files.
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
@@ -2776,7 +2783,11 @@ RSS and power. The output is a decision recorded as an ADR, and — if the encod
 rewrite of QUI-006 and QUI-009.
 
 ### Requirements (how)
-- Owns: `spike/attribution-bakeoff/`, `docs/adr/0005-attribution-model.md`
+- Owns: `docs/adr/0005-attribution-model.md`, `tools/fetch-pdnc.sh`, and the bake-off half
+  of `spike/pipeline/` — `bakeoff/`, plus the corpus layer in `Pdnc.kt` it is built on.
+  The harness lives beside the PDNC loader rather than in a module of its own: two loaders
+  is how the measured Tier 1 and the shipped one quietly stop agreeing, and `Pdnc.kt` is
+  already shared with QUI-032's cast scoring.
 - Candidates: an encoder-based attribution model exported to ONNX, BookNLP as the baseline
   the field reports against, and the 1B SLM prompt from QUI-009.
 - Evaluate on **PDNC** — 37,131 quotations across 28 novels in the current revision — so
@@ -2851,6 +2862,172 @@ a measured 68.6%), which makes calibration a prerequisite for QUI-009's gates.
 *What is left:* the actual bake-off this ticket is for — an encoder candidate measured
 against the 1B SLM on device — has not started. Only the Tier 1 baseline it will be
 compared against exists.
+
+**2026-09-02 — `qui-028-scoring-harness`.** Host-side half of the bake-off. The corpus
+fetch, the harness, the Tier 1 baseline and the out-of-domain split all landed; neither
+model candidate did, because neither model file is reachable from a session container.
+
+*Landed:* `tools/fetch-pdnc.sh`; the corpus layer in `spike/pipeline`'s `Pdnc.kt`; the
+harness in `spike/pipeline/src/main/kotlin/quire/spike/bakeoff/`; 18 tests, which are the
+first `Pdnc.kt` has ever had.
+
+**Reproduce:**
+
+```bash
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist && gradle test
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike bakeoff --per-novel
+```
+
+#### A bug in the name matcher was deflating every PDNC number in the repo
+
+`Pdnc.matches` stripped punctuation from the gold name and left it on ours, so predicted
+`Mr. Woodhouse` did not match gold `Mr. Woodhouse` — the words compared were `mr.` and `mr`.
+Every honorific carrying a full stop scored as a miss. Austen is a fifth of this corpus.
+
+Fixed by folding both sides the same way, with a regression test. **This corrects numbers
+outside this ticket:** QUI-032's cast scoring shares the same function, and on Emma, The
+Gambler and The Sign of the Four its precision goes **77.4% → 96.2%** — most of the "junk"
+characters it reported were real characters that failed to match on a full stop. Its recall
+is unchanged at 80.8%. `gknown` moves 58.5% → 47.1%, which is arithmetic rather than a
+regression: the count of real characters rose from 41 to 51, and the extra ones have no
+gender. **QUI-032's worklog numbers are understated and should be re-measured.**
+
+#### The baseline, re-measured — and the August number was wrong
+
+Tier 1 (`core:attribution`, pronouns and action beats on) over **36,970 scorable quotations
+across all 28 novels**. PDNC holds 37,131; 160 name a pseudo-entity (`_group`,
+`_unknowable`, `_narr`) that nobody could be right about, and one span fell outside every
+paragraph.
+
+| Quotation type | Quotes | Coverage | Precision | Accuracy |
+| --- | ---: | ---: | ---: | ---: |
+| Explicit | 11,172 | 79.9% | 88.9% | 71.0% |
+| Implicit | 16,645 | 2.3% | 61.8% | 1.4% |
+| Anaphoric | 9,125 | 6.5% | 40.9% | 2.7% |
+| **All** | **36,970** | **26.8%** | **84.9%** | **22.8%** |
+
+**This supersedes the 58.5% precision in the entry above, which was measured wrongly.**
+That pass matched gold quotations to predicted segments by normalised text and scored only
+the ones that keyed — 2,846 of 37,131, or 7.7% of the corpus, self-selected for being short
+and cleanly punctuated. The harness now uses PDNC's own byte spans, so the denominator is
+every scorable quotation and a quotation the candidate never saw counts against it. Same
+code under test, same corpus, a denominator thirteen times larger.
+
+**The confidence values are better calibrated than we told ourselves.** Scored by evidence,
+the explicit speech-tag rule answered 8,357 quotations at **89.9% precision**, against a
+declared `EXPLICIT_TAG = 0.95`. The 68.6% recorded in the entry above — and copied into the
+KDoc on `AttributionResult.confidence` in `core/model` — came from the same broken sample.
+Calibration is still needed for QUI-009's gates, but the error is about five points, not
+twenty-seven. *That KDoc is QUI-008's file, so it has been left alone rather than reached
+across (CLAUDE.md §2.2); it needs a one-line correction from whoever owns it next.*
+
+**What each rule bought,** the same corpus with rules switched off:
+
+| Tier 1 configuration | Coverage | Precision | Accuracy |
+| --- | ---: | ---: | ---: |
+| explicit tags only | 22.6% | 89.9% | 20.3% |
+| tags + pronoun rule | 23.0% | 88.8% | 20.5% |
+| tags + pronouns + action beats | 26.8% | 84.9% | 22.8% |
+
+The action-beat rule buys **3.8 points of coverage for 3.9 points of precision** — it
+answered 1,402 quotations at 61.3%. That is a much better trade than it looked before
+QUI-032's roster junk filter landed, which cut the rule's answers from 1,733 to 1,402 and
+lifted its precision from 48.9% to 61.3%: most of what it used to get wrong, it now declines
+to answer. Left on. Given that a confidently wrong voice is heard and a missing one is
+merely flat (PRD §3.1), it is still the first switch to try if the winning model answers
+those lines well — `--candidate tier1-nobeats`.
+
+#### The out-of-domain holdouts
+
+Three axes, selected from PDNC's own novel index (`Narrative Person`, `Translator Code`,
+`Genre`), and excluded from the headline figure:
+
+| Axis | Novels | Quotes | Coverage | Precision | Accuracy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| translation | The Gambler | 767 | 7.7% | 64.4% | 5.0% |
+| action-beats | The Invisible Man, The Mysterious Affair at Styles, The Sign of the Four | 3,405 | 17.2% | 89.9% | 15.5% |
+| first-person | Daisy Miller, The Gambler, Styles, Sign of the Four, The Sun Also Rises, Where Angels Fear to Tread, Winnie-the-Pooh | 8,268 | 21.9% | 87.0% | 19.0% |
+| **all holdouts** | 8 novels | **9,172** | **22.9%** | **88.2%** | **20.2%** |
+
+Headline (the remaining 20 novels, 27,798 quotations): coverage 28.1%, precision 84.1%,
+**accuracy 23.7%**. The gap is **−3.5 accuracy points**, and it is a **lower bound**, for
+two reasons worth stating plainly:
+
+1. **These are still PDNC novels.** The ticket asks for books unlike PDNC; these are books
+   unlike the rest of PDNC, one axis each. The corpus stops in 1934, so *contemporary genre
+   fiction is not in it at any price* — the action-beat axis is served by Doyle, Christie
+   and Wells, and it is the holdout Tier 1 handles best, at 89.9% precision.
+2. **The translation axis is one novel**, and it is the worst book in the corpus for us:
+   5.0% accuracy at 64.4% precision, against 23.7% headline. If translated prose really
+   costs that much, one novel is far too thin a basis for the number, and a second
+   translation would be the single most valuable addition to the split.
+
+`Holdouts.External` is the empty slot for real out-of-corpus books, with the file format
+documented. **Nothing was written to fill it, on purpose.** Hand-authored passages would
+produce a number built from the cases we thought of, and that bias is precisely what cost
+QUI-018 a day: its hand-written fixtures said 100% precision where PDNC says 84.9%.
+Gutenberg is unreachable from the container and CLAUDE.md §8 forbids committing book text,
+so filling this slot needs a decision, not a script.
+
+#### Blocked: the model files, and exactly what to host
+
+Hugging Face is refused at the proxy (`connect_rejected`, `huggingface.co:443`), and so is
+`people.ischool.berkeley.edu`, where BookNLP fetches its weights (HTTP 403 on both model
+URLs). Neither model candidate can run here until the files are hosted somewhere reachable.
+
+**GitHub release assets are reachable** — verified with a ranged GET against the sherpa
+asset, HTTP 206, and `raw.githubusercontent.com` returns 200. Attaching a file to a release
+on any public GitHub repo is enough; no allowlist change is needed. Adding `huggingface.co`
+to the environment's allowed-domain list would also work and would unblock every future
+model at once, the way `dl.google.com` did for the Android SDK (CLAUDE.md §9).
+
+**1. BookNLP speaker attribution model** — the ticket's required baseline, the ~63% the
+field reports against. File names and URLs read out of `booknlp/english/english_booknlp.py`
+(lines 56–95) at repository HEAD, so they are exact:
+
+| | `big` (accuracy reference) | `small` (the one that could ship) |
+| --- | --- | --- |
+| File | `speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model` | `speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model` |
+| URL | `http://people.ischool.berkeley.edu/~dbamman/booknlp_models/speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model` | `http://people.ischool.berkeley.edu/~dbamman/booknlp_models/speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model` |
+| Size | **≈ 438 MB** | **≈ 57 MB** |
+
+**The sizes are derived, not measured** — the host 403s from here, so nothing verified them.
+They come from the architecture the filename declares: BERT-base `L-12_H-768_A-12` is 109.5M
+parameters, plus BookNLP's scoring head (`Linear(2×768, 100)` then `Linear(100, 1)`,
+`speaker_attribution.py:44–46`), as an fp32 state dict — 109.7M × 4 bytes. The small model is
+`L-8_H-256_A-4`, 14.3M parameters, same arithmetic. Expect the real files within a few
+percent; if `big` arrives at half that, it was saved in fp16 and that is worth knowing.
+
+Note which one matters. PRD §5 allows 450 MB for the *whole app*, TTS voices included, so a
+438 MB fp32 BERT-base cannot ship at any quantisation story we have — `big` is the accuracy
+ceiling to measure against, and `small` is the only BookNLP candidate that could become a
+product.
+
+**Also needed, and also on Hugging Face:** BookNLP derives the base model id from the
+checkpoint filename (`bert_qa.py:16`) and loads it through `transformers`, so running it also
+pulls **`google/bert_uncased_L-12_H-768_A-12`** (or `L-8_H-256_A-4` for small) for the
+tokenizer — `vocab.txt` (~232 KB) and `config.json` are the parts actually needed, since the
+checkpoint overwrites the weights, but stock `transformers` will fetch `pytorch_model.bin`
+(≈438 MB) as well unless it is pointed at a local directory.
+
+**2. The 94.5% joint-scoring encoder** — the model this ticket exists for. **I cannot name
+its file.** `docs/prior-art.md` §3 cites it as arXiv 2608.02359, `arxiv.org` is refused at
+the proxy (`CONNECT` 403), and guessing a checkpoint URL for a paper I cannot read would be
+inventing evidence. What is needed from the paper or its repository: the checkpoint or
+Hugging Face repo id, its parameter count, and whether an ONNX export exists or has to be
+made. With that, the candidate is an afternoon on top of this harness.
+
+*What is left:* both model candidates and the 1B SLM prompt from QUI-009; every on-device
+measurement (wall-clock for a 100k-word novel, peak RSS, disk, power) — none of which this
+container can take; and `docs/adr/0005-attribution-model.md`, which cannot honestly be
+written until something has been measured against the baseline above.
+
+*Note for the next session:* `Tier1Test` has two failures on `origin/main` that are not this
+ticket's. `roster bootstrap separates strong and weak evidence` expects `Mary` and gets only
+`Sarah` — it is red on `origin/main` itself, and arrived with QUI-032's roster junk filter.
+`attributes a hundred thousand words in under two seconds` is a wall-clock SLA that fails
+under container load and passes on a quiet rerun.
 
 ---
 
@@ -3008,9 +3185,10 @@ whether the two models can be resident at once.
 `device-profile.md` §2 works out that a quantized 1B SLM on a Snapdragon 750G without i8mm
 lands in the *hours* for a novel, and everything in `architecture.md` §5 — KV-cache reuse,
 single-token generation, Tier 1 coverage as a performance feature — exists to fight that.
-None of it is measured. QUI-028 has since shown Tier 1 resolves far less than hoped
-(58.5% precision, and roughly one line in nine on untagged material), so the SLM carries
-more of the load than the architecture assumed, not less.
+None of it is measured. QUI-028 has since shown Tier 1 resolves far less than hoped —
+**26.8% of dialogue, at 84.9% precision** — so the SLM carries more of the load than the
+architecture assumed, not less. (Re-measured 2026-09-02; the earlier 58.5% and "one line
+in nine" were artefacts of a scorer that saw 7.7% of the corpus.)
 
 ADR-0002 also leaves this ticket a harder budget than it expected. The TTS engine is
 accepted at RTF 0.354 with peak RSS 314 MB, so the SLM's share of the 1.2 GB ceiling is
@@ -3321,6 +3499,15 @@ Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, who
 | before | 2342 | 962 | 41.1% | 88.1% | 88.2% |
 | + quoted text blanked | 1469 | 850 | 57.9% | 84.6% | 89.3% |
 | + `ADJACENCY_MIN` 2 → 8 | **768** | **651** | **84.8%** | **82.3%** | **90.9%** |
+| + `Pdnc.matches` fixed (QUI-028, 2026-09-02) | **768** | **742** | **96.6%** | **88.4%** | **91.1%** |
+
+> **The last row is not a change to this ticket's code.** QUI-028 found that `Pdnc.matches`
+> stripped punctuation from the gold name but not from ours, so predicted `Mr. Woodhouse`
+> never matched gold `Mr. Woodhouse`. 91 of the 117 "invented" characters below were real
+> characters failing on a full stop. Precision is **96.6%**, not 84.8%, and invented
+> characters are **26 across 28 novels — 0.9 per novel**, not 4.2. Gender coverage moves the
+> other way, 58.7% → **52.6%**, because the denominator grew and the recovered characters
+> mostly have no gender: the finding below is unchanged and slightly worse.
 
 Invented characters fell from 1380 to 117 — **49 per novel to 4.2**. Recall over major and
 intermediate characters cost 5.8 points; those are found by their speech tags almost

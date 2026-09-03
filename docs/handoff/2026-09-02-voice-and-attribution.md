@@ -15,8 +15,12 @@ known*, *what is only asserted*, and *which questions are worth the next hour*.
 The reader wants characters to sound like themselves — not just different timbres, but
 accent and speech pattern. The starting question was whether a local model is needed at all
 or whether attribution can be done deterministically. QUI-028 answered that: Tier 1
-heuristics score 58.5% precision on PDNC and are right about **one line in nine** on
-untagged material. A model is required. That is settled and is not worth relitigating.
+heuristics **answer only 26.8% of dialogue on PDNC**, at 84.9% precision. A model is
+required — for coverage, not accuracy. That is settled and is not worth relitigating.
+
+(Corrected 2026-09-02. This note first said 58.5% precision and "one line in nine on
+untagged material"; both came from a scorer that measured 7.7% of the corpus. Tier 1 is
+accurate when it speaks and silent three quarters of the time.)
 
 From there, two things got worked out and both are now ADRs.
 
@@ -39,9 +43,9 @@ projection as a measurement.
 ### Measured, on the reference device
 - Piper `libritts_r` medium: RTF 0.354, load 2,524 ms, peak RSS 314 MB, 904 voices, 92 MB.
   4 threads is *worse* than 2. (ADR-0002)
-- Tier 1 attribution: 58.5% precision over 2,846 PDNC quotations; ~1 in 9 on untagged
-  lines; confidence values uncalibrated (`EXPLICIT_TAG` claims 0.95, measures 68.6%).
-  (QUI-028 worklog)
+- Tier 1 attribution: 26.8% coverage at 84.9% precision over 36,970 PDNC quotations;
+  answers 2.3% of Implicit and 6.5% of Anaphoric lines; confidence values still
+  uncalibrated but close (`EXPLICIT_TAG` claims 0.95, measures 89.9%). (QUI-028 worklog)
 
 ### Measured, on the build host only — ratios transfer, absolutes never do
 - Piper is 6–23× faster than every other multi-speaker engine in the zoo. int8 made Kokoro
