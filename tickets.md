@@ -3489,7 +3489,39 @@ Scenario: The per-character cost is known
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-03 — voice-probes-wav-export**
+
+Added the export, not the listen. `voiceprobe.py --mode accent --wav-dir DIR` now writes
+one WAV per espeak variant — same speaker (447), same sentence, the waveform each printed
+row was measured from, so the file and the number are the same take. No second synthesis
+and nothing normalised: the measurement path is untouched.
+
+What ships is the **deterministic** render, noise pinned off, which is the only reason two
+variants are comparable at all. It is not how the app renders, so the listen judges
+pronunciation from it and not naturalness. If the listen turns out to need a naturalistic
+take too, that is a second export, not a change to this one.
+
+CI job `voices` renders both probes on every push and attaches `voice-probe-wavs` beside
+`quire-probe-apk`, with the probes' console output as `accent-probe.txt`. Nothing needs
+building: a tester downloads the artifact. Locally:
+
+```bash
+cd spike/hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
+python3 voiceprobe.py --mode accent --wav-dir ../../build/voice-probes
+```
+
+Verified on this container: 7 files, 2.83–3.80 s each, durations matching the printed
+table, 30 s for the run. `en-gb` is not in this model's `espeak-ng-data` and fails as it
+always has, so the file numbering skips `03` — the index is the variant's position in the
+table, so a variant that is absent leaves a gap rather than renumbering the rest.
+
+Names carry the whole condition, because a tester scrolling a flat list on the device has
+the name and nothing else: `accent-05-en-gb-scotland-scots-spk447.wav`.
+
+**Still Todo, and the ticket's actual deliverable is untouched:** nobody has listened on
+the Note Air5 C, no variant has been judged usable or broken, and the runtime question
+(whether one loaded engine can switch variant) is not answered.
 **2026-08-31 — session-visibility-check**
 
 Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, whole corpus:
@@ -3761,3 +3793,27 @@ cd spike/hostbench && ./fetch-models.sh
 python3 voicelab.py blend
 python3 voicelab.py accent
 ```
+
+**2026-09-03 — voice-probes-wav-export**
+
+Export only, no change to the measurement. `voicelab.py blend --wav-dir DIR` writes the
+ramp as audio: both parents at `00` and `06` around the five invented rows at `01`–`05`,
+so the directory sorts into the order the comparison has to be heard in. Each name carries
+its own measured F0 — `blend-03-t050-invented-156hz.wav`.
+
+The arrangement is the point. F0 already says the invented voice sits between its parents;
+what it cannot say is whether that voice is a *person* or a smeared average of two readers,
+and that question is about the sequence rather than any one file. Now it can be asked.
+
+Re-ran on this container, and the numbers reproduce the table above within the noise floor
+(control sd 3.23 Hz): parents 112.5 / 183.8 Hz, ramp 115 → 128 → 156 → 176 → 190 Hz.
+
+```bash
+cd spike/hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
+python3 voicelab.py blend --wav-dir ../../build/voice-probes
+```
+
+CI job `voices` does this on every push and attaches the WAVs as `voice-probe-wavs`
+alongside `quire-probe-apk`, with the console output as `blend-probe.txt`. Status stays
+`In review` and the owner is unchanged: this adds the listening evidence the review needs,
+it does not perform the listen.
