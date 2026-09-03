@@ -6,6 +6,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import quire.attribution.Roster
 
 /** Covers the Gherkin scenarios in QUI-008. */
 class Tier1Test {
@@ -83,15 +84,17 @@ class Tier1Test {
 
     @Test
     fun `roster bootstrap separates strong and weak evidence`() {
-        val units = listOf(
-            ParagraphUnit("t#p0", "\"Yes,\" said Sarah.", 0, 0),
-            ParagraphUnit("t#p1", "Mary put down the tray. \"No.\"", 0, 1),
-            ParagraphUnit("t#p2", "Mary looked up. \"Really.\"", 0, 2),
-        )
+        // Sarah speaks once with a tag, which is enough. Mary never carries a tag, so she
+        // has to reach the adjacency threshold — written as the constant, not as its value,
+        // because that number is tuned against PDNC and has moved once already.
+        val units = listOf(ParagraphUnit("t#p0", "\"Yes,\" said Sarah.", 0, 0)) +
+            (1..Roster.ADJACENCY_MIN).map { i ->
+                ParagraphUnit("t#p$i", "Mary looked up. \"Really.\"", 0, i)
+            }
         val roster = Tier1.bootstrapRoster(units)
         assertEquals(setOf("Sarah"), roster.fromTags.keys)
-        assertEquals(2, roster.fromAdjacency["Mary"])
-        assertContains(roster.names, "Mary") // admitted at ADJACENCY_MIN
+        assertEquals(Roster.ADJACENCY_MIN, roster.fromAdjacency["Mary"])
+        assertContains(roster.names, "Mary")
     }
 
     @Test
