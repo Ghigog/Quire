@@ -1,7 +1,8 @@
-package quire.bakeoff
+package quire.spike.bakeoff
 
-import quire.bakeoff.Scorer.NovelScore
-import quire.bakeoff.Scorer.Tally
+import quire.spike.Pdnc
+import quire.spike.Pdnc.Tally
+import quire.spike.bakeoff.Bakeoff.NovelScore
 
 /** Prints the tables the ADR will quote. Nothing here decides anything. */
 object Report {

@@ -1,4 +1,6 @@
-package quire.bakeoff
+package quire.spike.bakeoff
+
+import quire.spike.Pdnc
 
 /**
  * The out-of-domain split QUI-028 requires: a translated novel, genre fiction carried by
@@ -28,18 +30,18 @@ object Holdouts {
     /** PDNC's own genres for books that are not the corpus's literary centre of mass. */
     private val GENRE_FICTION = setOf("crime", "scifi", "adventure", "romance", "horror", "fantasy")
 
-    fun axisOf(meta: Corpus.NovelMeta): List<Axis> = buildList {
+    fun axisOf(meta: Pdnc.NovelMeta): List<Axis> = buildList {
         if (meta.translated) add(Axis.TRANSLATION)
         if (meta.genre.lowercase() in GENRE_FICTION) add(Axis.ACTION_BEATS)
         if (meta.narrativePerson == 1) add(Axis.FIRST_PERSON)
     }
 
-    fun heldOut(meta: Corpus.NovelMeta) = axisOf(meta).isNotEmpty()
+    fun heldOut(meta: Pdnc.NovelMeta) = axisOf(meta).isNotEmpty()
 
     /** The novels the headline PDNC number is computed over: everything held out is gone. */
-    fun headline(index: List<Corpus.NovelMeta>) = index.filterNot(::heldOut)
+    fun headline(index: List<Pdnc.NovelMeta>) = index.filterNot(::heldOut)
 
-    fun byAxis(index: List<Corpus.NovelMeta>): Map<Axis, List<Corpus.NovelMeta>> =
+    fun byAxis(index: List<Pdnc.NovelMeta>): Map<Axis, List<Pdnc.NovelMeta>> =
         Axis.entries.associateWith { axis -> index.filter { axis in axisOf(it) } }
 
     /**

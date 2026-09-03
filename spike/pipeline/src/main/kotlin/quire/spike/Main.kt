@@ -2,6 +2,7 @@ package quire.spike
 
 import java.io.File
 import quire.attribution.Roster
+import quire.spike.bakeoff.BakeoffCli
 import quire.epub.EpubText
 import kotlin.system.exitProcess
 
@@ -20,12 +21,24 @@ quire-pipeline-spike (QUI-018)
                               add --junk to list the invented characters
   export <book.epub> <out.tsv>  attribute a real book and write the segments for
                               spike/indexer to turn into a dialogue index
+  bakeoff [--corpus DIR]      score a candidate across the whole corpus, with the
+          [--candidate ID]    out-of-domain holdouts reported apart from the headline
+          [--per-novel] [--mistakes] [--novels A,B]
+  holdouts [--corpus DIR]     the out-of-domain split and why each novel is in it
+  novels   [--corpus DIR]     what PDNC holds, from its own index
+
+Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only
+PDNC is not committed; fetch it with tools/fetch-pdnc.sh. --corpus defaults to
+${'$'}PDNC_HOME, then ~/.cache/quire/pdnc.
 
 Tier 2/3 are not implemented: they need the runtime chosen by ADR-0001 (QUI-017).
 """
 
 fun main(args: Array<String>) {
     if (args.isEmpty()) { println(USAGE.trim()); exitProcess(2) }
+    // The bake-off commands take valued flags and a corpus root rather than a list of
+    // files, so they are dispatched before the file-existence check below.
+    if (args[0] in setOf("bakeoff", "holdouts", "novels")) { bakeoff(args); return }
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
@@ -45,6 +58,52 @@ fun main(args: Array<String>) {
         "cast" -> cast(files, verbose = "--junk" in flags)
         "export" -> export(files[0], files.getOrElse(1) { File("attributed.tsv") })
         else -> { println(USAGE.trim()); exitProcess(2) }
+    }
+}
+
+/** `--key value`, `--key=value` and bare `--key` all mean the same thing to a shell user. */
+private fun parseFlags(args: List<String>): Map<String, String> {
+    val out = linkedMapOf<String, String>()
+    var i = 0
+    while (i < args.size) {
+        val arg = args[i]
+        if (!arg.startsWith("--")) { i++; continue }
+        val body = arg.removePrefix("--")
+        val eq = body.indexOf('=')
+        if (eq >= 0) {
+            out[body.substring(0, eq)] = body.substring(eq + 1)
+        } else {
+            val next = args.getOrNull(i + 1)
+            if (next != null && !next.startsWith("--")) { out[body] = next; i++ } else out[body] = ""
+        }
+        i++
+    }
+    return out
+}
+
+private fun bakeoff(args: Array<String>) {
+    val flags = parseFlags(args.drop(1))
+    val root = BakeoffCli.root(flags["corpus"]?.ifEmpty { null }) ?: run {
+        System.err.println("no PDNC corpus found — run tools/fetch-pdnc.sh, or pass --corpus DIR")
+        exitProcess(2)
+    }
+    when (args[0]) {
+        "holdouts" -> BakeoffCli.holdouts(root)
+        "novels" -> BakeoffCli.novels(root)
+        else -> {
+            val id = flags["candidate"]?.ifEmpty { null } ?: "tier1"
+            val candidate = BakeoffCli.candidate(id) ?: run {
+                System.err.println("unknown candidate: $id")
+                exitProcess(2)
+            }
+            BakeoffCli.run(
+                root = root,
+                candidate = candidate,
+                only = flags["novels"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+                perNovel = "per-novel" in flags,
+                showMistakes = "mistakes" in flags,
+            )
+        }
     }
 }
 

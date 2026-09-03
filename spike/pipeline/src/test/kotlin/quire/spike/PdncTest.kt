@@ -1,16 +1,18 @@
-package quire.bakeoff
+package quire.spike
 
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The corpus loader is the part of the harness that can be silently wrong: an offset off by
- * one still produces a plausible-looking percentage. These build a miniature PDNC on disk
- * and check the offsets land where they were written.
+ * The corpus loader is the part that can be silently wrong: an offset off by one still
+ * produces a plausible-looking percentage, and until 2026-09-02 nothing here had a test at
+ * all. These build a miniature PDNC on disk and check the offsets land where they were
+ * written.
  */
-class CorpusTest {
+class PdncTest {
 
     private fun corpus(text: String, quotations: String): File {
         val root = createTempDirectory()
@@ -39,17 +41,18 @@ class CorpusTest {
                 "\"Q0\",\"Good morning,\",\"[[$open, ${close}]]\",\"Sarah\",\"Explicit\"\n" +
                 "\"Q1\",\"Good morning,\",\"[[$second, ${second + 15}]]\",\"Thomas\",\"Explicit\"\n",
         )
-        val novel = Corpus.load(root, Corpus.index(root).single())
+        val (paragraphs, gold) = Pdnc.locate(File(File(root, "data"), "TestNovel"))
+        val (questions, unlocatable) = quire.spike.bakeoff.Bakeoff.questions(paragraphs, gold)
 
-        assertEquals(3, novel.paragraphs.size)
-        assertEquals(2, novel.questions.size)
+        assertEquals(3, paragraphs.size)
+        assertEquals(2, questions.size)
         // Two quotations with identical text land in different paragraphs. Text matching
         // cannot tell them apart; this is exactly the case that made the old scorer drop them.
-        assertEquals(0, novel.questions[0].paragraph)
-        assertEquals(2, novel.questions[1].paragraph)
-        assertEquals(0, novel.questions[0].start)
-        assertEquals("Sarah", novel.questions[0].gold)
-        assertEquals(0, novel.unlocatable)
+        assertEquals(0, questions[0].paragraph)
+        assertEquals(2, questions[1].paragraph)
+        assertEquals(0, questions[0].start)
+        assertEquals("Sarah", questions[0].gold)
+        assertEquals(0, unlocatable)
     }
 
     @Test
@@ -60,9 +63,9 @@ class CorpusTest {
             "\"quoteID\",\"quoteText\",\"quoteByteSpans\",\"speaker\",\"quoteType\"\n" +
                 "\"Q0\",\"Hello,\",\"[[0, 8]]\",\"_group\",\"Explicit\"\n",
         )
-        val novel = Corpus.load(root, Corpus.index(root).single())
-        assertTrue(novel.questions.isEmpty())
-        assertEquals(1, novel.unscorable)
+        val (paragraphs, gold) = Pdnc.locate(File(File(root, "data"), "TestNovel"))
+        assertTrue(quire.spike.bakeoff.Bakeoff.questions(paragraphs, gold).first.isEmpty())
+        assertEquals(1, gold.count { !it.scorable })
     }
 
     @Test
@@ -74,16 +77,16 @@ class CorpusTest {
             "\"quoteID\",\"quoteText\",\"quoteByteSpans\",\"speaker\",\"quoteType\"\n" +
                 "\"Q0\",\"Not tonight,\",\"[[$at, ${at + 14}]]\",\"Sarah\",\"Anaphoric\"\n",
         )
-        val novel = Corpus.load(root, Corpus.index(root).single())
-        val q = novel.questions.single()
-        val paragraph = novel.paragraphs[q.paragraph].text
+        val (paragraphs, gold) = Pdnc.locate(File(File(root, "data"), "TestNovel"))
+        val q = quire.spike.bakeoff.Bakeoff.questions(paragraphs, gold).first.single()
+        val paragraph = paragraphs[q.paragraph].unit.text
         // The wrapped paragraph is one line now, and the span still frames the speech.
         assertEquals("\"Not tonight,\"", paragraph.substring(q.start, q.end))
     }
 
     @Test
     fun `byte offsets survive a non-ascii corpus revision`() {
-        val offsets = Corpus.ByteOffsets("Émile said “yes”")
+        val offsets = Pdnc.ByteOffsets("Émile said “yes”")
         // É is two bytes, so every character after it sits one further on in bytes.
         assertEquals(0, offsets.charOf(0))
         assertEquals(1, offsets.charOf(2))
@@ -91,8 +94,25 @@ class CorpusTest {
     }
 
     @Test
+    fun `an honorific with a full stop matches itself`() {
+        // Regression: punctuation was stripped from the gold name and left on ours, so
+        // predicted "Mr. Woodhouse" scored as a miss against gold "Mr. Woodhouse". Most of
+        // Austen is honorifics, and Austen is a fifth of the corpus.
+        assertTrue(Pdnc.matches("Mr. Woodhouse", "Mr. Woodhouse"))
+        assertTrue(Pdnc.matches("Mrs. Weston", "Mrs Weston"))
+        assertTrue(Pdnc.matches("Knightley", "Mr. Knightley"))
+    }
+
+    @Test
+    fun `two people sharing a surname stay apart`() {
+        // The fold must not go so far that the honorific stops carrying identity.
+        assertFalse(Pdnc.matches("Mr. Bennet", "Mrs. Bennet"))
+        assertFalse(Pdnc.matches("Emma", "Mr. Knightley"))
+    }
+
+    @Test
     fun `python span literals parse`() {
-        assertEquals(listOf(2309 to 2585, 2600 to 2610), Corpus.spans("[[2309, 2585], [2600, 2610]]"))
-        assertEquals(emptyList(), Corpus.spans(""))
+        assertEquals(listOf(2309 to 2585, 2600 to 2610), Pdnc.spans("[[2309, 2585], [2600, 2610]]"))
+        assertEquals(emptyList(), Pdnc.spans(""))
     }
 }

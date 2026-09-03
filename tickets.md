@@ -2776,8 +2776,11 @@ RSS and power. The output is a decision recorded as an ADR, and — if the encod
 rewrite of QUI-006 and QUI-009.
 
 ### Requirements (how)
-- Owns: `spike/attribution-bakeoff/`, `docs/adr/0005-attribution-model.md`,
-  `tools/fetch-pdnc.sh`, and the layout line CLAUDE.md §3 requires for the new directory
+- Owns: `docs/adr/0005-attribution-model.md`, `tools/fetch-pdnc.sh`, and the bake-off half
+  of `spike/pipeline/` — `bakeoff/`, plus the corpus layer in `Pdnc.kt` it is built on.
+  The harness lives beside the PDNC loader rather than in a module of its own: two loaders
+  is how the measured Tier 1 and the shipped one quietly stop agreeing, and `Pdnc.kt` is
+  already shared with QUI-032's cast scoring.
 - Candidates: an encoder-based attribution model exported to ONNX, BookNLP as the baseline
   the field reports against, and the 1B SLM prompt from QUI-009.
 - Evaluate on **PDNC** — 37,131 quotations across 28 novels in the current revision — so
@@ -2857,62 +2860,76 @@ compared against exists.
 fetch, the harness, the Tier 1 baseline and the out-of-domain split all landed; neither
 model candidate did, because neither model file is reachable from a session container.
 
-*Landed:* `tools/fetch-pdnc.sh`, `spike/attribution-bakeoff/` (16 tests, all passing), and
-the layout line in CLAUDE.md §3.
+*Landed:* `tools/fetch-pdnc.sh`; the corpus layer in `spike/pipeline`'s `Pdnc.kt`; the
+harness in `spike/pipeline/src/main/kotlin/quire/spike/bakeoff/`; 18 tests, which are the
+first `Pdnc.kt` has ever had.
 
 **Reproduce:**
 
 ```bash
 tools/fetch-pdnc.sh
-cd spike/attribution-bakeoff && gradle installDist && gradle test
-build/install/quire-attribution-bakeoff/bin/quire-attribution-bakeoff score --per-novel
+cd spike/pipeline && gradle installDist && gradle test
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike bakeoff --per-novel
 ```
 
-#### The baseline, re-measured — and the old number was wrong
+#### A bug in the name matcher was deflating every PDNC number in the repo
 
-Tier 1 (`core:attribution`, pronouns and action beats on) over **36,970 scorable
-quotations across all 28 novels**. PDNC holds 37,131; 160 name a pseudo-entity
-(`_group`, `_unknowable`, `_narr`) that nobody could be right about, and one span fell
-outside every paragraph.
+`Pdnc.matches` stripped punctuation from the gold name and left it on ours, so predicted
+`Mr. Woodhouse` did not match gold `Mr. Woodhouse` — the words compared were `mr.` and `mr`.
+Every honorific carrying a full stop scored as a miss. Austen is a fifth of this corpus.
+
+Fixed by folding both sides the same way, with a regression test. **This corrects numbers
+outside this ticket:** QUI-032's cast scoring shares the same function, and on Emma, The
+Gambler and The Sign of the Four its precision goes **77.4% → 96.2%** — most of the "junk"
+characters it reported were real characters that failed to match on a full stop. Its recall
+is unchanged at 80.8%. `gknown` moves 58.5% → 47.1%, which is arithmetic rather than a
+regression: the count of real characters rose from 41 to 51, and the extra ones have no
+gender. **QUI-032's worklog numbers are understated and should be re-measured.**
+
+#### The baseline, re-measured — and the August number was wrong
+
+Tier 1 (`core:attribution`, pronouns and action beats on) over **36,970 scorable quotations
+across all 28 novels**. PDNC holds 37,131; 160 name a pseudo-entity (`_group`,
+`_unknowable`, `_narr`) that nobody could be right about, and one span fell outside every
+paragraph.
 
 | Quotation type | Quotes | Coverage | Precision | Accuracy |
 | --- | ---: | ---: | ---: | ---: |
-| Explicit | 11,172 | 80.4% | 88.3% | 70.9% |
-| Implicit | 16,645 | 3.1% | 46.5% | 1.5% |
-| Anaphoric | 9,125 | 6.6% | 31.4% | 2.1% |
-| **All** | **36,970** | **27.4%** | **82.7%** | **22.6%** |
+| Explicit | 11,172 | 79.9% | 88.9% | 71.0% |
+| Implicit | 16,645 | 2.3% | 61.8% | 1.4% |
+| Anaphoric | 9,125 | 6.5% | 40.9% | 2.7% |
+| **All** | **36,970** | **26.8%** | **84.9%** | **22.8%** |
 
 **This supersedes the 58.5% precision in the entry above, which was measured wrongly.**
 That pass matched gold quotations to predicted segments by normalised text and scored only
-the ones that keyed — 2,846 of 37,131, or 7.7% of the corpus, self-selected for being
-short and cleanly punctuated. The new harness uses PDNC's own byte spans, so the
-denominator is every scorable quotation and a quotation the candidate never saw counts
-against it. Same code under test, same corpus, a denominator thirteen times larger.
+the ones that keyed — 2,846 of 37,131, or 7.7% of the corpus, self-selected for being short
+and cleanly punctuated. The harness now uses PDNC's own byte spans, so the denominator is
+every scorable quotation and a quotation the candidate never saw counts against it. Same
+code under test, same corpus, a denominator thirteen times larger.
 
-**The confidence values are better calibrated than we told ourselves.** Scored by
-evidence, the explicit speech-tag rule answered 8,357 quotations at **89.9% precision**,
-against a declared `EXPLICIT_TAG = 0.95`. The 68.6% recorded in the entry above — and
-copied into the KDoc on `AttributionResult.confidence` in `core/model` — came from the
-same broken sample and is not what the rule does. Calibration is still needed for QUI-009's
-gates, but the error is about five points, not twenty-seven. *That KDoc is QUI-008's file,
-not this ticket's, so it has been left alone rather than reached across (CLAUDE.md §2.2);
-it needs a one-line correction from whoever owns it next.*
+**The confidence values are better calibrated than we told ourselves.** Scored by evidence,
+the explicit speech-tag rule answered 8,357 quotations at **89.9% precision**, against a
+declared `EXPLICIT_TAG = 0.95`. The 68.6% recorded in the entry above — and copied into the
+KDoc on `AttributionResult.confidence` in `core/model` — came from the same broken sample.
+Calibration is still needed for QUI-009's gates, but the error is about five points, not
+twenty-seven. *That KDoc is QUI-008's file, so it has been left alone rather than reached
+across (CLAUDE.md §2.2); it needs a one-line correction from whoever owns it next.*
 
 **What each rule bought,** the same corpus with rules switched off:
 
 | Tier 1 configuration | Coverage | Precision | Accuracy |
 | --- | ---: | ---: | ---: |
 | explicit tags only | 22.6% | 89.9% | 20.3% |
-| tags + pronoun rule | 22.7% | 89.7% | 20.3% |
-| tags + pronouns + action beats | 27.4% | 82.7% | 22.6% |
+| tags + pronoun rule | 23.0% | 88.8% | 20.5% |
+| tags + pronouns + action beats | 26.8% | 84.9% | 22.8% |
 
-The action-beat rule buys **4.8 points of coverage for 7.2 points of precision** — it
-answered 1,733 quotations at 48.9%, a coin toss. The pronoun rule bought 0.1 points of
-coverage across 36,970 quotations and can be treated as free either way. Given that a
-confidently wrong voice is heard and a missing one is merely flat (PRD §3.1), the beat rule
-looks like a bad trade *if* a model is going to answer those lines anyway — which is
-exactly what this ticket is deciding. Left on for now; the switch is `--candidate
-tier1-nobeats`.
+The action-beat rule buys **3.8 points of coverage for 3.9 points of precision** — it
+answered 1,402 quotations at 61.3%. That is a much better trade than it looked before
+QUI-032's roster junk filter landed, which cut the rule's answers from 1,733 to 1,402 and
+lifted its precision from 48.9% to 61.3%: most of what it used to get wrong, it now declines
+to answer. Left on. Given that a confidently wrong voice is heard and a missing one is
+merely flat (PRD §3.1), it is still the first switch to try if the winning model answers
+those lines well — `--candidate tier1-nobeats`.
 
 #### The out-of-domain holdouts
 
@@ -2921,43 +2938,42 @@ Three axes, selected from PDNC's own novel index (`Narrative Person`, `Translato
 
 | Axis | Novels | Quotes | Coverage | Precision | Accuracy |
 | --- | --- | ---: | ---: | ---: | ---: |
-| translation | The Gambler | 767 | 9.5% | 50.7% | 4.8% |
-| action-beats | The Invisible Man, The Mysterious Affair at Styles, The Sign of the Four | 3,405 | 17.7% | 84.4% | 15.0% |
-| first-person | Daisy Miller, The Gambler, Styles, Sign of the Four, The Sun Also Rises, Where Angels Fear to Tread, Winnie-the-Pooh | 8,268 | 22.4% | 83.6% | 18.7% |
-| **all holdouts** | 8 novels | **9,172** | **23.6%** | **84.3%** | **19.9%** |
+| translation | The Gambler | 767 | 7.7% | 64.4% | 5.0% |
+| action-beats | The Invisible Man, The Mysterious Affair at Styles, The Sign of the Four | 3,405 | 17.2% | 89.9% | 15.5% |
+| first-person | Daisy Miller, The Gambler, Styles, Sign of the Four, The Sun Also Rises, Where Angels Fear to Tread, Winnie-the-Pooh | 8,268 | 21.9% | 87.0% | 19.0% |
+| **all holdouts** | 8 novels | **9,172** | **22.9%** | **88.2%** | **20.2%** |
 
-Headline (the remaining 20 novels, 27,798 quotations): coverage 28.6%, precision 82.3%,
-**accuracy 23.5%**. The gap is **−3.6 accuracy points**, and it is a **lower bound**, for
+Headline (the remaining 20 novels, 27,798 quotations): coverage 28.1%, precision 84.1%,
+**accuracy 23.7%**. The gap is **−3.5 accuracy points**, and it is a **lower bound**, for
 two reasons worth stating plainly:
 
 1. **These are still PDNC novels.** The ticket asks for books unlike PDNC; these are books
    unlike the rest of PDNC, one axis each. The corpus stops in 1934, so *contemporary genre
    fiction is not in it at any price* — the action-beat axis is served by Doyle, Christie
-   and Wells. Nothing measured here says anything about prose written since.
+   and Wells, and it is the holdout Tier 1 handles best, at 89.9% precision.
 2. **The translation axis is one novel**, and it is the worst book in the corpus for us:
-   4.8% accuracy at 50.7% precision, against 23.5% headline. If translated prose really
+   5.0% accuracy at 64.4% precision, against 23.7% headline. If translated prose really
    costs that much, one novel is far too thin a basis for the number, and a second
    translation would be the single most valuable addition to the split.
 
 `Holdouts.External` is the empty slot for real out-of-corpus books, with the file format
 documented. **Nothing was written to fill it, on purpose.** Hand-authored passages would
 produce a number built from the cases we thought of, and that bias is precisely what cost
-QUI-018 a day: its hand-written fixtures said 100% precision where PDNC says 82.7%.
+QUI-018 a day: its hand-written fixtures said 100% precision where PDNC says 84.9%.
 Gutenberg is unreachable from the container and CLAUDE.md §8 forbids committing book text,
 so filling this slot needs a decision, not a script.
 
 #### Blocked: the model files, and exactly what to host
 
 Hugging Face is refused at the proxy (`connect_rejected`, `huggingface.co:443`), and so is
-`people.ischool.berkeley.edu`, which is where BookNLP fetches its weights (HTTP 403 on
-both model URLs). Neither model candidate can run here until the files are hosted
-somewhere this container can reach.
+`people.ischool.berkeley.edu`, where BookNLP fetches its weights (HTTP 403 on both model
+URLs). Neither model candidate can run here until the files are hosted somewhere reachable.
 
 **GitHub release assets are reachable** — verified with a ranged GET against the sherpa
 asset, HTTP 206, and `raw.githubusercontent.com` returns 200. Attaching a file to a release
-on any public GitHub repo is therefore enough; no allowlist change is needed. Adding
-`huggingface.co` to the environment's allowed-domain list would also work and would unblock
-every future model at once, the way `dl.google.com` did for the Android SDK (CLAUDE.md §9).
+on any public GitHub repo is enough; no allowlist change is needed. Adding `huggingface.co`
+to the environment's allowed-domain list would also work and would unblock every future
+model at once, the way `dl.google.com` did for the Android SDK (CLAUDE.md §9).
 
 **1. BookNLP speaker attribution model** — the ticket's required baseline, the ~63% the
 field reports against. File names and URLs read out of `booknlp/english/english_booknlp.py`
@@ -2970,20 +2986,20 @@ field reports against. File names and URLs read out of `booknlp/english/english_
 | Size | **≈ 438 MB** | **≈ 57 MB** |
 
 **The sizes are derived, not measured** — the host 403s from here, so nothing verified them.
-They come from the architecture the filename declares: BERT-base `L-12_H-768_A-12` is
-109.5M parameters, plus BookNLP's scoring head (`Linear(2×768, 100)` then `Linear(100, 1)`,
-`speaker_attribution.py:44–46`), as an fp32 state dict — 109.7M × 4 bytes. The small model
-is `L-8_H-256_A-4`, 14.3M parameters, same arithmetic. Expect the real files within a few
+They come from the architecture the filename declares: BERT-base `L-12_H-768_A-12` is 109.5M
+parameters, plus BookNLP's scoring head (`Linear(2×768, 100)` then `Linear(100, 1)`,
+`speaker_attribution.py:44–46`), as an fp32 state dict — 109.7M × 4 bytes. The small model is
+`L-8_H-256_A-4`, 14.3M parameters, same arithmetic. Expect the real files within a few
 percent; if `big` arrives at half that, it was saved in fp16 and that is worth knowing.
 
-Note which one matters. PRD §5 allows 450 MB for the *whole app*, TTS voices included, so
-a 438 MB fp32 BERT-base cannot ship at any quantisation story we have — `big` is the
-accuracy ceiling to measure against, and `small` is the only BookNLP candidate that could
-become a product.
+Note which one matters. PRD §5 allows 450 MB for the *whole app*, TTS voices included, so a
+438 MB fp32 BERT-base cannot ship at any quantisation story we have — `big` is the accuracy
+ceiling to measure against, and `small` is the only BookNLP candidate that could become a
+product.
 
 **Also needed, and also on Hugging Face:** BookNLP derives the base model id from the
-checkpoint filename (`bert_qa.py:16`) and loads it through `transformers`, so running it
-also pulls **`google/bert_uncased_L-12_H-768_A-12`** (or `L-8_H-256_A-4` for small) for the
+checkpoint filename (`bert_qa.py:16`) and loads it through `transformers`, so running it also
+pulls **`google/bert_uncased_L-12_H-768_A-12`** (or `L-8_H-256_A-4` for small) for the
 tokenizer — `vocab.txt` (~232 KB) and `config.json` are the parts actually needed, since the
 checkpoint overwrites the weights, but stock `transformers` will fetch `pytorch_model.bin`
 (≈438 MB) as well unless it is pointed at a local directory.
@@ -2999,6 +3015,12 @@ made. With that, the candidate is an afternoon on top of this harness.
 measurement (wall-clock for a 100k-word novel, peak RSS, disk, power) — none of which this
 container can take; and `docs/adr/0005-attribution-model.md`, which cannot honestly be
 written until something has been measured against the baseline above.
+
+*Note for the next session:* `Tier1Test` has two failures on `origin/main` that are not this
+ticket's. `roster bootstrap separates strong and weak evidence` expects `Mary` and gets only
+`Sarah` — it is red on `origin/main` itself, and arrived with QUI-032's roster junk filter.
+`attributes a hundred thousand words in under two seconds` is a wall-clock SLA that fails
+under container load and passes on a quiet rerun.
 
 ---
 

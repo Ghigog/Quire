@@ -1,4 +1,6 @@
-package quire.bakeoff
+package quire.spike.bakeoff
+
+import quire.spike.Pdnc
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,7 +9,7 @@ import kotlin.test.assertTrue
 class HoldoutsTest {
 
     private fun meta(folder: String, person: Int = 3, translated: Boolean = false, genre: String = "literary") =
-        Corpus.NovelMeta(folder, folder, person, translated, genre, 1900)
+        Pdnc.NovelMeta(folder, folder, person, translated, genre, 1900)
 
     @Test
     fun `each axis picks the novels it asks for`() {
