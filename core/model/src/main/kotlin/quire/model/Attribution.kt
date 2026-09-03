@@ -42,10 +42,13 @@ data class AttributionResult(
     /**
      * How much to trust [speakerId], 0–1.
      *
-     * **These are not yet calibrated.** QUI-028 scored Tier 1 against PDNC and found the
-     * declared values are fiction: an explicit tag claims 0.95 against a measured 68.6%
-     * precision. PRD §2's gates in [Thresholds] assume calibrated numbers, so QUI-009 must
-     * either recalibrate these or stop treating them as probabilities.
+     * **These are not yet calibrated.** QUI-028 scored Tier 1 against PDNC: an explicit tag
+     * claims 0.95 against a measured **89.9%** precision, and an action beat claims 0.75
+     * against 61.3%. PRD §2's gates in [Thresholds] assume calibrated numbers, so QUI-009
+     * must either recalibrate these or stop treating them as probabilities.
+     *
+     * The 68.6% this comment carried until 2026-09-02 came from a scorer that matched gold
+     * quotations by text and so measured 7.7% of the corpus. The gap is real but small.
      */
     val confidence: Double,
     val tier: Tier,

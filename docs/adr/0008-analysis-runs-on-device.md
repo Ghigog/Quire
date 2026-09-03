@@ -12,6 +12,16 @@ cast discovery against PDNC's 28 novels: after fixes, 84.8% precision and 82.3% 
 the cast, but gender inferred for only **58.7%** of it. QUI-028 put Tier 1 attribution at
 58.5% precision, and PDNC says only 30.1% of quotations carry a named speech tag at all.
 
+> **Correction, 2026-09-02 (QUI-028).** Both measurements above shared a bug in
+> `Pdnc.matches`, which stripped punctuation from the gold name but not from ours, so
+> `Mr. Woodhouse` never matched `Mr. Woodhouse`. Re-measured: cast discovery is **96.6%
+> precision and 88.4% recall** over the 28 novels, with gender inferred for **52.6%** of the
+> cast — that share fell rather than rose because the real-character count went from 651 to
+> 742 of the same 768 found, and the 91 characters the fix recovers mostly have no gender. Tier 1 attribution is **84.9% precision at 26.8%
+> coverage**. **This ADR's decision is unchanged**: the ceiling is still a ceiling, gender
+> is still missing for half the cast, and Tier 1 still leaves three quarters of dialogue
+> unanswered. The errors are still not regex bugs.
+
 The remaining errors are not regex bugs. They need something that understands context —
 which is a language model. The question this ADR settles is *where that model runs*, because
 CLAUDE.md §8 states a hard product rule: **book content and generated audio stay on-device,

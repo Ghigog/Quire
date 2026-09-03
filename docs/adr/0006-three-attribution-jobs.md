@@ -7,6 +7,15 @@
 
 ## Context
 
+> **Correction, 2026-09-02 (QUI-028).** The numbers below were measured by a scorer that
+> matched gold quotations by text and so scored 2,846 of 37,131 — 7.7% of the corpus. Scored
+> against PDNC's byte spans, Tier 1 is **84.9% precision at 26.8% coverage** over 36,970
+> quotations. **The decision this ADR makes is unchanged and if anything better supported**:
+> the gap is coverage, not accuracy — a model is needed for the three quarters of dialogue
+> Tier 1 never answers. But the specific claim below is backwards. Tier 1 is *not* guessing
+> and losing on untagged lines: it answers 2.3% of Implicit quotations and 6.5% of Anaphoric
+> ones, declining the rest. It is silent, not reckless.
+
 QUI-028 killed the hope that heuristics carry the book. Tier 1 scores **58.5% precision
 over 2,846 PDNC quotations**, and on quotations with no explicit speech tag it is right
 about **one time in nine** — guessing and losing, not declining to guess. Whatever fills
@@ -82,7 +91,8 @@ slower and worse.
   whole scene at once.
 - **Blast radius grows.** One bad call now costs a scene rather than a line. The
   confidence gates QUI-028 showed to be uncalibrated (`EXPLICIT_TAG` claims 0.95 against a
-  measured 68.6%) become more important, not less.
+  measured 89.9% — 68.6% before the 2026-09-02 correction above) become more important,
+  not less.
 - **QUI-031 must measure scene-sized prompts.** Throughput measured on single-line prompts
   would answer a question we are no longer asking, and would flatter the prefill cost that
   scene batching exists to amortise.

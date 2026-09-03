@@ -50,7 +50,7 @@ object Holdouts {
      * Not implemented, and deliberately not faked. Writing our own passages would produce a
      * number built from the cases we thought of, which is the bias
      * `fixtures/attribution/README.md` warns about and which QUI-018 already paid for once —
-     * hand-written fixtures said 100% precision where PDNC said 58.5%. The slot is described
+     * hand-written fixtures said 100% precision where PDNC says 84.9%. The slot is described
      * so that a real book can be dropped in without touching the harness: a labelled TSV per
      * book under `fixtures/attribution/holdout/`, in the format `Fixture` already reads,
      * naming its axis in a `# axis:` header. Getting those books is the blocker — Gutenberg

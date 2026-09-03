@@ -763,8 +763,8 @@ rather than being promoted to a tag. Both have tests, as does whole-word matchin
 desktop number kept as a regression guard rather than an SLA claim (CLAUDE.md §1.6).
 
 *Confidences are left as the ticket specifies* — 0.95 direct, 0.75 beat, 0.85 pronoun — and
-are **known to be optimistic**: QUI-028 measured explicit tags at 68.6% precision on PDNC
-against the declared 0.95. Moving them without a measurement would swap one fiction for
+are **known to be optimistic**: QUI-028 measured explicit tags at 89.9% precision on PDNC
+against the declared 0.95 (68.6% before its 2026-09-02 re-measurement). Moving them without a measurement would swap one fiction for
 another, so the class documents the discrepancy and recalibration stays QUI-009's
 prerequisite.
 
@@ -1665,6 +1665,12 @@ still holds for scheduling and synthesis; it now names the exception.
 **2026-08-28 — scored against PDNC, and the hand-written numbers do not survive.**
 Reproduce: clone PDNC, then
 `quire-pipeline-spike pdnc <pdnc>/data/Emma <pdnc>/data/TheSignOfTheFour …`
+
+> **Superseded 2026-09-02 by QUI-028.** The scorer behind this table matched gold
+> quotations to predicted segments by text, and so measured 2,846 of 37,131 — 7.7% of PDNC,
+> self-selected for being short and cleanly punctuated. Re-scored against PDNC's byte spans
+> over all 28 novels, Tier 1 is **26.8% coverage at 84.9% precision**. The table below is
+> kept as the record of what was believed; do not quote it.
 
 Measured over 2,846 matched quotations from five novels:
 
@@ -3178,9 +3184,10 @@ whether the two models can be resident at once.
 `device-profile.md` §2 works out that a quantized 1B SLM on a Snapdragon 750G without i8mm
 lands in the *hours* for a novel, and everything in `architecture.md` §5 — KV-cache reuse,
 single-token generation, Tier 1 coverage as a performance feature — exists to fight that.
-None of it is measured. QUI-028 has since shown Tier 1 resolves far less than hoped
-(58.5% precision, and roughly one line in nine on untagged material), so the SLM carries
-more of the load than the architecture assumed, not less.
+None of it is measured. QUI-028 has since shown Tier 1 resolves far less than hoped —
+**26.8% of dialogue, at 84.9% precision** — so the SLM carries more of the load than the
+architecture assumed, not less. (Re-measured 2026-09-02; the earlier 58.5% and "one line
+in nine" were artefacts of a scorer that saw 7.7% of the corpus.)
 
 ADR-0002 also leaves this ticket a harder budget than it expected. The TTS engine is
 accepted at RTF 0.354 with peak RSS 314 MB, so the SLM's share of the 1.2 GB ceiling is
@@ -3491,6 +3498,15 @@ Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, who
 | before | 2342 | 962 | 41.1% | 88.1% | 88.2% |
 | + quoted text blanked | 1469 | 850 | 57.9% | 84.6% | 89.3% |
 | + `ADJACENCY_MIN` 2 → 8 | **768** | **651** | **84.8%** | **82.3%** | **90.9%** |
+| + `Pdnc.matches` fixed (QUI-028, 2026-09-02) | **768** | **742** | **96.6%** | **88.4%** | **91.1%** |
+
+> **The last row is not a change to this ticket's code.** QUI-028 found that `Pdnc.matches`
+> stripped punctuation from the gold name but not from ours, so predicted `Mr. Woodhouse`
+> never matched gold `Mr. Woodhouse`. 91 of the 117 "invented" characters below were real
+> characters failing on a full stop. Precision is **96.6%**, not 84.8%, and invented
+> characters are **26 across 28 novels — 0.9 per novel**, not 4.2. Gender coverage moves the
+> other way, 58.7% → **52.6%**, because the denominator grew and the recovered characters
+> mostly have no gender: the finding below is unchanged and slightly worse.
 
 Invented characters fell from 1380 to 117 — **49 per novel to 4.2**. Recall over major and
 intermediate characters cost 5.8 points; those are found by their speech tags almost

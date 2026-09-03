@@ -221,9 +221,11 @@ with a fresh ~300-token window each lands in the hours. Therefore:
 - **Tier 1 coverage helps but cannot rescue us.** Every line the heuristics resolve is a
   line the model never sees — but measured on PDNC, explicit speech tags account for only
   30.1% of quotations across 28 novels, and 11.6% in the worst book. The 44.4% coverage
-  QUI-018 measured came from hand-written fixtures that over-represent taggable lines. The
-  model still carries most of a novel, so its speed is what decides the budget
-  (`docs/prior-art.md` §3).
+  QUI-018 measured came from hand-written fixtures that over-represent taggable lines.
+  Scored properly over all 37,131 quotations (QUI-028, 2026-09-02), Tier 1 **answers 26.8%
+  of dialogue at 84.9% precision**. It is accurate when it speaks and silent most of the
+  time, so the model carries roughly three quarters of a novel and its speed decides the
+  budget (`docs/prior-art.md` §3).
 
 - **Pronoun tags are the cheapest coverage left, and nothing claims them yet.** Running
   Tier 1 over the slice's own generated book (2026-08-29,

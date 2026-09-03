@@ -166,8 +166,9 @@ private fun export(book: File, out: File) {
     println("dialogue spans %d, attributed %d (%s)".format(
         dialogue.size, named, pct(if (dialogue.isEmpty()) 0.0 else named.toDouble() / dialogue.size)))
     println()
-    println("Tier 1 only. QUI-028 measured it at 58.5%% precision on PDNC, so expect a")
-    println("meaningful share of these to be wrong -- which is what listening is for.")
+    // Plain println, so a literal percent sign rather than the %% a format string needs.
+    println("Tier 1 only. QUI-028 measured it at 84.9% precision on PDNC — but it answers")
+    println("just 26.8% of dialogue, so most spans here are blank and some are wrong.")
 }
 
 /**
