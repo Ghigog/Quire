@@ -3272,6 +3272,43 @@ so roughly overnight for 28), a threshold sweep, BookNLP as the published baseli
 every on-device measurement. ADR-0005 still cannot be written honestly — but the shape of
 what it will say is now visible, and it is not "the encoder replaces Tier 1".
 
+**2026-09-06 — throughput, and it is the third disqualifier.** Measured off the corpus run
+on this container's x86 CPU: `ARoomWithAView`, 1,634 quotations, 54.2 minutes wall clock —
+**0.50 quotations per second**. The neighbouring novel gives the same rate within a few
+percent. The machine was shared with Gradle runs, so treat it as a floor rather than a
+clean figure.
+
+Absolute host numbers do not transfer to the device (`spike/hostbench/README.md`), and this
+one does not need to. QUI-007 allows **30 minutes for the entire scan** of a 100k-word
+novel — parse, cast, voice design, attribution, index write. Such a novel carries roughly
+2,300 quotations, which this encoder answers in about **77 minutes on a desktop core**.
+It is already 2.5× over the whole budget on hardware several times faster than a
+Snapdragon 750G, and §8 of ADR-0002 measured that SoC punishing this class of work about
+twice as hard again. There is no version of this arithmetic that fits.
+
+**So the 431 MB encoder is out on three independent counts**, any one of which would be
+enough:
+
+| | measured | budget |
+| --- | --- | --- |
+| wrong-voice rate | 41.4% of all quotations | ~2% today, from Tier 1 |
+| whole-novel time | ~77 min, desktop | 30 min, on device |
+| on-disk size | 431 MB fp32 | 450 MB for the whole app |
+
+**What survives is the finding underneath it, and it is the valuable part.** The encoder is
+strong exactly where Tier 1 is blind — Implicit 39.2% against 2.4%, Anaphoric 61.2% against
+2.0% — and worse than Tier 1 where a speech tag exists. That shape is a property of the
+approach, not of this checkpoint, and it is what ADR-0006's tiering assumed.
+
+The next candidate is therefore not a bigger corpus run on this model. It is **BookNLP
+`small`** — `L-8_H-256_A-4`, ~14M parameters against 107.7M, ~57 MB against 431 MB — which
+is the only published attribution model in this family that could fit any of the three
+budgets. Plus a threshold sweep on whatever wins, since 0.5 is Renard's default and nobody
+has moved it.
+
+*Corpus run:* left running; at this rate the full 36,970 quotations is roughly 20 hours, so
+it will not finish inside a session container. Not worth restarting on this checkpoint.
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
