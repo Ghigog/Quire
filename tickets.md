@@ -45,10 +45,10 @@ already `In progress`.
 | QUI-015 | Character & voice drawer | UI | **Deferred → V2.0** | — | — |
 | QUI-031 | SLM runtime bake-off and co-residency | Spike | Todo | — | QUI-006 |
 | QUI-032 | Voice descriptor in `characters.json` | Attribution | In review | — | QUI-005 |
-| QUI-033 | Accent: listening test and per-character variants | Spike | Todo | — | QUI-032 |
+| QUI-033 | Accent: listening test and per-character variants | Spike | Done | — | QUI-032 |
 | QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
-| QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | In review | session-visibility-check | — |
+| QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 
 Next free ID: **QUI-037**
 
@@ -956,6 +956,12 @@ Scenario: Fully offline
 ---
 
 ## QUI-011 — Automatic voice casting
+
+> **Note from QUI-036, 2026-09-06.** Casting picks parents by F0, and F0 says nothing about
+> whether a reader is any good. The listening test found spk659 — a real trained voice, well
+> inside the usable pitch range — sounds mushy, and the voices *generated* from it sound
+> better than it does. Before this ticket chooses parents it needs a quality signal
+> alongside the pitch one; `fixtures/voices/libritts_r-f0.tsv` does not carry one.
 
 **Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
 **PRD:** §4.2
@@ -3490,96 +3496,35 @@ Scenario: The per-character cost is known
 
 ### Worklog
 
-**2026-09-03 — voice-probes-wav-export**
+**2026-09-06 — listened on the reference device. Negative result; the axis is dropped.**
 
-Added the export, not the listen. `voiceprobe.py --mode accent --wav-dir DIR` now writes
-one WAV per espeak variant — same speaker (447), same sentence, the waveform each printed
-row was measured from, so the file and the number are the same take. No second synthesis
-and nothing normalised: the measurement path is untouched.
+Six espeak variants, same speaker, same sentence, played through the Boox's own speaker.
 
-What ships is the **deterministic** render, noise pinned off, which is the only reason two
-variants are comparable at all. It is not how the app renders, so the listen judges
-pronunciation from it and not naturalness. If the listen turns out to need a naturalistic
-take too, that is a second export, not a change to this one.
+| Variant | Verdict |
+| --- | --- |
+| General American | Perfect. The model's own training distribution. |
+| New York City | Clean, but not recognisably the accent. |
+| RP | Not accurate. |
+| West Midlands | Roughly acceptable. |
+| Lancashire | Roughly acceptable. |
+| Scots | Audible stall of about a second on /a/. Broken. |
+| Caribbean | Vowels sound skipped. Broken. |
 
-CI job `voices` renders both probes on every push and attaches `voice-probe-wavs` beside
-`quire-probe-apk`, with the probes' console output as `accent-probe.txt`. Nothing needs
-building: a tester downloads the artifact. Locally:
+Two separate problems, and either alone would be enough. **Artefacts:** Scots stalls on a
+vowel and Caribbean drops them, which is what feeding out-of-distribution phonemes to an
+`en-US`-trained model looks like. **Fidelity:** even the variants with no artefacts are not
+convincingly the accent they claim, so there is nothing to salvage by fixing the artefacts.
 
-```bash
-cd spike/hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
-python3 voiceprobe.py --mode accent --wav-dir ../../build/voice-probes
-```
+This is the outcome ADR-0007 pre-registered as possible: the phoneme stream demonstrably
+changed, and the change does not sound like an accent. The measurement was right and the
+inference from it would have been wrong. Only the listen could tell them apart.
 
-Verified on this container: 7 files, 2.83–3.80 s each, durations matching the printed
-table, 30 s for the run. `en-gb` is not in this model's `espeak-ng-data` and fails as it
-always has, so the file numbering skips `03` — the index is the variant's position in the
-table, so a variant that is absent leaves a gap rather than renumbering the rest.
+**Closed as Done with a negative result, per this ticket's own third scenario.** The
+per-character variant question is moot — there is nothing worth making per-character — so
+it was not investigated further. ADR-0007 is amended.
 
-Names carry the whole condition, because a tester scrolling a flat list on the device has
-the name and nothing else: `accent-05-en-gb-scotland-scots-spk447.wav`.
-
-**Still Todo, and the ticket's actual deliverable is untouched:** nobody has listened on
-the Note Air5 C, no variant has been judged usable or broken, and the runtime question
-(whether one loaded engine can switch variant) is not answered.
-**2026-08-31 — session-visibility-check**
-
-Reproduce, measure, fix, measure again. All numbers from the 28 PDNC novels, whole corpus:
-
-| | found | real | precision | recall | gender acc. |
-| --- | --- | --- | --- | --- | --- |
-| before | 2342 | 962 | 41.1% | 88.1% | 88.2% |
-| + quoted text blanked | 1469 | 850 | 57.9% | 84.6% | 89.3% |
-| + `ADJACENCY_MIN` 2 → 8 | **768** | **651** | **84.8%** | **82.3%** | **90.9%** |
-| + `Pdnc.matches` fixed (QUI-028, 2026-09-02) | **768** | **742** | **96.6%** | **88.4%** | **91.1%** |
-
-> **The last row is not a change to this ticket's code.** QUI-028 found that `Pdnc.matches`
-> stripped punctuation from the gold name but not from ours, so predicted `Mr. Woodhouse`
-> never matched gold `Mr. Woodhouse`. 91 of the 117 "invented" characters below were real
-> characters failing on a full stop. Precision is **96.6%**, not 84.8%, and invented
-> characters are **26 across 28 novels — 0.9 per novel**, not 4.2. Gender coverage moves the
-> other way, 58.7% → **52.6%**, because the denominator grew and the recovered characters
-> mostly have no gender: the finding below is unchanged and slightly worse.
-
-Invented characters fell from 1380 to 117 — **49 per novel to 4.2**. Recall over major and
-intermediate characters cost 5.8 points; those are found by their speech tags almost
-without exception, and adjacency was mostly admitting people who are talked *about*.
-
-**Defect 1 — the context around a quotation contains the neighbouring quotation.**
-`Segment.before` and `.after` are the whole rest of the paragraph, so on a line of
-back-and-forth the adjacency scan reads the quote beside it, whose first word is capitalised
-because the speech starts there. `"Absolutely." "And another thing."` reported a character
-called Absolutely. `Names.withoutQuotedText` blanks quoted spans first.
-
-**Defect 2 — two sightings is not corroboration in a novel.** A threshold tuned on
-four-paragraph fixtures is meaningless at 200,000 words. Swept 2→20: the knee is at 8, and
-past it only recall moves. It is a count rather than a rate, so a very short book is
-stricter than intended; nothing in the corpus made that worth fixing.
-
-**One rule was tried and rejected on the evidence.** Requiring a candidate to appear
-mid-sentence somewhere in the book — the position where English does not force a capital —
-looked like the principled discriminator between `Geralt` and `Suddenly`. On top of the
-retuned threshold it *lost*: 84.5% precision and 80.7% recall against 84.8% and 82.3%. It is
-not in the diff.
-
-**The finding that matters more than the fix.** Gender is inferred for only **58.7%** of the
-real cast; the rest are `UNKNOWN`, and `Casting` then falls back to spreading raw speaker
-ids, which picks a voice of arbitrary sex. That is exactly the report from the device — a
-book of men read in women's voices — and it is not a casting bug. When a gender *is*
-inferred it is right 90.9% of the time, so the problem is coverage, not accuracy. Needs its
-own ticket.
-
-Reproduce:
-
-```bash
-git clone --depth 1 https://github.com/Priya22/project-dialogism-novel-corpus.git /tmp/pdnc
-cd spike/pipeline && gradle installDist
-./build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast /tmp/pdnc/data/* 
-```
-
-`gradle test` at the root: 30 tests, all green. Not measured against a PRD §5 SLA — this
-changes what import reports, not what it costs. `In review` rather than `Done`: the number
-that prompted it came off a device, and only a re-import of the same book closes it.
+*If accent is ever revisited* it needs a model trained on the target accent, not a
+phonemiser swap on this one. That is a different engine and a different ADR.
 
 ---
 
@@ -3724,96 +3669,29 @@ Scenario: Whether accent is reachable is answered with evidence
 
 ### Worklog
 
-**2026-09-02 — session-visibility-check**
+**2026-09-06 — listened on the reference device. Confirmed: generated voices work.**
 
-**Yes, and it is cheaper than expected.** Both levers are editable fields inside the model
-file. No second model, no new runtime, no cloud, nothing added to the 450 MB footprint.
+The blend ramp between spk659 (male, 112 Hz) and spk192 (female, 189 Hz), played through
+the Boox's own speaker. Every invented voice — t=0.25, 0.50, 0.75 — sounded like a person.
 
-**Timbre.** `emb_g.weight` is a `[904, 512]` float initializer in the ONNX graph — the
-speaker lookup table, 1.8 MB of the 92 MB model. **A voice is 512 floats: 2 KB.** Writing
-an untrained row and addressing it by `sid` produces working speech:
+**The two that sounded mushy were `t000` and `parent-a`, which are the same voice.**
+`ts` starts at 0.0, so `blend-01-t000-invented` is spk659's own vector written into an
+untrained slot, and `blend-00-parent-a-real-spk659` is spk659 played natively. They sound
+alike and they sound alike in the same way.
 
-```
-control — spk659 repeated 5x: F0 116.5 Hz, sd 2.16 Hz
+That is two findings, and both favour the decision:
 
-real spk659 (male)      116.7        blend t=0.00 (invented)   111.4
-real spk192 (female)    195.1        blend t=0.25 (invented)   125.3
-                                     blend t=0.50 (invented)   154.2
-                                     blend t=0.75 (invented)   173.6
-                                     blend t=1.00 (invented)   200.5
-```
+1. **The write path is faithful.** A known vector written into a slot that was never
+   trained reproduces the speaker it was copied from. This is the control the probe needed
+   and did not have, and it passed by accident of the ramp including t=0.
+2. **The mushiness is spk659's, not the blend's.** It is a real trained libritts_r reader,
+   and the invented voices between the parents sound *better* than one of their parents.
+   Interpolation is not degrading anything.
 
-Endpoints land on the parents; the invented middle moves monotonically in steps of 14–29 Hz
-against a 2.16 Hz noise floor. Linear interpolation only reaches the line between two
-speakers — the space is 512-dimensional with 904 anchors, so this is the crudest possible
-use of it.
+So ADR-0009 stands, confirmed by ear rather than by F0.
 
-**Accent lives in the phonemiser, not the speaker vector.** The model is `en-US` and the
-espeak-ng variant is read from the ONNX `metadata_props["voice"]`. Note the trap: the
-model's own `.onnx.json` carries an `espeak.voice` field that **sherpa-onnx does not read**
-— patching it changes nothing and looks like the whole idea failing. The bundled
-`espeak-ng-data` (19 MB, already shipping) contains `en-GB-x-rp`, `en-GB-scotland`,
-`en-GB-x-gbclan` (Lancashire), `en-GB-x-gbcwmd` (West Midlands), `en-029` (Caribbean) and
-`en-US-nyc`. Patched, they reach the model:
-
-| espeak voice | mean s | sd | vs en-US |
-| --- | --- | --- | --- |
-| en-US | 4.28 | 0.25 | — |
-| en-GB-x-rp | 4.32 | 0.25 | +0.03s (0.1 sd) |
-| **en-GB-scotland** | 5.67 | 0.44 | **+1.39s (3.9 sd)** |
-| en-GB-x-gbclan | 4.17 | 0.24 | −0.11s (0.4 sd) |
-| en-GB-x-gbcwmd | 4.40 | 0.33 | +0.12s (0.4 sd) |
-| **en-029** | 5.45 | 0.51 | **+1.17s (2.9 sd)** |
-| en-US-nyc | 4.10 | 0.18 | −0.18s (0.8 sd) |
-
-**A wrong result, recorded because it is the instructive part.** The first version compared
-one waveform per accent and found every variant "differed" at rms ~0.14. The control found
-en-US differs *from itself* by rms 0.149 — `noise_scale` and `noise_w` are both 0.333, so
-Piper's duration and waveform are stochastic per call. The single-shot A/B could not have
-returned anything else. Everything above is repeated 10× and quoted against its own spread.
-
-**What is not established.** Nothing here was listened to. F0 and duration prove the audio
-is well-formed and that the phoneme stream genuinely changed; they cannot hear whether a
-blended embedding sounds like a person or like mush, nor whether `en-GB-scotland` phonemes
-through an `en-US`-trained model sound Scottish or merely wrong — that combination is
-out-of-distribution for the model and is the likeliest place for this to fall down. Duration
-is also blind to RP and Lancashire, which differ in vowel quality rather than phoneme count;
-their null rows above mean "this probe cannot see it", not "nothing happened".
-
-**This is why the status is `In review` and not `Done`.** It needs an ear on the reference
-device. Two follow-ups it justifies, neither started: a `VoiceSpec` in the character
-manifest so the analysis records *what a character should sound like* rather than a speaker
-integer, and a foundry that realises a spec — today by nearest-neighbour plus blending plus
-`length_scale` for pace, later by better use of the 512 dimensions.
-
-Reproduce:
-
-```bash
-cd spike/hostbench && ./fetch-models.sh
-python3 voicelab.py blend
-python3 voicelab.py accent
-```
-
-**2026-09-03 — voice-probes-wav-export**
-
-Export only, no change to the measurement. `voicelab.py blend --wav-dir DIR` writes the
-ramp as audio: both parents at `00` and `06` around the five invented rows at `01`–`05`,
-so the directory sorts into the order the comparison has to be heard in. Each name carries
-its own measured F0 — `blend-03-t050-invented-156hz.wav`.
-
-The arrangement is the point. F0 already says the invented voice sits between its parents;
-what it cannot say is whether that voice is a *person* or a smeared average of two readers,
-and that question is about the sequence rather than any one file. Now it can be asked.
-
-Re-ran on this container, and the numbers reproduce the table above within the noise floor
-(control sd 3.23 Hz): parents 112.5 / 183.8 Hz, ramp 115 → 128 → 156 → 176 → 190 Hz.
-
-```bash
-cd spike/hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
-python3 voicelab.py blend --wav-dir ../../build/voice-probes
-```
-
-CI job `voices` does this on every push and attaches the WAVs as `voice-probe-wavs`
-alongside `quire-probe-apk`, with the console output as `blend-probe.txt`. Status stays
-`In review` and the owner is unchanged: this adds the listening evidence the review needs,
-it does not perform the listen.
+**What it exposes instead is a casting problem, not a foundry problem.** Some of the 904
+readers are poor, and picking parents by F0 alone will sometimes pick one. `fixtures/voices/
+libritts_r-f0.tsv` ranks voices by pitch and says nothing about quality. QUI-011 needs a
+quality signal as well as a pitch one before it chooses parents — a note has been left on
+that ticket.

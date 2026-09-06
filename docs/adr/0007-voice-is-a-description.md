@@ -1,6 +1,7 @@
 # ADR-0007 — A voice is a stored description, not a speaker id
 
-**Status:** Accepted, 2026-09-02 — axis 3 reaches the model but has not been heard
+**Status:** Accepted, 2026-09-02. **Axis 3 dropped 2026-09-06** after the listening test —
+see *Axis 3 is dropped* below. Axes 1, 2 and 4 stand unchanged.
 **Date:** 2026-09-02
 **Ticket:** QUI-032, QUI-033
 **Deciders:** dylangrowcoot, local-model-voice-accents
@@ -31,7 +32,7 @@ and three of the four already work.
 | --- | --- | --- | --- |
 | 1 | **What they say** — dialect, verbal tics, formality, register | the book's own text | Free. The author already wrote it, and we read it aloud verbatim. |
 | 2 | **Delivery** — pace, pitch range | `length_scale` at runtime, plus speaker choice | Works today |
-| 3 | **Pronunciation** — rhoticity, vowel qualities, i.e. accent | the espeak-ng variant, in the ONNX metadata | **Reaches the model — measured below. Never listened to.** |
+| 3 | **Pronunciation** — rhoticity, vowel qualities, i.e. accent | the espeak-ng variant, in the ONNX metadata | **Dropped 2026-09-06.** Reaches the model; does not sound like an accent. |
 | 4 | **Vocal identity** — timbre, who this sounds like | the 512-dim speaker embedding, addressed by id | Works today |
 
 Axis 3 was previously assumed unreachable, on the grounds that 904 speakers of an American
@@ -105,7 +106,26 @@ unchanged, and the choice becomes explainable — which is what makes the drawer
 
 **3. Accent is designed for, but not shipped, until it has been heard.** QUI-033.
 
-## The caveat that could sink axis 3
+## Axis 3 is dropped — listened 2026-09-06
+
+The caveat below sank it, and the ticket that tested it is QUI-033.
+
+Heard on the reference device, two independent problems. Scots stalls about a second on
+/a/ and Caribbean sounds like it is skipping vowels, which is what out-of-distribution
+phonemes through an `en-US`-trained model produce. And the variants with *no* artefacts —
+NYC, RP, Lancashire, West Midlands — are not convincingly the accents they name, so fixing
+the artefacts would not leave a feature behind.
+
+**The measurement was right and the inference from it would have been wrong.** Every
+variant provably changed the phoneme stream; none of them provably changed it into an
+accent. Nothing but the listen could separate those, which is the whole reason the status
+above said *unheard* rather than *works*.
+
+The consequence is small, exactly as designed: `espeakVoice` stays in the schema and stays
+unset. Nothing was built on it. Revisiting accent means a model trained on the target
+accent, which is a different engine and a different ADR.
+
+## The caveat that sank it
 
 `libritts_r` was trained on en-US phonemes. Feeding it Scots phonemes is out-of-distribution
 input, and nothing measured here can tell the difference between *sounds Scottish* and

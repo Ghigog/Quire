@@ -1,6 +1,7 @@
 # ADR-0009 — Character voices are generated, not assigned
 
-**Status:** Accepted, 2026-09-02 — the mechanism is proven, the quality is unheard
+**Status:** Accepted, 2026-09-02. **Confirmed by ear 2026-09-06** — the invented voices
+sound like people. The accent half of the evidence below is withdrawn; see QUI-033.
 **Date:** 2026-09-02
 **Ticket:** QUI-036
 **Deciders:** dylangrowcoot, session-visibility-check
@@ -101,7 +102,15 @@ sharper re-run deterministically.
 
 ## What is not established
 
-**Nothing in QUI-036 was listened to.** F0 and duration prove the audio is well-formed and
+**Listened 2026-09-06, and it held.** The paragraph below is left as written, because it
+named the right risk. Both halves resolved, in opposite directions: the invented voices
+sound like people, and the accents do not sound like accents (QUI-033, ADR-0007). One
+unplanned control fell out of it — the ramp starts at t=0, so the t=0 file is a parent's
+own vector written into an untrained slot, and it is indistinguishable from that parent
+played natively. The write path is faithful. What sounded poor was spk659 itself, a real
+trained reader, not anything the blending did.
+
+As originally written: F0 and duration prove the audio is well-formed and
 that the phoneme stream genuinely changed. They cannot hear whether a blended embedding
 sounds like a person or like mush, nor whether Scots phonemes through an `en-US`-trained
 model sound Scottish or merely broken — that combination is out-of-distribution for the
