@@ -5,6 +5,11 @@
 # the probe cannot be built by an agent (CLAUDE.md §9). GitHub's runners ship the SDK, so CI
 # can build it and attach the APK to the run — which is how the device gets a build without
 # anyone's laptop being involved.
+#
+# The third job exists for the same reason in a different direction. The voice probes answer
+# whether a knob reaches the model; whether the result *sounds* like an accent, or like a
+# person, only ears can say. So CI renders the audio and attaches it next to the APK, and a
+# tester picks up one run and has both.
 name: CI
 
 on:
@@ -79,4 +84,47 @@ jobs:
         with:
           name: slice-book
           path: build/slice/*.epub
+          if-no-files-found: error
+
+  voices:
+    name: Voice probe audio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the probe dependencies
+        run: python3 -m pip install --quiet sherpa-onnx onnx numpy
+
+      # Only the incumbent. The full list in the script is 1.1 GB and the other six models
+      # have nothing to do with either probe.
+      - name: Fetch libritts_r
+        working-directory: spike/hostbench
+        run: ./fetch-models.sh vits-piper-en_US-libritts_r-medium
+
+      # `shell: bash` for pipefail: without it `tee` would swallow a probe that died.
+      # The console output goes into the artifact beside the audio, because it is the only
+      # place the measurement each file was rendered from is written down.
+      - name: Render the accent variants (QUI-033)
+        shell: bash
+        working-directory: spike/hostbench
+        run: |
+          mkdir -p ../../build/voice-probes
+          python3 voiceprobe.py --mode accent --wav-dir ../../build/voice-probes \
+            | tee ../../build/voice-probes/accent-probe.txt
+
+      - name: Render the blend ramp (QUI-036)
+        shell: bash
+        working-directory: spike/hostbench
+        run: |
+          python3 voicelab.py blend --wav-dir ../../build/voice-probes \
+            | tee ../../build/voice-probes/blend-probe.txt
+
+      - name: Upload the probe audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-probe-wavs
+          path: build/voice-probes/*
           if-no-files-found: error

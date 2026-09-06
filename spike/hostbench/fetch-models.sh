@@ -17,6 +17,10 @@ MODELS=(
   kokoro-multi-lang-v1_1           # same model unquantized — isolates int8 (365 MB)
 )
 
+# Named models override the list, so a caller that needs one of them does not pay for
+# 1.1 GB of the others. CI fetches only libritts_r this way.
+if [ "$#" -gt 0 ]; then MODELS=("$@"); fi
+
 mkdir -p "$DEST"
 for m in "${MODELS[@]}"; do
   if [ -d "$DEST/$m" ]; then echo "have $m"; continue; fi

@@ -31,9 +31,14 @@ needed.
     python3 voiceprobe.py --mode accent      # espeak variants, against the noise floor
     python3 voiceprobe.py --mode rate        # length_scale, against the same floor
     python3 voiceprobe.py --list             # what variants the model actually ships
+    python3 voiceprobe.py --mode accent --wav-dir out    # ...and keep the audio
 
 This is a host-side screen and the caveats in README.md apply: it says whether a knob
-*reaches the model*, never how the result sounds. Only a listen on the device does that.
+*reaches the model*, never how the result sounds. Only a listen on the device does that,
+which is what `--wav-dir` is for: it writes the waveform each row was measured from, so
+the file a tester plays is the same audio the number describes. Note what that audio is —
+the deterministic render, noise pinned off. That is what makes two variants comparable at
+all, and it is not how the app will render; judge pronunciation from it, not naturalness.
 """
 import argparse
 import glob
@@ -46,22 +51,25 @@ import onnx
 import sherpa_onnx
 
 from voiceprofile import median_f0
+from wavout import write_wav
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 
 # Deliberately full of the vowels and rhotic /r/ that English accents disagree about.
 PROBE = "I heard the water start, and my father asked whether the bath was warm."
 
-# The variants espeak-ng ships for English, by the identifier it resolves.
+# The variants espeak-ng ships for English, by the identifier it resolves. The middle
+# field is the file-name label: a tester picking a track out of a flat list on the device
+# has the name and nothing else, and `en-gb-x-gbcwmd` alone tells them nothing.
 ENGLISH_VARIANTS = [
-    ("en-us", "General American — what the model was trained on"),
-    ("en-us-nyc", "New York City"),
-    ("en-gb", "England, RP-adjacent default"),
-    ("en-gb-x-rp", "Received Pronunciation"),
-    ("en-gb-scotland", "Scots"),
-    ("en-gb-x-gbclan", "Lancashire"),
-    ("en-gb-x-gbcwmd", "West Midlands"),
-    ("en-029", "Caribbean"),
+    ("en-us", "general-american", "General American — what the model was trained on"),
+    ("en-us-nyc", "new-york-city", "New York City"),
+    ("en-gb", "england-default", "England, RP-adjacent default"),
+    ("en-gb-x-rp", "received-pronunciation", "Received Pronunciation"),
+    ("en-gb-scotland", "scots", "Scots"),
+    ("en-gb-x-gbclan", "lancashire", "Lancashire"),
+    ("en-gb-x-gbcwmd", "west-midlands", "West Midlands"),
+    ("en-029", "caribbean", "Caribbean"),
 ]
 
 
@@ -129,14 +137,15 @@ def engine(model_file, directory, threads, deterministic=True):
 
 
 def measure(tts, speaker, repeats, speed=1.0):
-    """Duration, median F0 and the last waveform, over `repeats` calls."""
-    seconds, pitches, samples = [], [], None
+    """Duration, median F0, the last waveform and its rate, over `repeats` calls."""
+    seconds, pitches, samples, rate = [], [], None, 0
     for _ in range(repeats):
         audio = tts.generate(PROBE, sid=speaker, speed=speed)
         samples = np.asarray(audio.samples)
+        rate = audio.sample_rate
         seconds.append(len(samples) / audio.sample_rate)
         pitches.append(median_f0(samples, audio.sample_rate))
-    return np.array(seconds), np.array(pitches), samples
+    return np.array(seconds), np.array(pitches), samples, rate
 
 
 def compare(reference, samples):
@@ -148,6 +157,13 @@ def compare(reference, samples):
     if np.array_equal(reference, samples):
         return "  IDENTICAL — the variant did nothing"
     return "  same length, rms %.4f" % float(np.sqrt(np.mean((reference - samples) ** 2)))
+
+
+def export(directory, name, samples, rate):
+    """Write the waveform a row was measured from, when `--wav-dir` asked for it."""
+    if not directory:
+        return
+    print(" " * 16 + "  wrote " + write_wav(directory, name, samples, rate))
 
 
 def summarise(label, seconds, pitches, verdict=""):
@@ -164,6 +180,7 @@ def main():
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--list", action="store_true", help="print metadata and variants, then exit")
+    parser.add_argument("--wav-dir", help="also write the measured waveform of each row here")
     args = parser.parse_args()
 
     directory = model_dir(args.model)
@@ -179,40 +196,46 @@ def main():
 
     print("\n## control — identical calls, sampling left on")
     stochastic = engine(onnx_path(directory), directory, args.threads, deterministic=False)
-    seconds, pitches, _ = measure(stochastic, args.speaker, args.repeats)
+    seconds, pitches, _, _ = measure(stochastic, args.speaker, args.repeats)
     print("# noise floor %.2f s of spread over %d identical calls — wider than most"
           % (seconds.max() - seconds.min(), args.repeats))
     summarise("sampled", seconds, pitches)
 
     baseline = engine(onnx_path(directory), directory, args.threads)
-    seconds, pitches, reference = measure(baseline, args.speaker, args.repeats)
+    seconds, pitches, reference, _ = measure(baseline, args.speaker, args.repeats)
     print("\n## control — identical calls, sampling pinned off")
     summarise("deterministic", seconds, pitches, compare(reference, reference))
     print("# everything below is compared against this waveform, sample for sample")
 
     if args.mode == "rate":
         print("\n## rate — length_scale, the runtime argument")
-        for speed in (0.8, 0.9, 1.0, 1.1, 1.25):
-            seconds, pitches, samples = measure(baseline, args.speaker, args.repeats, speed=speed)
+        for index, speed in enumerate((0.8, 0.9, 1.0, 1.1, 1.25), start=1):
+            seconds, pitches, samples, rate = measure(baseline, args.speaker, args.repeats, speed=speed)
             summarise("speed %.2f" % speed, seconds, pitches, compare(reference, samples))
+            export(args.wav_dir, "rate-%02d-speed%03d-spk%d" % (index, speed * 100, args.speaker),
+                   samples, rate)
         return
 
     shipped = variants_shipped(directory)
     print("\n## accent — espeak variant, patched into the ONNX metadata")
     with tempfile.TemporaryDirectory() as scratch:
-        for variant, note in ENGLISH_VARIANTS:
+        for index, (variant, label, note) in enumerate(ENGLISH_VARIANTS, start=1):
             if variant not in [v.lower() for v in shipped] and variant != "en-gb":
                 print("%-16s not shipped by this model's espeak-ng-data" % variant)
                 continue
             copy_dir, model_file = patched_model(directory, variant, scratch)
             try:
                 tts = engine(model_file, copy_dir, args.threads)
-                seconds, pitches, samples = measure(tts, args.speaker, args.repeats)
+                seconds, pitches, samples, rate = measure(tts, args.speaker, args.repeats)
             except Exception as exc:                     # noqa: BLE001 — report, don't stop
                 print("%-16s failed: %s" % (variant, str(exc).splitlines()[0]))
                 continue
             summarise(variant, seconds, pitches, compare(reference, samples))
             print(" " * 16 + "  " + note)
+            # The index is the variant's position in the table, not the run's, so a variant
+            # the model does not ship leaves a gap rather than renumbering the rest.
+            export(args.wav_dir, "accent-%02d-%s-%s-spk%d" % (index, variant, label, args.speaker),
+                   samples, rate)
 
 
 if __name__ == "__main__":
