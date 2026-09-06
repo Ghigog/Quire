@@ -47,6 +47,29 @@ The TSV has one row per `onSynthesizeText` call: wall clock, utterance number, g
 the previous call, character count, speech rate, pitch, locale, voice, caller UID, and the
 exact text.
 
+## Sustained-power harness (QUI-016)
+
+Two buttons under "Benchmark everything installed" run and stop a second mode, next to
+the QUI-017 bake-off console this app already carries. Where `Benchmark` measures one
+~10 s burst, this is for PRD §5's battery SLA — "< 8% drain per hour of continuous
+playback" — which a burst cannot answer: ADR-0002 §1 notes that at RTF 0.354 the engine
+synthesises a page in a third of the time it plays, then goes quiet until the next page
+is due. **Run sustained synthesis (60 min)** reproduces that duty cycle for real, against
+whichever engine is currently selected, loaded once and kept warm throughout; **Stop**
+winds it down at the next chunk boundary.
+
+It refuses to start, or aborts, if the device is on charge — a drain reading while
+plugged in measures nothing — and holds a wake lock so a screen timeout doesn't let the
+CPU sleep mid-measurement. It samples battery percentage once a minute and, at the end,
+prints a pass/fail summary against the 8%/hour SLA. The full per-minute trace is written
+to `quire-sustained-<timestamp>.tsv`, collected the same way as the log above (Downloads
+copy first, private-directory fallback over adb).
+
+This is the harness, not the measurement — running it for the hour, on the reference
+device, unplugged, with the exact preconditions (what to disable, how long, how to read
+the result) is a manual procedure written into `tickets.md`'s QUI-016 Worklog, not
+automated here.
+
 ## The questions it exists to answer
 
 1. **Chunk size** — the `chars` column. What is typical, and what is the maximum? Does it
