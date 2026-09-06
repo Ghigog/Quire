@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | local-model-voice-accents | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
