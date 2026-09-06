@@ -14,6 +14,9 @@ mkdir -p "$DEST"
 #    Loaded by `grimbert`, not by stock transformers: its head is a custom class. Downloaded
 #    into the HF cache by predictors/grimbert_predict.py on first use, so nothing to do here
 #    beyond warming it, which is worth doing separately from a timed run.
+# Xet resolves to hosts a session container cannot reach, and hangs rather than failing.
+export HF_HUB_DISABLE_XET=1
+
 python3 - <<'PY'
 from grimbert.model import SpeakerAttributionModel
 from transformers import AutoTokenizer

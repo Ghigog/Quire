@@ -38,6 +38,12 @@ MODEL_ID = "compnet-renard/spanbert-base-cased-literary-speaker-attribution"
 
 TOKEN = re.compile(r"\w+|[^\w\s]")
 
+# Hugging Face's Xet transfer protocol resolves to cas-server.xethub.hf.co and
+# transfer.xethub.hf.co, neither of which a session container can reach; the classic CDN
+# (us.aws.cdn.hf.co) it can. Without this the download does not fail, it hangs — which is
+# a slow thing to diagnose, so it is set here rather than left to the caller's shell.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 
 def tokenise(text):
     """Tokens and their character spans, so quotation offsets can be mapped to indices."""
