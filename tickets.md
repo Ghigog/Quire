@@ -49,8 +49,9 @@ already `In progress`.
 | QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
+| QUI-037 | Voice foundry: descriptor → generated voice | Audio | In progress | voice-generation-foundry | QUI-032, QUI-036 |
 
-Next free ID: **QUI-037**
+Next free ID: **QUI-038**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -585,6 +586,14 @@ Scenario: Inference is cancellable
 
 ## QUI-007 — Upfront book scan → character manifest
 
+> **Note from QUI-037, 2026-09-06.** ADR-0006's job C (voice design) now has a
+> pure-Kotlin implementation to call: `quire.voice.design.VoiceDesigner` in `core/voice`,
+> taking a character and its confidently-attributed explicit-tag lines and returning a
+> `Voice?` — null below three lines, per the handoff's proposed fallback. It does not write
+> `description` via the SLM; that half waits on QUI-006 and is a drop-in replacement when it
+> lands, since `source` already stays `AUTO`. This ticket's scan still needs to call it once
+> Tier 1's explicit set is available per character.
+
 **Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005, QUI-006
 **PRD:** §3.1
 
@@ -962,6 +971,15 @@ Scenario: Fully offline
 > inside the usable pitch range — sounds mushy, and the voices *generated* from it sound
 > better than it does. Before this ticket chooses parents it needs a quality signal
 > alongside the pitch one; `fixtures/voices/libritts_r-f0.tsv` does not carry one.
+
+> **Note from QUI-037, 2026-09-06.** The quality signal exists now:
+> `fixtures/voices/libritts_r-quality.tsv`, human-curated from listening — two computed
+> proxies were tried and both failed to flag spk659 as bad; see QUI-037's Worklog before
+> re-deriving either. `core/voice/foundry`'s `Foundry.plan()` does quality-aware parent
+> selection and returns a `BlendPlan`; `spike/slice/Casting.kt` calls it for any character
+> carrying a descriptor. Still this ticket's to do: a real Android caster against a real
+> manifest, and the piece nothing has built yet — reading `emb_g.weight` out of a loaded
+> sherpa-onnx session and writing an interpolated row back in, which needs QUI-010 first.
 
 **Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
 **PRD:** §4.2
@@ -3695,3 +3713,191 @@ readers are poor, and picking parents by F0 alone will sometimes pick one. `fixt
 libritts_r-f0.tsv` ranks voices by pitch and says nothing about quality. QUI-011 needs a
 quality signal as well as a pitch one before it chooses parents — a note has been left on
 that ticket.
+
+---
+
+## QUI-037 — Voice foundry: descriptor → generated voice
+
+**Status:** In progress · **Owner:** voice-generation-foundry · **Epic:** Audio
+**Depends on:** QUI-032, QUI-036 · **PRD:** §4.2
+
+### User story
+
+As a reader, I want the app to actually build each character's voice from what the scan
+learned about them, so that Play produces a generated cast rather than 904 fixed strangers.
+
+### Context (why)
+
+QUI-036 answered whether the engine can generate a voice at all: yes, confirmed by ear
+2026-09-06 (ADR-0009). Nothing consumes that finding yet. Three gaps stand between "the
+engine can do it" and "the app does it", all named in ADR-0009's consequences and the
+2026-09-02 handoff's open questions:
+
+1. Nothing turns a `Voice` descriptor (QUI-032's schema) into the two floats-per-axis a
+   foundry needs — which two speakers to blend and by how much.
+2. Nothing writes a descriptor during the scan. ADR-0006 names this job C and specifies its
+   input (a character's confidently-attributed explicit-tag lines) but "nobody has written
+   that prompt, or decided what happens to a character with three lines and no explicit
+   tags" (handoff, §3.4).
+3. QUI-011's caster still picks a single id by pitch alone. QUI-036's listening test found a
+   real, well-inside-range speaker (spk659) that sounds mushy, and flagged that pitch-only
+   parent selection will sometimes choose it. QUI-011 cannot proceed without a quality
+   signal alongside the pitch one.
+
+This ticket closes all three, in pure Kotlin, ahead of QUI-007 and QUI-011's full builds —
+the same interface-first pattern QUI-032 used for the schema (CLAUDE.md §2.3).
+
+### Description (what)
+
+A new `core/voice` module that (a) plans and performs the embedding blend ADR-0009
+describes, given a descriptor and the measured speaker fixtures, and (b) derives a
+descriptor from a character's confidently-attributed lines during the scan. QUI-011's spike
+caster (`spike/slice/Casting.kt`) is rewritten to consume both: a character with a
+descriptor is resolved to a blend plan; a character without one still gets today's
+gender/pitch pool behaviour unchanged.
+
+**What this ticket does not do**, and why: it does not read or write `emb_g.weight` on a
+loaded model. That is a sherpa-onnx / Android binding concern — thin glue over a pure
+decision, per CLAUDE.md §9 — and has no device or SDK to be built against yet (QUI-010 is
+still Todo). This ticket produces the *plan* (which two speakers, what fraction, what rate)
+and the *arithmetic* (interpolating two known vectors), both of which are pure functions of
+data already committed as fixtures. Writing the result into a running model is follow-on
+work once QUI-010 exists.
+
+### Requirements (how)
+
+- Owns: `core/voice/`, `fixtures/voices/libritts_r-quality.tsv` (new),
+  `spike/slice/src/main/kotlin/quire/spike/slice/Casting.kt`,
+  `spike/slice/src/test/kotlin/quire/spike/slice/CastingTest.kt`,
+  `spike/slice/build.gradle.kts`, `settings.gradle.kts`, `docs/architecture.md` §9 item 8.
+- `core/voice` depends only on `core:model` (module boundary rule, QUI-001). No dependency
+  on `core:attribution`: job C takes pre-filtered line text, not attribution internals, so
+  the two stay decoupled.
+- **Foundry** (`quire.voice.foundry`):
+  - `SpeakerProfile` parses the existing `libritts_r-f0.tsv` shape (speaker, f0, gender) —
+    ported from `spike/slice/VoiceProfile.kt` rather than depended on, since spike code is
+    never a dependency of core (CLAUDE.md §3).
+  - `QualityList` parses `libritts_r-quality.tsv`: `speaker`, `quality` (`ok` implied for
+    every id not listed; `poor` entries are excluded from parent selection). This file is
+    **human-curated from listening, not computed** — see the Worklog for why two computed
+    proxies were tried and rejected.
+  - `Foundry.plan(target: Voice, gender: Gender, profile, quality): BlendPlan` picks the two
+    candidates in `gender`'s pool nearest `targetF0Hz` on either side, skipping any flagged
+    `poor`, and returns their ids plus the interpolation fraction. A target outside the
+    pool's range, or a pool with fewer than two usable candidates, degrades to the single
+    nearest candidate rather than failing — "a near miss beats no voice" (existing
+    `Casting.kt` philosophy, kept).
+  - `Foundry.blend(a: FloatArray, b: FloatArray, fraction: Double): FloatArray` — the actual
+    512-float interpolation, exactly the arithmetic QUI-036's probe validated by ear.
+  - Deterministic: same descriptor and fixtures in, same plan out.
+- **Voice design / job C** (`quire.voice.design`):
+  - `VoiceDesigner.design(character, explicitLines): Voice?` — null when `explicitLines`
+    has fewer than 3 entries (the same walk-on threshold QUI-007 already uses), matching the
+    handoff's proposed fallback: too little evidence means no descriptor, and casting falls
+    back to plain gender/pitch.
+  - `targetF0Hz` from gender's **measured** median in `libritts_r-f0.tsv` (112 Hz male,
+    188.5 Hz female — recomputed in the Worklog, not assumed), offset by age band. The age
+    offsets themselves are **assumed, not measured** — no labelled data exists — and are
+    called out as such in the Worklog and in a code comment, matching how the handoff keeps
+    those two categories apart.
+  - `lengthScale` from the mean words-per-line of `explicitLines` against a fixed reference,
+    clamped to a narrow, safe band (0.85–1.2) — pace is a weak signal from so few lines, so
+    the range stays close to the model's default rather than risking a caricature.
+  - `description` is a template sentence composed from age band, gender and up to two
+    traits — **not** SLM-authored. QUI-006 (the SLM runtime) does not exist yet, and
+    prompting it is explicitly out of scope here. `source` stays `AUTO` either way, so a
+    future SLM-backed writer is a drop-in replacement with no schema change.
+- Out of scope: reading/writing `emb_g.weight` on a real model (needs QUI-010); the SLM
+  prompt for `description` (needs QUI-006); wiring this into the real scan pipeline
+  (QUI-007) or the real Android caster (QUI-011) — both remain Todo and get a handoff note
+  instead of being claimed by this ticket.
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: A descriptor resolves to two real parents bracketing its target pitch
+  Given a voice descriptor with a target F0 between two measured speakers of one gender
+  When the foundry plans a blend
+  Then both chosen speakers are of the requested gender
+  And the target lies between their measured pitches
+
+Scenario: A speaker flagged poor is never chosen as a parent
+  Given a quality list flagging one speaker as poor
+  And that speaker would otherwise be the nearest match to a target pitch
+  When the foundry plans a blend
+  Then the flagged speaker is not returned as either parent
+
+Scenario: Blending two vectors produces a point between them
+  Given two 512-float parent vectors and a fraction strictly between 0 and 1
+  When they are blended
+  Then every element of the result lies between the corresponding parent elements
+
+Scenario: A character with too few confidently-attributed lines gets no descriptor
+  Given a character with fewer than three confidently-attributed lines
+  When voice design runs
+  Then no voice descriptor is produced for that character
+
+Scenario: A character with enough lines gets a descriptor grounded in measured pitch
+  Given a character with at least three confidently-attributed lines and a known gender
+  When voice design runs
+  Then the descriptor's targetF0Hz is within the measured range for that gender
+
+Scenario: Casting still works for a character with no descriptor
+  Given a character manifest where one character carries no voice descriptor
+  When casting resolves the cast
+  Then that character still receives a voice, unchanged from today's gender/pitch behaviour
+
+Scenario: Planning is deterministic
+  Given the same descriptor, gender, profile and quality list
+  When a blend is planned twice
+  Then both plans are identical
+```
+
+### Worklog
+
+**2026-09-06 — voice-generation-foundry.**
+
+Two candidate host-computable quality signals were measured against the one ground truth
+this project has — spk659, confirmed mushy by ear in QUI-036 — and both failed to flag it,
+so neither ships:
+
+- **Embedding-centroid distance.** `emb_g.weight`'s row for spk659 sits at the
+  **50th percentile** of distance-from-centroid across all 904 speakers (rank 450 of 904).
+  Unremarkable. Fetched the real model (`vits-piper-en_US-libritts_r-medium`, GitHub release
+  assets, ~94 MB, reachable per CLAUDE.md §9) and read the initializer directly with `onnx`
+  — no synthesis needed, seconds to run.
+- **Autocorrelation peak clarity**, the by-product `voiceprofile.py`'s F0 pass already
+  discards. Raw, it correlates with pitch band far more than with quality (high-F0 female
+  voices score ~0.85, low-F0 male voices ~0.60-0.72, regardless of how they sound), so it
+  was re-scored as a z-score against each speaker's 40 nearest-F0 neighbours to remove that
+  confound. spk659 still scores **+0.54** — above its neighbourhood's average, 66th
+  percentile from the bottom. Measured across all 904 speakers, ~153 s on this host.
+
+Both are recorded so the next agent does not re-spend a session on either. The honest
+conclusion: "sounds mushy" is not something a cheap signal-processing proxy on one fixed
+sentence predicts — same shape of result as QUI-033's accent listen, where a measurement
+(phoneme stream changed) did not imply the thing anyone actually cared about (sounds like
+the accent). `libritts_r-quality.tsv` is therefore seeded from listening, not a formula:
+one row, `659	poor`, and it is expected to grow the same way `voiceprobe.py`'s accent table
+did — by someone's ear on the reference device, not by a script.
+
+`targetF0Hz` gender centers recomputed directly from the fixture rather than reused from
+memory: **male median 111.9 Hz** (n=426, range 84.5–134.5), **female median 188.5 Hz**
+(n=426, range 155.3–245.0) — matches the values already used as examples in
+`VoiceProfile.kt`'s doc comments, which is a second, independent confirmation.
+
+Age-band offsets (elder −10 Hz, teen +15 Hz, child +40 Hz, adult/unknown +0) are **assumed**
+— no labelled data exists for how age shifts F0 in this cast, and the Worklog says so
+plainly rather than dressing a guess as a measurement.
+
+Build: `gradle :core:voice:test :spike:slice:test` — all green. `checkModuleBoundaries`
+passes (`core:voice` depends only on `core:model`).
+
+**Handed to QUI-011 and QUI-007** as notes on those tickets rather than claimed here: the
+resolver and the descriptor writer both exist now in `core/voice`, but wiring them into the
+real scan and the real Android caster is those tickets' work, not this one's.
+
+**What's left, for whoever picks up QUI-010/011 next:** reading `emb_g.weight` out of a
+loaded sherpa-onnx session and writing an interpolated row back in — the one piece ADR-0009
+and this ticket both stop short of, for lack of an SDK-backed device path to build it
+against.
