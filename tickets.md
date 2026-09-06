@@ -13,14 +13,14 @@ already `In progress`.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
+| QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | local-model-voice-accents | — |
-| QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
+| QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
-| QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
-| QUI-021 | Dialogue index schema and store | Index | In review | quire-setup-docs | QUI-001 |
-| QUI-022 | Text normalisation and cursor matcher | Index | In review | quire-setup-docs | QUI-021 |
+| QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
+| QUI-021 | Dialogue index schema and store | Index | In review | — | QUI-001 |
+| QUI-022 | Text normalisation and cursor matcher | Index | In review | — | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
@@ -50,13 +50,21 @@ already `In progress`.
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
+| QUI-038 | Scene segmentation for scene-level attribution | Attribution | Todo | — | QUI-021 |
 
-Next free ID: **QUI-038**
+Next free ID: **QUI-039**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
 **M1 vertical slice** — QUI-019 · **M2 MVP** — the rest. Work down this table, not down
 the epics.
+
+**Claims released 2026-09-06.** QUI-001, QUI-018 and QUI-020 were `In progress` under
+owners whose sessions had ended, and QUI-021 and QUI-022 carried the same stale owner while
+already `In review`. Per CLAUDE.md §2.1 an abandoned claim is released by clearing the owner
+and setting the status back, so those three are `Todo` again. **That is a release, not a
+re-judgement of the work** — each ticket's Worklog says what actually landed, and whoever
+picks one up should read it before assuming nothing was done.
 
 **Deferred tickets stay in this file** with their original text and a banner saying why.
 They were written against PRD v1.1 and are still broadly right for the version that
@@ -4236,3 +4244,94 @@ real scan and the real Android caster is those tickets' work, not this one's.
 loaded sherpa-onnx session and writing an interpolated row back in — the one piece ADR-0009
 and this ticket both stop short of, for lack of an SDK-backed device path to build it
 against.
+
+---
+
+## QUI-038 — Scene segmentation for scene-level attribution
+
+**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-021
+**PRD:** §3.1, §4 · **ADR:** [0006](docs/adr/0006-three-attribution-jobs.md)
+
+### User story
+As a reader, I want the model deciding who speaks to see the whole scene, so that
+turn-taking resolves the way it does for me when I read it myself.
+
+### Context (why)
+[ADR-0006](docs/adr/0006-three-attribution-jobs.md) makes the **scene** the unit the model
+is prompted with, for two reasons: one call per line cannot fit QUI-007's 30-minute budget,
+and a model shown one quotation in isolation knows strictly less than the reader does.
+`architecture.md` §9 item 4 records segmentation as being on the critical path because of
+it. Nothing implements it.
+
+QUI-028 has since made this the *only* path. Measured on one novel, both published
+attribution encoders lose to the Tier 1 heuristic on wrong-voice rate at every operating
+point, and a threshold sweep showed the confidence score cannot buy precision back. The
+untagged three-quarters of dialogue is not solved by an encoder, which leaves a generative
+model reading a whole scene — and that model cannot be prompted until a scene is a thing
+this codebase can name.
+
+This is also work that can be done and tested without the device (CLAUDE.md §9), which
+almost nothing else on the critical path currently can.
+
+### Description (what)
+A pure-Kotlin segmenter that partitions a book's paragraphs into scenes, and a splitter for
+scenes too long for a model's context window that cuts at a turn boundary rather than
+mid-exchange and records the last known speaker so the next piece can carry it.
+
+Also the first real count of what a novel contains: ADR-0006's "60–120 scenes" is an
+estimate nobody has checked.
+
+### Requirements (how)
+- Owns: `core/attribution/scenes/` and its tests. Nothing else.
+- Signals, cheapest first, and all of them structural rather than semantic:
+  chapter boundaries from the index; an explicit scene-break paragraph (asterisks, dashes,
+  or whitespace only); a run of blank paragraphs; and a hard maximum length as a backstop.
+- **A scene never spans a chapter boundary.** That is the one rule with no exceptions.
+- Output is ranges over paragraph indices and is deterministic: the same book always yields
+  the same scenes, because a re-import must not reshuffle attribution.
+- A scene longer than a caller-supplied budget is split at a paragraph boundary that is not
+  mid-exchange, and the split carries the last speaker forward, per ADR-0006's note that
+  splitting at a turn boundary is the obvious approach and is untested.
+- **Measured on PDNC, and the ticket is not `Done` without the numbers:** scenes per novel,
+  the distribution of quotations per scene, and the share of scenes that exceed a 2,048-token
+  budget. `spike/pipeline`'s corpus loader already reads PDNC and `bakeoff dump` already
+  emits paragraphs, so this is a report, not a new harness.
+- Pure Kotlin in `core`, no Android classes (CLAUDE.md §9): this is exactly the kind of
+  logic that must be testable without a build-install-listen cycle.
+- Out of scope: the attribution prompt itself (QUI-009), the runtime that runs it
+  (QUI-006), and any semantic scene detection — no model decides where a scene begins.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Chapters are never merged
+  Given a book whose chapter ends without any scene-break markup
+  When it is segmented
+  Then no scene contains paragraphs from two chapters
+
+Scenario: An explicit scene break starts a new scene
+  Given a chapter containing a paragraph of only asterisks
+  When it is segmented
+  Then the paragraphs before and after it are in different scenes
+
+Scenario: Segmentation is deterministic
+  Given the same book
+  When it is segmented twice
+  Then both runs produce identical scene ranges
+
+Scenario: An over-long scene is split at a turn boundary
+  Given a scene exceeding the caller's token budget
+  When it is split
+  Then each piece is within budget
+  And no piece begins in the middle of an exchange
+  And each piece after the first records the last speaker of the piece before it
+
+Scenario: The corpus is counted, not estimated
+  Given PDNC's 28 novels
+  When the segmenter reports over them
+  Then scenes per novel, quotations per scene and the share over a 2,048-token budget are
+    recorded in this ticket's Worklog
+  And ADR-0006's estimate of 60-120 scenes per novel is confirmed or corrected
+```
+
+### Worklog
+- _(empty)_
