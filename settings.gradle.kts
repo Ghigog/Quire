@@ -11,3 +11,6 @@ include(":core:attribution")
 
 // QUI-025: reads an imported book so the app can write itself a note about it.
 include(":core:epub")
+
+// QUI-037: descriptor -> generated voice, and the job C descriptor writer.
+include(":core:voice")

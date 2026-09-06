@@ -331,9 +331,17 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
    question, harder, for accent: Scots phonemes through an `en-US`-trained model are
    out-of-distribution by construction. Both need an ear on the reference device, and both
    gate [ADR-0009](adr/0009-voices-are-generated.md).
-8. **How do you get from a description to 512 floats?** The unsolved half of the foundry.
-   `fixtures/voices/libritts_r-f0.tsv` gives one measured axis for all 904 speakers; a
-   searchable space needs more. See [`handoff.md`](handoff.md) §5.
+8. ~~**How do you get from a description to 512 floats?**~~ **Split in two, 2026-09-06,
+   QUI-037.** The *plan* — which two of the 904 to blend, and by how much — is answered:
+   `core/voice/foundry`'s `Foundry.plan()` picks the pair either side of a descriptor's
+   `targetF0Hz`, skipping any speaker `fixtures/voices/libritts_r-quality.tsv` flags poor.
+   That fixture is deliberately not computed: two proxies were tried (embedding-centroid
+   distance, autocorrelation clarity normalised within F0 band) and both failed to flag the
+   one known-bad speaker QUI-036 found by ear, so quality stays a listened list. The
+   *arithmetic* — interpolating two known 512-float rows — is a five-line pure function,
+   already exercised in tests. What is **still** unsolved: reading `emb_g.weight` out of a
+   loaded sherpa-onnx session and writing the interpolated row back in. That needs QUI-010's
+   engine to exist first, so it stays a plan without a device to run it on.
 9. **How far does attribution generalise?** Accuracy figures in the literature are on
    PDNC's domain — 22 English novels, mostly literary fiction. Translated prose,
    action-beat-heavy genre fiction and first-person narration are all under-represented,

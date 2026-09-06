@@ -1,11 +1,28 @@
 package quire.spike.slice
 
 import quire.model.characters.Gender
+import quire.model.characters.Voice
+import quire.voice.foundry.BlendPlan
+import quire.voice.foundry.Foundry
+import quire.voice.foundry.QualityList
+import quire.voice.foundry.SpeakerProfile
 
 /**
  * Assigns each character a voice from the engine's speaker range.
  *
- * QUI-011 in spike form. Two rules, in this order:
+ * QUI-011 in spike form, and since QUI-037 a resolver rather than pure pool selection
+ * (ADR-0009's consequence for this class). Two paths, tried in this order per character:
+ *
+ * **A voice descriptor resolves to a generated blend.** If [descriptors] carries a
+ * character's [Voice] with a `targetF0Hz`, `core:voice`'s [Foundry] picks the two real
+ * speakers either side of it — skipping any [quality] has flagged poor — and the blend
+ * fraction between them. [voiceFor] still returns a single [Int] for callers that only need
+ * one (today's audio pipeline does); [blendFor] exposes the full plan for a caller that can
+ * actually interpolate two embeddings, which nothing in this repo can yet (QUI-010 is Todo).
+ *
+ * **Otherwise, the original two rules still apply**, unchanged, for a character with no
+ * descriptor — an unscanned book, or one job C declined to describe (QUI-037's
+ * `VoiceDesigner`, for want of enough confidently-attributed lines):
  *
  * **Sound like the right person.** A character's [Gender] from the manifest selects the
  * pool. Before this existed the cast was arbitrary and audibly wrong on device — the
@@ -25,7 +42,24 @@ class Casting(
     private val voiceCount: Int,
     private val profile: VoiceProfile? = null,
     narratorGender: Gender = Gender.NEUTRAL,
+    private val descriptors: Map<String, Voice> = emptyMap(),
+    private val quality: QualityList = QualityList.EMPTY,
 ) {
+    /** [profile] adapted to the shape `core:voice`'s [Foundry] consumes. Never depended on
+     *  the other way around — spike code is never a dependency of `core/` (CLAUDE.md §3). */
+    private val speakerProfile: SpeakerProfile? = profile?.let { vp ->
+        SpeakerProfile(
+            Gender.entries.flatMap { gender ->
+                vp.pool(gender).mapNotNull { id -> vp.f0Of(id)?.let { f0 -> SpeakerProfile.Voice(id, f0, gender) } }
+            },
+        )
+    }
+
+    /** A blend plan per character carrying a resolvable descriptor. Empty without a profile. */
+    private val blendPlans: Map<String, BlendPlan> = speakerProfile?.let { sp ->
+        descriptors.filterValues { it.targetF0Hz != null }
+            .mapValues { (id, voice) -> Foundry.plan(voice, speakers[id] ?: Gender.UNKNOWN, sp, quality) }
+    }.orEmpty()
     /** Voice for narration. Taken from its own pool so it contrasts with the cast. */
     val narrator: Int = profile
         ?.pool(narratorGender.takeIf { it != Gender.NEUTRAL } ?: Gender.FEMALE)
@@ -91,8 +125,18 @@ class Casting(
         return (low + step).coerceIn(0, voiceCount - 1)
     }
 
-    /** The voice for [speakerId], or the narrator's for null and for anyone uncast. */
-    fun voiceFor(speakerId: String?): Int = speakerId?.let { bySpeaker[it] } ?: narrator
+    /**
+     * The voice for [speakerId], or the narrator's for null and for anyone uncast.
+     *
+     * A resolved blend collapses to its first parent — a real, distinct speaker, just not
+     * yet the generated one — since nothing in this repo can interpolate two embeddings at
+     * runtime (QUI-010 is Todo). [blendFor] carries the full plan for when something can.
+     */
+    fun voiceFor(speakerId: String?): Int =
+        speakerId?.let { blendPlans[it]?.parentA ?: bySpeaker[it] } ?: narrator
+
+    /** The full realisation plan for [speakerId], or null if it has no resolvable descriptor. */
+    fun blendFor(speakerId: String?): BlendPlan? = speakerId?.let { blendPlans[it] }
 
     val cast: Map<String, Int> get() = bySpeaker
 

@@ -3,4 +3,6 @@
 // on a desktop in seconds rather than on a device by ear.
 dependencies {
     api(project(":core:index"))
+    // QUI-037: Casting resolves a voice descriptor through the foundry.
+    api(project(":core:voice"))
 }
