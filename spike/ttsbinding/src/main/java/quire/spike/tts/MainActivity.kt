@@ -71,6 +71,16 @@ class MainActivity : Activity() {
         )
         root.addView(button("Benchmark everything installed") { benchmarkAll() })
 
+        root.addView(body(""))
+        root.addView(body("QUI-016 sustained-power harness — uses the selected engine above:"))
+        root.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(button("Run sustained synthesis (60 min)") { runSustained() })
+                addView(button("Stop") { SustainedRun.requestStop(); append("stop requested — winds down at the next chunk") })
+            },
+        )
+
         root.addView(heading("Your books"))
         root.addView(
             body(
@@ -234,6 +244,23 @@ class MainActivity : Activity() {
                 .onFailure { runOnUiThread { append("FAILED: ${it.message}") } }
                 .getOrNull()
             runOnUiThread { append(result?.toString() ?: "could not load ${candidate.id}") }
+        }
+    }
+
+    private fun runSustained() {
+        val selected = Prefs.engineId(this)?.let(Candidate::byId)
+        if (selected == null) { append("select an engine first — beep mode has nothing to measure"); return }
+        append(
+            "sustained run: ${selected.label}, up to 60 min — unplug the charger and leave " +
+                "the device undisturbed (see tickets.md QUI-016 for the full procedure)",
+        )
+        work.execute {
+            val report = runCatching {
+                SustainedRun.run(this, selected, Prefs.threads(this), durationMinutes = 60) { line ->
+                    runOnUiThread { append("  $line") }
+                }
+            }.onFailure { runOnUiThread { append("FAILED: ${it.message}") } }.getOrNull()
+            runOnUiThread { append(report?.summary() ?: "could not load ${selected.id}") }
         }
     }
 

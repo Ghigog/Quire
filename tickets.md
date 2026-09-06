@@ -36,7 +36,7 @@ already `In progress`.
 | QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
 | QUI-003 | E-ink display mode and hardware keys | Companion | Todo (reduced) | — | QUI-025 |
 | QUI-026 | E-reader compatibility matrix verification | Quality | Todo | — | QUI-019 |
-| QUI-016 | Performance and SLA harness | Quality | Todo | — | QUI-010 |
+| QUI-016 | Performance and SLA harness | Quality | In review | — | QUI-010 |
 | QUI-029 | Unindexed books and non-EPUB formats | Companion | **Deferred → later phase** | — | QUI-025 |
 | QUI-002 | EPUB import and Readium reader shell | Reader | **Deferred → V3.0** | — | — |
 | QUI-004 | Reading position and progress tracking | Reader | **Deferred → V3.0** | — | — |
@@ -1332,7 +1332,7 @@ Scenario: Drawer is usable on e-ink
 
 ## QUI-016 — Performance and SLA harness
 
-**Status:** Todo · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-010
+**Status:** In review · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-010
 **PRD:** §5
 
 ### User story
@@ -1350,7 +1350,10 @@ time to first sound, and battery drain per hour, against fixed fixtures, and rep
 numbers with a pass/fail against the SLA table.
 
 ### Requirements (how)
-- Owns: `benchmarks/`, `docs/performance.md`
+- Owns: `benchmarks/`, `docs/performance.md`, and (the sustained-power harness specifically)
+  `spike/ttsbinding/src/main/java/quire/spike/tts/SustainedRun.kt` plus its wiring in
+  `MainActivity.kt` and `AndroidManifest.xml` — it lives next to `Benchmark.kt` because it
+  needs the same loaded `TtsEngine`, not a second copy of it.
 - Fixtures: one standard novel EPUB and one standard 10 s synthesis text, both committed
   (or fetched by script if over the size limit) so runs are comparable over time.
 - Measures, from PRD §5: peak RSS ≤ 1.2 GB across a full read-plus-playback session;
@@ -1386,6 +1389,90 @@ Scenario: Battery procedure is documented
 ```
 
 ### Worklog
+
+**2026-09-06 — qui-016-sustained-power-harness.** Built the sustained-power *harness*,
+not the measurement — that still needs the reference device, which this session doesn't
+have. Scope was narrowed to that on purpose; the rest of this ticket (peak RSS, footprint,
+`benchmarks/`, `docs/performance.md`) is still open and untouched.
+
+**Why a burst can't answer this.** `Benchmark.kt` synthesises one ~10 s fixture — useful
+for RTF, useless for battery. ADR-0002 §1 already names the reason: at RTF 0.354 the
+engine synthesises a page in a third of the time it takes to play, then goes quiet until
+the next page is due (ADR-0004's paging). A 10 s burst measures the *busy* fraction of
+that cycle; PRD §5 wants drain over an *hour of continuous playback*, idle stretches
+included. So the harness reproduces the duty cycle for real — synthesise a page, sleep
+for what's left of that page's audio, repeat — for up to 60 minutes, with the engine
+loaded once and never reloaded.
+
+**What landed**, all in `spike/ttsbinding`:
+- `SustainedRun.kt` — loads the selected engine once, then loops
+  `Benchmark.FIXTURE` through it for up to 60 minutes on that duty cycle. Refuses to
+  start if the device is on charge, aborts mid-run if a charger is connected (both make
+  the reading meaningless), holds a `PARTIAL_WAKE_LOCK` so a screen timeout doesn't let
+  the CPU sleep under the measurement, and samples battery percentage once a minute via
+  the sticky `ACTION_BATTERY_CHANGED` broadcast (works from API 1; `BatteryManager`'s
+  newer property API needs API 28, above this probe's minSdk 26). Writes a per-minute
+  TSV (`quire-sustained-<timestamp>.tsv`) to both the app's private directory and, best
+  effort, the device's Downloads folder — same collection story as `QuireProbeService`'s
+  existing log, so there's one place to look for both.
+- `MainActivity.kt` — two buttons under the existing benchmark row: "Run sustained
+  synthesis (60 min)" (runs against whichever engine is currently selected) and "Stop"
+  (winds down at the next chunk boundary rather than killing the run mid-chunk).
+- `AndroidManifest.xml` — added `WAKE_LOCK`, the only new permission needed.
+- Verified by building: fetched the SDK and the sherpa AAR in this session
+  (`dl.google.com` was reachable) and ran `cd spike/ttsbinding && ../../gradlew
+  assembleDebug` — `BUILD SUCCESSFUL`. That confirms the Kotlin compiles and packages;
+  it says nothing about runtime behaviour, which needs the device.
+
+**The device procedure** — read this before running it, and follow it exactly or the
+number isn't comparable to anyone else's:
+
+1. **Charge state.** Unplug the device. Start at 90–100% if you can — a 60-minute run
+   at an 8%/hour SLA only drains ~8 points, and `device-profile.md`'s own rule discards
+   any measurement taken below 30%, so starting high leaves margin if the run overshoots
+   or needs a retry. Confirm in Settings → Battery that "Charging" is not shown.
+2. **What to disable, before opening the probe:**
+   - Wi-Fi and Bluetooth off (radios are not what this measures, and Wi-Fi's periodic
+     scans are a confound).
+   - Sync / background app refresh off, or airplane-mode-then-Wi-Fi-off if the launcher
+     makes that easier — no account sync waking the CPU mid-run.
+   - Do Not Disturb on, so a notification doesn't wake the screen or pull a network hit.
+   - Auto-rotate and adaptive brightness off — irrelevant to synthesis power, but a
+     panel-driven confound worth removing since it's free to.
+   - Leave the probe as the foreground app for the duration; don't lock the screen (the
+     wake lock keeps the CPU alive either way, but a screen-off timeout partway through
+     is one more variable to control for rather than rely on).
+3. **How to start it.** Build and install the probe (this session's build command
+   above), pick **Piper libritts_r (medium, 904 voices)** — that's the accepted engine,
+   ADR-0002 — as the selected engine (Download, then "Use this" if not already
+   installed), then tap **"Run sustained synthesis (60 min)"**. The on-screen log prints
+   one line per minute (`min=N battery=NN% chunks=N rtf=0.NNN`); if it stops printing or
+   shows a `battery=` value that isn't dropping over 10+ minutes, something's gone wrong
+   — re-check step 2 rather than trusting the run to the end.
+4. **How long.** 60 minutes, matching PRD §5's "per hour". Let it run to completion
+   rather than stopping early — the summary flags anything under 55 minutes as an
+   extrapolation, not a measurement, and `device-profile.md`'s "discard below 30%"
+   rule means starting over costs less than arguing about a partial number later.
+5. **How to read the drain.** The probe computes it for you at the end: a summary line
+   giving start/end battery %, points drained, and `%/hour` against the 8%/hour SLA
+   (PASS or FAIL), plus the path to the full per-minute TSV in Downloads for anyone who
+   wants the trace rather than the summary. Cross-check the two start/end percentages
+   against Settings → Battery's own history as a sanity check — they should agree to
+   within a point or two; if they don't, something (a background sync, a radio waking)
+   moved the number and the run should be discarded and retried after re-checking step 2.
+6. Record the device model, Android build, starting battery %, and the resulting
+   `%/hour` number back into this Worklog (or `docs/performance.md` once QUI-016's other
+   half exists), same as every other measurement in this file. This is ADR-0002's
+   revisit trigger (§1, §7, "Revisit trigger"): if drain at RTF 0.354 fits inside
+   `device-profile.md` §4's ≈1.14 W budget, PRD §5's RTF SLA gets re-derived from this
+   number and the ADR stands as written; if it doesn't, the product changes instead —
+   fewer voices, or synthesis paced further ahead of playback — because §8–§9 already
+   closed off every faster engine.
+
+**What's left:** the actual hour on the reference device, and folding this into the rest
+of QUI-016 (peak RSS, footprint, `benchmarks/`, `docs/performance.md`) rather than leaving
+it a one-off harness. Marking `In review`, not `Done` — the harness is finished, but its
+whole purpose is a number only the device can produce.
 - _(empty)_
 
 ---
