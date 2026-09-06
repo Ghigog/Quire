@@ -13,12 +13,51 @@ import quire.spike.Pdnc
  */
 object BakeoffCli {
 
-    fun candidate(id: String): Candidate? = when (id) {
-        "tier1" -> Tier1Candidate()
-        "tier1-nobeats" -> Tier1Candidate(actionBeats = false)
-        "tier1-nopronouns" -> Tier1Candidate(pronouns = false)
-        "tier1-tags-only" -> Tier1Candidate(pronouns = false, actionBeats = false)
+    fun candidate(id: String, answers: File? = null): Candidate? = when {
+        id == "tier1" -> Tier1Candidate()
+        id == "tier1-nobeats" -> Tier1Candidate(actionBeats = false)
+        id == "tier1-nopronouns" -> Tier1Candidate(pronouns = false)
+        id == "tier1-tags-only" -> Tier1Candidate(pronouns = false, actionBeats = false)
+        // Anything a predictor outside this JVM produced — see ExternalCandidate. The id is
+        // kept as given so the report names the model rather than the mechanism.
+        answers != null -> ExternalCandidate(answers, id)
         else -> null
+    }
+
+    /**
+     * Write what a predictor needs and nothing more (QUI-028).
+     *
+     * Paragraph text and quotation offsets go out; **gold speakers do not**. A predictor that
+     * cannot see the answer cannot accidentally score itself, and the scoring stays on this
+     * side for every candidate alike.
+     */
+    fun dump(root: File, out: File, only: Set<String>) {
+        val index = Pdnc.index(root).filter { only.isEmpty() || it.folder in only }
+        out.mkdirs()
+        println("Dumping ${index.size} novels to ${out.path}")
+        var quotations = 0
+        for (meta in index) {
+            val (paragraphs, gold) = Pdnc.locate(File(File(root, "data"), meta.folder))
+            val (questions, _) = Bakeoff.questions(paragraphs, gold)
+            File(out, "${meta.folder}.paragraphs.jsonl").printWriter().use { w ->
+                paragraphs.forEach { p ->
+                    w.println("""{"n":${p.unit.index},"text":${jsonString(p.unit.text)}}""")
+                }
+            }
+            File(out, "${meta.folder}.questions.jsonl").printWriter().use { w ->
+                questions.forEach { q ->
+                    w.println(
+                        """{"id":${jsonString(q.id)},"paragraph":${q.paragraph},""" +
+                            """"start":${q.start},"end":${q.end},"type":${jsonString(q.type)}}"""
+                    )
+                }
+            }
+            quotations += questions.size
+            println("  %-32s %5d paragraphs  %5d quotations".format(meta.folder, paragraphs.size, questions.size))
+        }
+        println("\n$quotations quotations. A predictor writes <novel>.answers.tsv beside these:")
+        println("  id<TAB>speaker<TAB>evidence — an empty speaker means it declined.")
+        println("Then: bakeoff --candidate <name> --answers ${out.path}")
     }
 
     fun root(flag: String?): File? {

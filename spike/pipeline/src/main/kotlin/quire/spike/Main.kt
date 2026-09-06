@@ -24,10 +24,13 @@ quire-pipeline-spike (QUI-018)
   bakeoff [--corpus DIR]      score a candidate across the whole corpus, with the
           [--candidate ID]    out-of-domain holdouts reported apart from the headline
           [--per-novel] [--mistakes] [--novels A,B]
+  dump    [--corpus DIR]      write what an outside predictor needs — paragraph text and
+          [--out DIR]         quotation offsets, and no gold speakers
   holdouts [--corpus DIR]     the out-of-domain split and why each novel is in it
   novels   [--corpus DIR]     what PDNC holds, from its own index
 
-Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only
+Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only, or any name at
+all with --answers DIR, which scores what a predictor outside this JVM wrote there.
 PDNC is not committed; fetch it with tools/fetch-pdnc.sh. --corpus defaults to
 ${'$'}PDNC_HOME, then ~/.cache/quire/pdnc.
 
@@ -38,7 +41,7 @@ fun main(args: Array<String>) {
     if (args.isEmpty()) { println(USAGE.trim()); exitProcess(2) }
     // The bake-off commands take valued flags and a corpus root rather than a list of
     // files, so they are dispatched before the file-existence check below.
-    if (args[0] in setOf("bakeoff", "holdouts", "novels")) { bakeoff(args); return }
+    if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump")) { bakeoff(args); return }
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
@@ -90,9 +93,14 @@ private fun bakeoff(args: Array<String>) {
     when (args[0]) {
         "holdouts" -> BakeoffCli.holdouts(root)
         "novels" -> BakeoffCli.novels(root)
+        "dump" -> BakeoffCli.dump(
+            root = root,
+            out = File(flags["out"]?.ifEmpty { null } ?: "build/bakeoff"),
+            only = flags["novels"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+        )
         else -> {
             val id = flags["candidate"]?.ifEmpty { null } ?: "tier1"
-            val candidate = BakeoffCli.candidate(id) ?: run {
+            val candidate = BakeoffCli.candidate(id, flags["answers"]?.ifEmpty { null }?.let { File(it) }) ?: run {
                 System.err.println("unknown candidate: $id")
                 exitProcess(2)
             }

@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Blocked | — | needs us.aws.cdn.hf.co |
 | QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
@@ -3052,6 +3052,74 @@ ticket's. `roster bootstrap separates strong and weak evidence` expects `Mary` a
 `Sarah` — it is red on `origin/main` itself, and arrived with QUI-032's roster junk filter.
 `attributes a hundred thousand words in under two seconds` is a wall-clock SLA that fails
 under container load and passes on a quiet rerun.
+
+**2026-09-06 — `local-model-voice-accents`.** The encoder candidate is built and wired.
+It does not have weights, and the reason is exact and fixable.
+
+*Landed:* `spike/pipeline/predictors/grimbert_predict.py`, `ExternalCandidate` and the
+`bakeoff dump` command that feeds it, `tools/fetch-attribution-models.sh`, and six tests.
+Root and pipeline suites green.
+
+**Reproduce:**
+
+```bash
+tools/fetch-pdnc.sh
+python3 -m pip install grimbert
+cd spike/pipeline
+gradle run --args="dump --out build/bakeoff --novels AHandfulOfDust"
+python3 predictors/grimbert_predict.py build/bakeoff --novels AHandfulOfDust
+gradle run --args="bakeoff --candidate grimbert --answers build/bakeoff"
+```
+
+#### Still blocked, and it is one hostname
+
+`huggingface.co` was allowlisted (QUI-037) and that is genuinely not enough. The API and
+small files serve from `huggingface.co` itself — `config.json` fetches, `api/models`
+returns 200 — but **every large file 307s to a separate CDN host, and the proxy refuses the
+tunnel with 403**:
+
+```
+model.safetensors -> https://us.aws.cdn.hf.co/xet-bridge-us/...
+curl: (56) CONNECT tunnel failed, response 403
+```
+
+Also refused: `cdn-lfs.huggingface.co`, `cdn-lfs-us-1.hf.co`, `cas-bridge.xethub.hf.co`,
+`transfer.xethub.hf.co`. The failure is silent from Python's side — `from_pretrained` hangs
+rather than erroring, which cost half an hour before the redirect was inspected directly.
+
+**What to add: `us.aws.cdn.hf.co`, and `cas-bridge.xethub.hf.co` for other regions.** Every
+other blocker on this ticket is gone.
+
+#### The encoder is not the model this ticket assumed
+
+Worth knowing before anyone budgets against 94.5%. `compnet-renard/spanbert-base-cased-literary-speaker-attribution`
+is SpanBERT-base, 431 MB fp32, ~108M parameters, loaded by the `grimbert` package because
+its head is a custom class rather than a stock transformers one.
+
+**It ranks a cast it is handed; it does not name a speaker.** It scores (quotation,
+candidate mention) pairs and returns the character whose mentions win, declining below 0.5.
+So it presumes NER and character unification have already run — which in Quire is Roster
+(QUI-007, QUI-034). Two consequences:
+
+1. **It composes with our cast discovery rather than replacing it**, and its accuracy is
+   bounded by ours: a character Roster never found cannot be predicted. QUI-034's 96.6%
+   cast precision is therefore an input to this ticket's answer, not a separate result.
+2. **The published figure is not directly comparable** until we know what mentions it was
+   given. The predictor matches PDNC's own alias lists against the text, because PDNC ships
+   no mention offsets and because gold mentions would flatter the model with information
+   the device will not have. If the published number used gold mentions, the gap between
+   that and ours is a real cost of shipping, not a bug.
+
+#### Sizing, unchanged by any of this
+
+431 MB fp32 against PRD §5's 450 MB for the whole app, TTS voices included. Like BookNLP
+`big`, this is an accuracy ceiling to measure against rather than a thing that ships;
+int8 would be ~108 MB and might, but ADR-0002 §9 is a standing warning that int8 is a size
+decision that is not automatically a speed one.
+
+*What is left:* the run itself, then BookNLP as the published baseline, then the QUI-009 SLM
+prompt, then every on-device measurement. `docs/adr/0005-attribution-model.md` still cannot
+honestly be written — nothing has been measured against the baseline yet.
 
 ---
 
