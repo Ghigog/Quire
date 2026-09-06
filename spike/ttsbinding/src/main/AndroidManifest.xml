@@ -3,6 +3,9 @@
 
     <!-- Model downloads only. Nothing about a book ever leaves the device. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- QUI-016: keeps the CPU awake through the sustained-run harness so a screen -->
+    <!-- timeout mid-run doesn't understate the drain being measured. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="false"
