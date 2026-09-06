@@ -3309,6 +3309,75 @@ has moved it.
 *Corpus run:* left running; at this rate the full 36,970 quotations is roughly 20 hours, so
 it will not finish inside a session container. Not worth restarting on this checkpoint.
 
+**2026-09-06 — BookNLP `small`, and the threshold sweep that settles it.** One novel,
+`A Handful of Dust`, 2,337 quotations. 57 MB, 14M parameters, fetched over **https** —
+`people.ischool.berkeley.edu` is on the allowlist now but the proxy tunnels TLS only, and
+BookNLP's own code uses `http` URLs, which still 403.
+
+Two fixes were needed to run it at all, both recorded in `predictors/booknlp_predict.py`:
+the checkpoint carries `bert.embeddings.position_ids`, a buffer current transformers no
+longer registers, so it is dropped on load; and BookNLP's winning candidate is often
+*another quotation* rather than a mention — its turn-taking mechanism — so the chain has to
+be resolved. Without the chain, coverage was 33.9% instead of 98.5%.
+
+#### All three candidates, same novel, same scorer
+
+| | coverage | precision | accuracy | **wrong voice** |
+| --- | ---: | ---: | ---: | ---: |
+| Tier 1 | 18.4% | 88.6% | 16.3% | **2.1%** |
+| SpanBERT encoder, 431 MB | 88.0% | 52.9% | 46.6% | 41.4% |
+| BookNLP `small`, 57 MB | 98.5% | 44.0% | 43.3% | 55.1% |
+
+"Wrong voice" is coverage × (1 − precision): the share of all quotations read in somebody
+else's voice, which PRD §3.1 says is what a reader actually notices.
+
+**BookNLP wins where a speech tag exists** — 90.7% accuracy on Explicit against Tier 1's
+82.2% and the big encoder's 70.4% — and that is the one genuine win on the board. It is
+also the easy fifth of the book.
+
+#### The confidence score is not a precision dial
+
+The obvious rescue is to answer only when confident. It does not work. Sweeping the
+softmax threshold over the cached scores:
+
+| threshold | coverage | precision | accuracy |
+| ---: | ---: | ---: | ---: |
+| 0.00 | 98.5% | 44.0% | 43.3% |
+| 0.50 | 80.9% | 47.8% | 38.7% |
+| 0.80 | 67.5% | 50.0% | 33.7% |
+| 0.90 | 56.8% | 51.7% | 29.4% |
+| 0.95 | 44.4% | 55.7% | 24.7% |
+| 0.99 | 15.8% | 76.2% | 12.0% |
+
+Giving up 54 points of coverage buys 12 points of precision. **At 0.99 — 15.8% coverage,
+76.2% precision — Tier 1 is better on both axes at once**, 18.4% and 88.6%. There is no
+operating point on this curve where BookNLP `small` beats the heuristic we already have.
+
+That is a sharper finding than a bad score would have been. The model is not right-but-
+unsure on the lines it misses; it is confidently wrong, so no gate can recover it.
+
+#### What this means for the architecture
+
+Neither published attribution model, at any operating point, beats Tier 1 on the metric
+that decides. **The untagged three-quarters of dialogue is not solved by an encoder.**
+
+That is not a failure of the ticket, it is its answer, and it lands on ADR-0006's side: the
+remaining candidate is a generative model reading a *whole scene* and resolving turn-taking
+in context, which is QUI-009 and QUI-031. The encoders were the cheap hope; they are spent.
+
+Two things keep the encoder family alive in a narrow sense, and both are for later:
+BookNLP `small` could serve the Explicit slice at 57 MB and buy ~8 accuracy points there,
+and nobody has yet run it with **gold mentions** to price how much of the gap is our
+alias matching rather than the model.
+
+*Caveat, and it is not small:* one novel, not held out. Every number above is a single
+book. The direction is consistent across three candidates and a seven-point sweep, but the
+magnitudes are not corpus figures.
+
+*What is left:* a corpus run on BookNLP `small` (about 10 minutes a novel, so feasible
+overnight unlike the 431 MB encoder), the gold-mention comparison, and the QUI-009 SLM
+prompt. ADR-0005 can now be written for the encoder half, and it says no.
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
