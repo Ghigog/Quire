@@ -4,8 +4,11 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import quire.model.characters.Gender
+import quire.model.characters.Voice
+import quire.voice.foundry.QualityList
 
 /**
  * QUI-011 in spike form. The device test on 2026-08-29 heard three distinct voices and all
@@ -78,6 +81,42 @@ class CastingTest {
         val casting = Casting.untyped(listOf("Sarah", "Thomas", "Mr Ashcombe"), voiceCount = 904)
         assertEquals(3, casting.cast.values.distinct().size)
         assertTrue(casting.cast.values.all { it >= 452 }, "characters crowd the narrator")
+    }
+
+    @Test
+    fun `a character carrying a descriptor is resolved through the foundry`() {
+        val casting = Casting(
+            mapOf("Sarah" to Gender.FEMALE),
+            voiceCount = 904, profile = profile, narratorGender = Gender.MALE,
+            descriptors = mapOf("Sarah" to Voice(targetF0Hz = 175.0)),
+        )
+        val plan = casting.blendFor("Sarah")
+        assertTrue(plan != null, "expected a blend plan for a character with a descriptor")
+        assertEquals(Gender.FEMALE, genderOf(plan!!.parentA))
+        assertEquals(plan.parentA, casting.voiceFor("Sarah"), "voiceFor should collapse to the blend's first parent")
+    }
+
+    @Test
+    fun `a speaker flagged poor is never chosen as a blend parent`() {
+        val quality = QualityList.parse("659\tpoor".lineSequence())
+        val casting = Casting(
+            mapOf("Thomas" to Gender.MALE),
+            voiceCount = 904, profile = profile, narratorGender = Gender.FEMALE,
+            descriptors = mapOf("Thomas" to Voice(targetF0Hz = 112.5)),
+            quality = quality,
+        )
+        val plan = casting.blendFor("Thomas")!!
+        assertTrue(plan.parentA != 659 && plan.parentB != 659)
+    }
+
+    @Test
+    fun `a character with no descriptor still uses the plain gender-pitch pool`() {
+        val casting = Casting(
+            mapOf("Sarah" to Gender.FEMALE),
+            voiceCount = 904, profile = profile, narratorGender = Gender.MALE,
+        )
+        assertNull(casting.blendFor("Sarah"))
+        assertEquals(Gender.FEMALE, genderOf(casting.voiceFor("Sarah")))
     }
 
     @Test

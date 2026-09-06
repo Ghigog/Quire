@@ -49,7 +49,7 @@ already `In progress`.
 | QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
-| QUI-037 | Voice foundry: descriptor → generated voice | Audio | In progress | voice-generation-foundry | QUI-032, QUI-036 |
+| QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 
 Next free ID: **QUI-038**
 
@@ -3718,7 +3718,7 @@ that ticket.
 
 ## QUI-037 — Voice foundry: descriptor → generated voice
 
-**Status:** In progress · **Owner:** voice-generation-foundry · **Epic:** Audio
+**Status:** In review · **Owner:** voice-generation-foundry · **Epic:** Audio
 **Depends on:** QUI-032, QUI-036 · **PRD:** §4.2
 
 ### User story
@@ -3890,8 +3890,18 @@ Age-band offsets (elder −10 Hz, teen +15 Hz, child +40 Hz, adult/unknown +0) a
 — no labelled data exists for how age shifts F0 in this cast, and the Worklog says so
 plainly rather than dressing a guess as a measurement.
 
-Build: `gradle :core:voice:test :spike:slice:test` — all green. `checkModuleBoundaries`
-passes (`core:voice` depends only on `core:model`).
+Build: `./gradlew test checkModuleBoundaries` — all green, root build included
+(`spike:indexer` and `spike:slice` both compile unchanged against `Casting`'s new,
+backward-compatible constructor — the two new parameters are trailing and defaulted, so
+`spike/indexer/Main.kt` and `spike/ttsbinding/SliceIndex.kt`, both outside this ticket's
+file list, needed no changes). `checkModuleBoundaries`: 5 core modules, all clean —
+`core:voice` depends only on `core:model`.
+
+Filed a follow-up suggestion rather than doing it here (out of this ticket's declared file
+list): `docs/architecture.md` §9 items 7 and the duplicate-numbered accent item are still
+written as open questions, though both were answered by ear on 2026-09-06 (QUI-036, QUI-033)
+before this ticket started. Only item 8, the one this ticket actually touches, is corrected
+here.
 
 **Handed to QUI-011 and QUI-007** as notes on those tickets rather than claimed here: the
 resolver and the descriptor writer both exist now in `core/voice`, but wiring them into the

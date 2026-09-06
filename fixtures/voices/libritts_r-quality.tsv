@@ -1,0 +1,11 @@
+# quality flags for vits-piper-en_US-libritts_r-medium, 904 speakers
+#
+# Human-curated from listening on the reference device, not computed. QUI-037 tried two
+# host-computable proxies (embedding-centroid distance, autocorrelation peak clarity
+# z-scored within F0 neighbourhood) and both failed to flag spk659 as bad — see QUI-037's
+# Worklog in tickets.md before re-deriving either. A speaker not listed here is assumed ok.
+#
+# Grows the same way voiceprobe.py's accent table did: by ear, one listening session at a
+# time. Add a row only after an actual listen; do not compute one in.
+speaker	quality	note
+659	poor	QUI-036, 2026-09-06: sounds mushy on the reference device, both natively and as an emb_g blend parent
