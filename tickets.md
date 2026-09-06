@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | In progress | quire-setup-docs | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Blocked | — | needs us.aws.cdn.hf.co |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | local-model-voice-accents | — |
 | QUI-018 | Headless pipeline spike | Spike | In progress | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | In progress | session-visibility-check | — |
@@ -3120,6 +3120,70 @@ decision that is not automatically a speed one.
 *What is left:* the run itself, then BookNLP as the published baseline, then the QUI-009 SLM
 prompt, then every on-device measurement. `docs/adr/0005-attribution-model.md` still cannot
 honestly be written — nothing has been measured against the baseline yet.
+
+**2026-09-06 — first encoder numbers, one novel.** `A Handful of Dust`, 2,337 quotations.
+The download works with `HF_HUB_DISABLE_XET=1`; the model is 107.7M parameters, 412 MB.
+
+| | coverage | precision | accuracy |
+| --- | ---: | ---: | ---: |
+| Tier 1 | 18.4% | 88.6% | 16.3% |
+| grimbert encoder | 88.0% | 52.9% | **46.6%** |
+
+Accuracy nearly triples. **Read the precision column before celebrating.**
+
+#### The two are complementary, by quotation type
+
+Accuracy, so the columns are comparable:
+
+| | quotes | Tier 1 | grimbert |
+| --- | ---: | ---: | ---: |
+| Explicit | 409 | **82.2%** | 70.4% |
+| Implicit | 1,727 | 2.4% | **39.2%** |
+| Anaphoric | 201 | 2.0% | **61.2%** |
+
+**Tier 1 wins outright where there is a speech tag** — 91.6% precision against 74.8% — and
+loses everywhere else by an order of magnitude. That is the shape ADR-0006 assumed and it
+is now measured rather than asserted. A hybrid taking Tier 1's answer when it has one and
+the encoder's otherwise scores about 48.6% on this novel, two points above the encoder
+alone and with far better precision on the tagged slice.
+
+#### The number that decides it is the wrong-voice rate, not accuracy
+
+PRD §3.1: a missing voice is flat, a wrong voice is *heard*. So the figure to compare is
+coverage × (1 − precision) — the share of all quotations read in somebody else's voice:
+
+| | wrong voice, as a share of all quotations |
+| --- | ---: |
+| Tier 1 | **2.1%** |
+| grimbert encoder | **41.4%** |
+
+Tripling accuracy costs a twentyfold increase in lines read by the wrong character. On this
+product that is very likely a worse outcome than the flat narrator it replaces, and it is
+the opposite of what the accuracy column alone would tell you.
+
+**This does not kill the encoder; it names the next experiment.** The predictor already
+thresholds at 0.5 on a score the model exposes, chosen because that is what Renard uses.
+Nothing has swept it. Trading coverage for precision is one parameter, and the interesting
+question is whether there is a threshold where the encoder keeps most of its Implicit and
+Anaphoric wins at a precision the ear can live with.
+
+#### Why 52.9% and not the published 94.5%
+
+Three reasons, and the first is the one to fix:
+
+1. **Mentions are found by matching PDNC's alias lists against the text**, because PDNC
+   ships no mention offsets and gold mentions would flatter the model with information the
+   device will not have. The published figure was very likely computed with gold mentions.
+   This is the largest suspected gap and it is measurable: run it once with gold mentions
+   and the difference is the true cost of shipping.
+2. **One novel, and not a held-out one.** No claim here generalises yet.
+3. The cast is PDNC's, not Roster's. On device it would be Roster's, which QUI-034 measures
+   at 96.6% precision — another bound on top of this one.
+
+*What is left:* the whole-corpus run (started, ~15 minutes a novel on this container's CPU,
+so roughly overnight for 28), a threshold sweep, BookNLP as the published baseline, and
+every on-device measurement. ADR-0005 still cannot be written honestly — but the shape of
+what it will say is now visible, and it is not "the encoder replaces Tier 1".
 
 ---
 
