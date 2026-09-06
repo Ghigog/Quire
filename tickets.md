@@ -36,7 +36,7 @@ already `In progress`.
 | QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
 | QUI-003 | E-ink display mode and hardware keys | Companion | Todo (reduced) | — | QUI-025 |
 | QUI-026 | E-reader compatibility matrix verification | Quality | Todo | — | QUI-019 |
-| QUI-016 | Performance and SLA harness | Quality | Todo | — | QUI-010 |
+| QUI-016 | Performance and SLA harness | Quality | In progress | qui-016-sustained-power-harness-xdgaul | QUI-010 |
 | QUI-029 | Unindexed books and non-EPUB formats | Companion | **Deferred → later phase** | — | QUI-025 |
 | QUI-002 | EPUB import and Readium reader shell | Reader | **Deferred → V3.0** | — | — |
 | QUI-004 | Reading position and progress tracking | Reader | **Deferred → V3.0** | — | — |
@@ -1314,7 +1314,7 @@ Scenario: Drawer is usable on e-ink
 
 ## QUI-016 — Performance and SLA harness
 
-**Status:** Todo · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-010
+**Status:** In progress · **Owner:** qui-016-sustained-power-harness-xdgaul · **Epic:** Quality · **Depends on:** QUI-010
 **PRD:** §5
 
 ### User story
