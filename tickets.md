@@ -3436,6 +3436,55 @@ magnitudes are not corpus figures.
 overnight unlike the 431 MB encoder), the gold-mention comparison, and the QUI-009 SLM
 prompt. ADR-0005 can now be written for the encoder half, and it says no.
 
+**2026-09-07 — eight novels, and the out-of-domain gap is the finding.** 12,521 quotations:
+four headline books and four of PDNC's own out-of-domain holdouts. Same scorer, same
+alias-matched mentions, BookNLP `small` at threshold 0.
+
+| PDNC headline, 7,656 quotations | coverage | precision | accuracy | **wrong voice** |
+| --- | ---: | ---: | ---: | ---: |
+| Tier 1 | 30.5% | 89.2% | 27.2% | **3.3%** |
+| BookNLP `small` | 93.5% | 57.2% | 53.4% | 40.0% |
+
+| Held out, 4,865 quotations | coverage | precision | accuracy | **wrong voice** |
+| --- | ---: | ---: | ---: | ---: |
+| Tier 1 | 24.2% | **95.5%** | 23.1% | **1.1%** |
+| BookNLP `small` | 84.6% | 41.9% | 35.5% | 49.2% |
+
+**The model degrades four times as hard as the heuristic.** Out of domain Tier 1 loses 4.1
+accuracy points (27.2 → 23.1); BookNLP loses 17.9 (53.4 → 35.5). And the direction of the
+precision column is opposite: **Tier 1 gets *more* precise out of domain, 89.2% → 95.5%,
+while BookNLP falls 57.2% → 41.9%.**
+
+That is not a curiosity, it is the whole risk. A rule that fires on `said Geralt` is right
+wherever that construction appears, and declines everywhere else; a model trained on 19th
+century literary fiction is confidently wrong on prose it has not seen. PDNC stops in 1934,
+so *contemporary genre fiction is not in this table at any price* — the real degradation on
+a reader's library is worse than −17.9 and remains unmeasured.
+
+**The single-novel numbers were pessimistic about the model, and it does not matter.**
+`A Handful of Dust` alone gave BookNLP 43.3%; over four headline novels it is 53.4%. The
+ordering that decides is unchanged: the heuristic reads 3.3% of quotations in the wrong
+voice and the model reads 40%.
+
+#### The one robust win, now confirmed across four novels
+
+| Explicit quotations only | coverage | precision | accuracy |
+| --- | ---: | ---: | ---: |
+| Tier 1 | 84.8% | 91.8% | 77.9% |
+| BookNLP `small` | 98.8% | 90.0% | **88.9%** |
+
+**Eleven accuracy points, at the same precision**, on the quotations that carry a speech
+tag. BookNLP finds tags Tier 1's regex misses and matches it for correctness on the ones
+it does find. A hybrid — BookNLP on the Explicit slice, silence elsewhere — scores about
+29.3% accuracy at roughly 90% precision and ~3% wrong voice: better than Tier 1 on every
+axis, for 57 MB. That is a real, shippable improvement and it is the only one on offer here.
+
+**It does not touch the untagged three quarters**, which is what the ticket was for.
+
+*What is left:* the QUI-009 SLM prompt on a whole scene (QUI-038 must land first), the
+gold-mention comparison that would price our alias matching, and every on-device number.
+ADR-0005 can be written now for the encoder half, and its answer is no.
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
