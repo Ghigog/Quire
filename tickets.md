@@ -4440,6 +4440,9 @@ Scenario: The corpus is counted, not estimated
   narration longer than `Conversation.MAX_GAP_PARAGRAPHS`, so it never divides one exchange
   between two prompts — and carries the last known speaker into the next piece; 3 tests).
   All Gherkin scenarios pass as JUnit tests; `./gradlew :core:attribution:test` to reproduce.
+  *(Corrected 2026-09-07, see the entry below: the "no piece begins in the middle of an
+  exchange" scenario passed on its fixture but failed on 35.5% of real pieces, because
+  nothing had run the splitter over the corpus. Fixed, and now measured.)*
   Pure Kotlin, no Android, no new dependency (`core:attribution` already depends only on
   `core:model`).
   Added a `scenes` command to the pipeline spike (`spike/pipeline/.../bakeoff/SceneReport.kt`,
@@ -4467,3 +4470,37 @@ Scenario: The corpus is counted, not estimated
   speakers through it; nothing here assumes how that wiring looks. The 75%-over-budget
   finding should feed QUI-031's throughput measurement directly: scene batching's win was
   sized on rare splits, not routine ones.
+
+- **2026-09-07 (local-model-voice-accents) — the splitter's criterion, measured then met.**
+  This ticket asks that "no piece begins in the middle of an exchange". Nothing had run
+  `SceneSplitter` over the corpus, so it was known only against a fixture.
+
+  `spike/pipeline scenes` now splits every over-budget scene and counts. As merged, the
+  splitter looked for a **turn boundary** — a narration run past
+  `Conversation.MAX_GAP_PARAGRAPHS` — and cut wherever the budget ran out when it found
+  none. Over PDNC that fallback was not rare: **759 of 2,140 pieces, 35.5%, opened
+  mid-exchange.**
+
+  The cause is the shape of the data this ticket itself measured. A scene only needs
+  splitting because it is long and dialogue-dense, and dialogue-dense is exactly where long
+  narration runs do not exist, so the criterion failed hardest on the scenes it mattered
+  for.
+
+  **Fixed with one more tier rather than by amending the criterion.** Between "a full
+  narration run" and "cut anywhere" sits an obvious third option: any paragraph holding no
+  dialogue at all. Weaker evidence that an exchange has ended, but it still never puts the
+  cut between two adjacent turns, which is what mid-exchange means.
+
+  | | pieces | open mid-exchange |
+  | --- | ---: | ---: |
+  | turn boundary only | 2,140 | 759 (**35.5%**) |
+  | plus any narration paragraph | 2,235 | 70 (**3.1%**) |
+
+  The remaining 3.1% is an unbroken run of dialogue longer than the budget, where nothing
+  safe exists to cut at. Those pieces are flagged rather than hidden: `Piece.atTurnBoundary`
+  is false, and QUI-009 should weight `carriedSpeaker` lower there, because the turns that
+  explain the opening lines are in the piece before.
+
+  Two regression tests cover both paths — a dense scene that must cut at narration, and an
+  unbroken run that cannot. Root and `spike/pipeline` suites green.
+  Reproduce: `cd spike/pipeline && gradle run --args="scenes"`.
