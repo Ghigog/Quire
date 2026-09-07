@@ -19,8 +19,20 @@ import quire.model.Paragraph
  */
 object SceneSplitter {
 
-    /** One piece of a split scene, and the speaker the piece before it left off on. */
-    data class Piece(val range: Scene, val carriedSpeaker: String? = null)
+    /**
+     * One piece of a split scene, and the speaker the piece before it left off on.
+     *
+     * [atTurnBoundary] is false only when this piece begins where the budget ran out rather
+     * than at a turn boundary or a paragraph of pure narration — the last-resort cut. It matters downstream: a piece starting
+     * mid-exchange has had its opening lines separated from the turns that explain them, so
+     * [carriedSpeaker] is a weaker guide there than usual, and QUI-009 may want to weight it
+     * accordingly. The first piece of a scene is always true.
+     */
+    data class Piece(
+        val range: Scene,
+        val carriedSpeaker: String? = null,
+        val atTurnBoundary: Boolean = true,
+    )
 
     /**
      * @param length a piece budget's cost for one paragraph — tokens, in practice.
@@ -40,6 +52,7 @@ object SceneSplitter {
         if (inScene.size == 1) return listOf(Piece(scene))
 
         val boundaries = turnBoundaries(inScene, maxGap)
+        val narration = narrationStarts(inScene)
         val costs = inScene.map(length)
         val prefix = IntArray(inScene.size + 1)
         for (i in inScene.indices) prefix[i + 1] = prefix[i] + costs[i]
@@ -48,6 +61,7 @@ object SceneSplitter {
         val pieces = mutableListOf<Piece>()
         var pieceStart = 0
         var carried: String? = null
+        var atBoundary = true
 
         while (pieceStart < inScene.size) {
             var end = pieceStart
@@ -57,22 +71,40 @@ object SceneSplitter {
             if (end == pieceStart) end = pieceStart + 1
 
             if (end >= inScene.size) {
-                pieces += Piece(Scene(inScene[pieceStart].index, scene.endExclusive), carried)
+                pieces += Piece(Scene(inScene[pieceStart].index, scene.endExclusive), carried, atBoundary)
                 break
             }
 
-            // The latest turn boundary at or before where the budget ran out, so the piece
-            // just closed never ends mid-exchange. Falls back to cutting right there when
-            // no such boundary exists — a piece that is not fully within an exchange
-            // boundary is a smaller failure than one that blows the token budget.
-            val cut = (end downTo pieceStart + 1).firstOrNull { inScene[it].index in boundaries } ?: end
+            // Three places to cut, best first, all at or before where the budget ran out:
+            //
+            // 1. a turn boundary — narration has run long enough that Conversation itself
+            //    has given up on who spoke last, so nothing is being separated;
+            // 2. any paragraph holding no dialogue — weaker, but it still never puts the
+            //    cut between two adjacent turns, which is what "mid-exchange" means;
+            // 3. wherever the budget ran out.
+            //
+            // Measured over PDNC (`spike/pipeline scenes`): with only (1) and (3), 35.5% of
+            // pieces opened mid-exchange. Adding (2) is what makes the acceptance criterion
+            // mostly true rather than mostly false — see QUI-038's Worklog.
+            val range = end downTo pieceStart + 1
+            val clean = range.firstOrNull { inScene[it].index in boundaries }
+                ?: range.firstOrNull { inScene[it].index in narration }
+            val cut = clean ?: end
 
-            pieces += Piece(Scene(inScene[pieceStart].index, inScene[cut].index), carried)
+            pieces += Piece(Scene(inScene[pieceStart].index, inScene[cut].index), carried, atBoundary)
             carried = lastSpeaker(inScene, pieceStart, cut, speakerOf)
+            atBoundary = clean != null
             pieceStart = cut
         }
         return pieces
     }
+
+    /** Paragraph indices holding no dialogue at all — always a safe place to open a piece. */
+    private fun narrationStarts(inScene: List<Paragraph>): Set<Int> =
+        inScene.filterNot { hasDialogue(it) }.map { it.index }.toSet()
+
+    private fun hasDialogue(paragraph: Paragraph) =
+        Segmenter.segment(paragraph.locator, paragraph.text).any { it.kind == Kind.DIALOGUE }
 
     /**
      * Positions in [inScene] that may open a new piece: the scene's own first paragraph,
@@ -84,9 +116,7 @@ object SceneSplitter {
         val out = mutableSetOf(inScene.first().index)
         var gap = 0
         for (paragraph in inScene) {
-            val hasDialogue = Segmenter.segment(paragraph.locator, paragraph.text)
-                .any { it.kind == Kind.DIALOGUE }
-            if (hasDialogue) {
+            if (hasDialogue(paragraph)) {
                 gap = 0
             } else {
                 gap++

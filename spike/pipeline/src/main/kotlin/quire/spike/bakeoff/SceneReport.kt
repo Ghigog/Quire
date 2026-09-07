@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.math.ceil
 import quire.attribution.scenes.Scene
 import quire.attribution.scenes.SceneSegmenter
+import quire.attribution.scenes.SceneSplitter
 import quire.spike.Pdnc
 import quire.spike.ParagraphUnit
 
@@ -44,6 +45,9 @@ object SceneReport {
         val scenes: List<Scene>,
         val quotationsPerScene: List<Int>,
         val tokensPerScene: List<Int>,
+        /** Pieces after splitting every over-budget scene, and how many open mid-exchange. */
+        val pieces: Int = 0,
+        val midExchange: Int = 0,
     ) {
         val overBudget get() = tokensPerScene.count { it > BUDGET }
     }
@@ -99,7 +103,21 @@ object SceneReport {
                 paragraphs.filter { it.index in scene }.sumOf { tokensByParagraph.getValue(it.index) }
             }
 
-            val novel = NovelScenes(meta.folder, paragraphs.size, scenes, quotationsPerScene, tokensPerScene)
+            // QUI-038 asks that no piece begin in the middle of an exchange. The splitter
+            // falls back to cutting where the budget ran out when the scene holds no turn
+            // boundary in range, so the criterion is only met as often as that fallback is
+            // avoided. Nothing had run the splitter over the corpus to find out.
+            var pieces = 0
+            var midExchange = 0
+            for ((i, scene) in scenes.withIndex()) {
+                if (tokensPerScene[i] <= BUDGET) continue
+                val split = SceneSplitter.split(
+                    scene, paragraphs, BUDGET, { tokensByParagraph.getValue(it.index) })
+                pieces += split.size
+                midExchange += split.count { !it.atTurnBoundary }
+            }
+
+            val novel = NovelScenes(meta.folder, paragraphs.size, scenes, quotationsPerScene, tokensPerScene, pieces, midExchange)
             results += novel
             println("%-30s %10d %8d %14.1f %13.1f%%".format(
                 meta.folder.take(30), novel.paragraphs, scenes.size,
@@ -118,6 +136,10 @@ object SceneReport {
         println("quotations/scene   min %d, median %.0f, max %d, mean %.1f".format(
             allQuotationsPerScene.min(), median(allQuotationsPerScene), allQuotationsPerScene.max(),
             allQuotationsPerScene.average()))
+        val pieces = results.sumOf { it.pieces }
+        val mid = results.sumOf { it.midExchange }
+        println("split pieces       %d, of which %d (%.1f%%) open mid-exchange".format(
+            pieces, mid, if (pieces == 0) 0.0 else 100.0 * mid / pieces))
         println("scenes over %d tokens   %d / %d (%.1f%%)".format(
             BUDGET, allOverBudget, allScenes, allOverBudget * 100.0 / allScenes))
         println()
