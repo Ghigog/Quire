@@ -24,7 +24,7 @@ already `In progress`.
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
-| QUI-006 | On-device SLM runtime | Attribution | In progress | slm-runtime-interface | QUI-001, QUI-017 |
+| QUI-006 | On-device SLM runtime | Attribution | In review | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In review | — | QUI-005, QUI-018 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
@@ -531,7 +531,7 @@ which is the point of a seam (CLAUDE.md §2.3).
 
 ## QUI-006 — On-device SLM runtime
 
-**Status:** In progress · **Owner:** slm-runtime-interface · **Epic:** Attribution · **Depends on:** QUI-001
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001
 **PRD:** §3.1
 
 ### User story
@@ -588,7 +588,57 @@ Scenario: Inference is cancellable
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-06 — `slm-runtime-interface`.** Built the parts that don't need the Boox, per
+this session's brief. Landed `docs/adr/0001-slm-runtime.md`, `core/attribution/slm/`
+(`SlmRuntime`, `CancellationSignal`, `JsonShape`, `StructuredCompletion`,
+`BackgroundSlmExecutor`), and `tools/fetch-models.sh`.
+
+*What is done and tested (`gradle :core:attribution:test`, all green, no device needed):*
+- `SlmRuntime`: a one-method `fun interface` — `complete(prompt, maxTokens, cancellation)` —
+  pure JVM, no Android, so QUI-007/QUI-009 can build and test against it today with a fake.
+- `StructuredCompletion`: validates against a caller-supplied `JsonShape<T>`, retries
+  exactly once, returns `StructuredResult.Success`/`Failure` — never raw text. Covers the
+  ticket's first two Gherkin scenarios directly: `StructuredCompletionTest` asserts a valid
+  first reply needs no retry, one bad reply retries once and then succeeds, and two bad
+  replies report `Failure` with the runtime called exactly twice, never three times.
+- `CancellationSignal` + `BackgroundSlmExecutor`: a polled flag rather than
+  `kotlinx.coroutines.Job`, because no JVM thread interrupt reaches into a native
+  `llama.cpp` loop uninvited — a backend has to poll regardless. `BackgroundSlmExecutorTest`
+  demonstrates the contract end to end on a fake backend that ticks every 20 ms: cancelling
+  mid-generation stops the call well inside the 500 ms acceptance criterion. This proves the
+  *mechanism*, not the device number — see below.
+- `tools/fetch-models.sh`: fetches Llama 3.2 1B Instruct, Q4_K_M GGUF
+  (`bartowski/Llama-3.2-1B-Instruct-GGUF`), ~770 MiB. **Ran it in this session** — it works.
+  The one thing worth flagging for whoever touches it next: this repo's files resolve
+  through HF's Xet backend (confirmed by hand — the `resolve/main/...` URL redirects to
+  `us.aws.cdn.hf.co/xet-bridge-us/...`, not a plain CDN), so it uses `huggingface_hub` with
+  `HF_HUB_DISABLE_XET=1` rather than a bare `curl`, which would hang against a host outside
+  the environment's allowlist rather than fail — matches the note this session was given.
+
+*What is NOT done, and is not a small gap:* **no backend is chosen, and no backend is
+implemented.** ADR-0001 is deliberately `Proposed`, not `Accepted`, because the ticket's
+other two Gherkin scenarios — the memory-budget scenario and the *real* 500 ms cancellation
+scenario against genuine token generation — need an actual `llama.cpp` or ExecuTorch
+implementation running on the Note Air5 C, and this session has no device. **I have not
+fabricated an RSS or tokens/s number anywhere** — ADR-0001's "What is still needed" section
+says exactly what QUI-031 has to measure and why (prompt-eval tokens/s, not generation,
+per `device-profile.md` §2 — a scene-sized prompt spends most of its cost on the prompt).
+QUI-031 already depends on QUI-006 and is the right ticket to carry that measurement; this
+one should not block on it, which is why it's `In review` rather than `Blocked`.
+
+**Reproduce:**
+```bash
+gradle :core:attribution:test
+./tools/fetch-models.sh   # ~770 MiB to $QUIRE_MODELS or ~/.cache/quire/models
+```
+
+*Surprise worth naming:* `fun interface` abstract methods can't carry default parameter
+values in Kotlin — `SlmRuntime.complete`'s `cancellation` parameter has no default, unlike
+`StructuredCompletion.complete`'s, which is a regular class method and can. Caught by the
+compiler immediately, not worth a design change, but easy to trip over again if the
+interface grows a second method later (it would then need to stop being `fun interface`
+regardless).
 
 ---
 
