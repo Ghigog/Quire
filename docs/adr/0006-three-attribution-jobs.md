@@ -1,8 +1,9 @@
 # ADR-0006 — Attribution is three jobs, and the model is asked once per scene
 
-**Status:** Accepted, 2026-09-02 — the scene-batching arithmetic is projected, not measured
+**Status:** Accepted, 2026-09-02 — ~~the scene-batching arithmetic is projected, not
+measured~~ measured 2026-09-07 (QUI-038); see the correction below
 **Date:** 2026-09-02
-**Ticket:** QUI-009, QUI-011, QUI-032
+**Ticket:** QUI-009, QUI-011, QUI-032, QUI-038
 **Deciders:** dylangrowcoot, local-model-voice-accents
 
 ## Context
@@ -103,6 +104,29 @@ slower and worse.
 ## What is unverified
 
 The 3,000-unresolved figure is projected from QUI-028's PDNC rates, not counted on a real
-novel. The 60–120 scene count is an estimate. Neither changes the shape of the decision —
-per-line loses by more than an order of magnitude, not by a margin an estimate could
-close — but both should be counted properly when QUI-031 runs.
+novel. ~~The 60–120 scene count is an estimate.~~ **Corrected 2026-09-07 (QUI-038).**
+Neither changes the shape of the decision — per-line loses by more than an order of
+magnitude, not by a margin an estimate could close — but the scene count should have been
+counted properly when QUI-031 runs, and now has been.
+
+> **Correction, 2026-09-07 (QUI-038).** The 60–120 estimate was arithmetic — a 100k-word
+> novel divided by a guessed scene length — not a count. `core/attribution/scenes` now
+> segments for real, and measured over PDNC's 28 novels (chapter boundaries reconstructed
+> from heading-shaped paragraphs, since PDNC's own loader does not carry them — see
+> `spike/pipeline/.../SceneReport.kt`): **median 30 scenes per novel, mean 32.9, range
+> 2–96**. The estimate was roughly double the real median.
+>
+> The gap has a specific cause, not a vague one: PDNC's novels use almost no scene-break
+> markup *within* a chapter. A "scene" in this corpus is, overwhelmingly, a chapter. The
+> arithmetic above assumed something closer to modern genre pacing — several scenes per
+> chapter — which these 19th- and early-20th-century novels do not do.
+>
+> This makes §3's "a scene-sized call inverts the ratio" arithmetic optimistic in the other
+> direction: fewer, bigger scenes mean fewer prompts but each one is larger. Measured
+> directly: **75% of PDNC's scenes exceed a 2,048-token budget on their own.** The splitter
+> this ADR called "the obvious approach, untested" (Consequences, below) is not an edge
+> case — it is the common path, needed on three scenes out of four. Quotations per scene
+> came out at a median of 31 (mean 40.1), so the model is resolving dozens of speakers per
+> call it actually makes, whichever side of a split it lands on.
+
+

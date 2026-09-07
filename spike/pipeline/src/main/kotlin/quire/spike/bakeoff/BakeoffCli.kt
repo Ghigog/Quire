@@ -122,6 +122,8 @@ object BakeoffCli {
         println("because PDNC stops in 1934. See Holdouts for the slot that would.")
     }
 
+    fun scenes(root: File, only: Set<String>) = SceneReport.run(root, only)
+
     fun novels(root: File) {
         println("%-30s %-26s %-10s %-12s %6s %s".format("folder", "title", "person", "genre", "year", "held out"))
         for (m in Pdnc.index(root)) {

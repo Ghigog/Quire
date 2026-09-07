@@ -312,10 +312,14 @@ third-party TTS engine for NeoReader using sherpa-onnx. It confirms the premise,
    untrained row synthesises cleanly, so a character's voice is *generated* from a
    description rather than picked. QUI-011 does not get simpler; it changes shape, from
    pool selection to spec realisation.
-4. **Scene boundaries.** No longer only a tie-breaking nicety: ADR-0006 makes the scene the
-   unit the model is prompted with, so segmentation is on the critical path rather than
-   deferred. Chapter breaks, scene-break markup and blank-line runs are the cheap signals;
-   none is implemented.
+4. ~~**Scene boundaries.**~~ **Implemented 2026-09-07, QUI-038.** `core/attribution/scenes`
+   segments on chapter boundaries, explicit scene-break paragraphs and a paragraph-count
+   backstop, plus a splitter for a scene too long for the model's context window that cuts
+   at a turn boundary and carries the last known speaker forward. Measured over PDNC's 28
+   novels: a median of 30 scenes per novel against ADR-0006's 60-120 guess (real chapter
+   counts, not the estimate's arithmetic, turned out to be the constraint — see the ADR's
+   correction), and three-quarters of them exceed the 2,048-token budget on their own,
+   which makes the splitter load-bearing rather than a rare backstop.
 5. **RTF and battery SLAs** are retained in PRD §4 but not restated by v1.2 — confirm.
    Now urgent rather than tidy: ADR-0002 is accepted at RTF 0.354 against a budget of 0.15,
    as a recorded deviation, because no faster multi-speaker engine exists. QUI-016's power
