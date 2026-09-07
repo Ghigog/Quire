@@ -1548,6 +1548,31 @@ it a one-off harness. Marking `In review`, not `Done` — the harness is finishe
 whole purpose is a number only the device can produce.
 - _(empty)_
 
+**2026-09-07 — do not spend a device hour on this yet.** The harness above is ready and the
+procedure is written, and running it now would still be close to wasted. Recorded here so
+the next session does not hand the same hour to the one person who can spend it.
+
+**The number would be superseded.** What the probe measures today is TTS-only draw. What
+ships has an SLM co-resident for attribution, and on a 750G without i8mm that model is
+likely the larger consumer, not Piper. Measuring a configuration that never ships means
+measuring twice.
+
+**And it cannot change a decision today.** ADR-0002 §9 exhausted the search for a faster
+multi-speaker engine, so the ADR's own answer to a power failure is that the engine stays
+and the *product* changes — fewer distinct voices, or synthesis further ahead of playback.
+Nothing is currently built against that, so a failing number unblocks nothing and a passing
+one confirms nothing anyone is waiting on.
+
+**Take it when the SLM is co-resident** (QUI-031), which is the configuration whose power
+actually matters, and take it once.
+
+*One exception, and it is cheap.* A **ten-minute** run answers a different and useful
+question: is Piper alone anywhere near ≈1.14 W? If the engine on its own already blows the
+budget then adding an SLM is hopeless, and that is worth knowing before more is built on
+the assumption. Ten minutes is an order-of-magnitude read, not an SLA number — the summary
+correctly flags anything under 55 minutes as an extrapolation, and that is the right label
+for it.
+
 ---
 
 # Epic: Spike
