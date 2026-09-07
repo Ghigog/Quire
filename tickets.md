@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | local-model-voice-accents | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In review | — | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -3484,6 +3484,21 @@ axis, for 57 MB. That is a real, shippable improvement and it is the only one on
 *What is left:* the QUI-009 SLM prompt on a whole scene (QUI-038 must land first), the
 gold-mention comparison that would price our alias matching, and every on-device number.
 ADR-0005 can be written now for the encoder half, and its answer is no.
+
+**2026-09-07 — encoder half closed; [ADR-0005](docs/adr/0005-attribution-model.md) written.**
+The decision this ticket existed to make is recorded: **neither published encoder replaces
+Tier 1.** Both roughly double accuracy and both take the wrong-voice rate from ~3% to ~40%,
+no confidence threshold recovers either, and the model degrades four times as hard as the
+heuristic on prose unlike PDNC's.
+
+BookNLP `small` is adopted for the Explicit slice alone — 88.9% accuracy against Tier 1's
+77.9% at the same precision, for 57 MB — as an optional tier that blocks nothing.
+
+**Status `In review` rather than `Done`,** because the ticket's title names two things and
+only one is answered. The SLM half needs QUI-009's prompt and QUI-006's runtime, and the
+on-device measurements need hardware. What this ticket set out to decide about *encoders*
+is decided; whoever closes it should either split the SLM half into its own ticket or
+re-open this one against QUI-009's results.
 
 ---
 
