@@ -900,14 +900,29 @@ explicit confidence gates so that the system degrades to something safe rather t
 guessing loudly.
 
 ### Description (what)
-For each line Tier 1 left unattributed, the SLM is asked who is speaking, given a 5-line
-sliding context window. Below 0.65 confidence the system falls back to inferring from the
-speakers active in the scene; still below 0.40, the line is read by the Narrator.
+For each **scene** holding lines Tier 1 left unattributed, the SLM is asked who speaks each
+one, given the whole scene and its cast, and answers with a list. Below 0.65 confidence a
+line falls back to inferring from the speakers active in the scene; still below 0.40, it is
+read by the Narrator.
+
+> **Amended 2026-09-07.** This ticket originally said "a 5-line sliding context window", one
+> call per line. [ADR-0006](docs/adr/0006-three-attribution-jobs.md) superseded that on both
+> cost and quality: per-line cannot fit QUI-007's 30-minute budget by an order of magnitude,
+> and a model shown one quotation in isolation knows strictly less than the reader does,
+> because turn-taking is a property of the scene. The confidence gates below are unchanged —
+> they come from the PRD, not from the window size.
 
 ### Requirements (how)
 - Owns: `core/attribution/slm/attribution/`, `core/attribution/scene/`
-- Context window: the 5 preceding lines with their resolved speakers, plus the candidate
-  cast for the current scene.
+- **Prompt unit: one scene** (`core/attribution/scenes`, QUI-038), carrying the scene's
+  text, the cast, and any speaker Tier 1 already resolved inside it. A scene too long for
+  the window is split by `SceneSplitter`, which carries the last speaker across.
+- **The answer is a list aligned to quotation ids, and alignment fails closed.** A reply
+  naming 11 speakers for 12 quotations drops the whole scene to Tier 3 rather than shifting
+  everyone by one: a misaligned list is confidently wrong for a scene at a time, which
+  ADR-0005 makes the most expensive failure this system has.
+- A piece whose `atTurnBoundary` is false opens mid-exchange, so its carried speaker is a
+  weaker guide; weight it below one carried across a real turn boundary (QUI-038).
 - Thresholds are named constants, exactly as the PRD states: `SLM_MIN = 0.65`,
   `NARRATOR_FLOOR = 0.40`. Changing them requires a ticket.
 - Tier 3 scene inference: alternate between the two most recently active speakers for a
