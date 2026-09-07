@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+import time
 
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")        # see grimbert_predict.py
 
@@ -130,7 +131,8 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
     cast = cast_of(os.path.join(corpus, "data", novel))
 
     answers, misaligned, asked = {}, 0, 0
-    for piece in pieces:
+    started = time.time()
+    for done, piece in enumerate(pieces, start=1):
         text, inside = mark_quotations(paragraphs, questions, piece)
         if not text:
             continue
@@ -149,6 +151,14 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
         named = parse_answer(out, len(inside))
         if named is None:
             misaligned += 1
+
+        # A whole-novel run is tens of minutes of silence otherwise, and the useful
+        # diagnostics — is it answering at all, is it dropping every piece on alignment —
+        # are visible from the first few pieces.
+        rate = (time.time() - started) / done
+        print(f"    {novel} piece {done}/{len(pieces)}  {len(inside):3d} quotes  "
+              f"{'dropped' if named is None else 'ok':>7}  {rate:.1f}s/piece", flush=True)
+        if named is None:
             continue                                    # fails closed: the whole piece drops
         for question, name in zip(inside, named):
             resolved = resolve(name, cast)
