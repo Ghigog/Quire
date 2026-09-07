@@ -1,6 +1,8 @@
 package quire.spike.bakeoff
 
 import java.io.File
+import quire.attribution.scenes.SceneSegmenter
+import quire.attribution.scenes.SceneSplitter
 import quire.spike.Pdnc
 
 /**
@@ -42,6 +44,23 @@ object BakeoffCli {
             File(out, "${meta.folder}.paragraphs.jsonl").printWriter().use { w ->
                 paragraphs.forEach { p ->
                     w.println("""{"n":${p.unit.index},"text":${jsonString(p.unit.text)}}""")
+                }
+            }
+            // Scenes come from the real segmenter (QUI-038), not from anything the
+            // predictor reinvents — a predictor that split scenes even slightly differently
+            // would be scored against questions it never saw in context.
+            val prepared = SceneReport.reconstructChapters(paragraphs.map { it.unit })
+            val tokens = prepared.associate { it.index to SceneReport.estimateTokens(it.text) }
+            File(out, "${meta.folder}.scenes.jsonl").printWriter().use { w ->
+                for (scene in SceneSegmenter.segment(prepared)) {
+                    val pieces = SceneSplitter.split(
+                        scene, prepared, SceneReport.BUDGET, { tokens.getValue(it.index) })
+                    for (piece in pieces) {
+                        w.println(
+                            """{"start":${piece.range.start},"endExclusive":${piece.range.endExclusive},""" +
+                                """"atTurnBoundary":${piece.atTurnBoundary}}"""
+                        )
+                    }
                 }
             }
             File(out, "${meta.folder}.questions.jsonl").printWriter().use { w ->
