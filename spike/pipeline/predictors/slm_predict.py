@@ -89,6 +89,30 @@ def mark_quotations(paragraphs, questions, piece):
     return "\n\n".join(lines), inside
 
 
+def grammar_for(cast, count):
+    """A GBNF grammar admitting exactly `count` names, each one from `cast` or "?".
+
+    **Asking a 1B model for JSON and hoping is not a measurement.** Unconstrained, this model
+    ignores "reply with a JSON array" and returns an object mapping names to quotation text —
+    104 of 112 pieces were unparseable on the first run, which says nothing whatever about
+    whether it can attribute dialogue. Constrained decoding removes the format from the
+    experiment so what is left is the judgement, and it is also what QUI-006's structured
+    output contract specifies, so it is what would ship.
+
+    Restricting names to the cast matters as much as the array shape: it turns "write a name"
+    into "choose a character", which is the task, and it makes an unresolvable hallucination
+    impossible rather than merely unlikely.
+    """
+    def literal(text):
+        return '"\\"' + text.replace("\\", "\\\\").replace('"', '\\"') + '\\""'
+
+    alternatives = " | ".join(literal(name) for name in cast + ["?"])
+    return (
+        'root ::= "[" ' + " \",\" ".join(["item"] * count) + ' "]"\n'
+        "item ::= " + alternatives + "\n"
+    )
+
+
 def parse_answer(raw, expected):
     """A JSON array of `expected` names, or None.
 
@@ -125,6 +149,7 @@ def resolve(name, cast):
 
 
 def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
+    from llama_cpp import LlamaGrammar
     paragraphs = read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
     pieces = read_jsonl(os.path.join(dump_dir, f"{novel}.scenes.jsonl"))
@@ -143,9 +168,13 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
             f"Who speaks each of the {len(inside)} marked quotations? "
             f"Answer with a JSON array of {len(inside)} names."
         )
+        try:
+            grammar = LlamaGrammar.from_string(grammar_for(cast, len(inside)), verbose=False)
+        except Exception:                                # noqa: BLE001 — a piece, not the run
+            grammar = None
         out = llm.create_chat_completion(
             messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
-            max_tokens=max_tokens, temperature=0.0,
+            max_tokens=max_tokens, temperature=0.0, grammar=grammar,
         )["choices"][0]["message"]["content"]
 
         named = parse_answer(out, len(inside))
