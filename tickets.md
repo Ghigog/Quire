@@ -50,7 +50,7 @@ already `In progress`.
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
-| QUI-038 | Scene segmentation for scene-level attribution | Attribution | Todo | — | QUI-021 |
+| QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 
 Next free ID: **QUI-039**
 
@@ -4348,7 +4348,7 @@ against.
 
 ## QUI-038 — Scene segmentation for scene-level attribution
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-021
+**Status:** Done · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-021
 **PRD:** §3.1, §4 · **ADR:** [0006](docs/adr/0006-three-attribution-jobs.md)
 
 ### User story
@@ -4433,4 +4433,37 @@ Scenario: The corpus is counted, not estimated
 ```
 
 ### Worklog
-- _(empty)_
+- **2026-09-07 (scene-segmentation-qui-038):** Landed `core/attribution/scenes/` — `Scene`
+  (a half-open paragraph-index range), `SceneSegmenter` (chapter boundary, explicit
+  scene-break paragraph, paragraph-count backstop; 12 tests) and `SceneSplitter` (splits an
+  over-long scene at the same turn-boundary reset `Conversation` already uses — a run of
+  narration longer than `Conversation.MAX_GAP_PARAGRAPHS`, so it never divides one exchange
+  between two prompts — and carries the last known speaker into the next piece; 3 tests).
+  All Gherkin scenarios pass as JUnit tests; `./gradlew :core:attribution:test` to reproduce.
+  Pure Kotlin, no Android, no new dependency (`core:attribution` already depends only on
+  `core:model`).
+  Added a `scenes` command to the pipeline spike (`spike/pipeline/.../bakeoff/SceneReport.kt`,
+  wired through `BakeoffCli`/`Main`) that runs the segmenter over all 28 PDNC novels, reusing
+  `Pdnc.locate` and `Bakeoff.questions` exactly as `bakeoff dump` does — no new harness.
+  **Measured** (`cd spike/pipeline && ../../gradlew run --args="scenes"`, after
+  `tools/fetch-pdnc.sh`): **median 30 scenes per novel, mean 32.9, range 2–96**; **median 31
+  quotations per scene, mean 40.1**; **75% of scenes exceed a 2,048-token budget**
+  (`~4 chars/token`, the standard estimate — there is no on-device tokenizer to measure
+  against in this JVM environment, CLAUDE.md §9).
+  **ADR-0006's 60-120 guess did not hold — amended it and `docs/architecture.md` §9 item 4.**
+  The real number is lower because PDNC's novels carry almost no scene-break markup inside a
+  chapter: a "scene" in this corpus is overwhelmingly a whole chapter. One real wrinkle:
+  PDNC's flat-text loader (`Pdnc.locate`) sets `chapterIndex = 0` for every paragraph — no
+  chapter signal exists in the raw corpus at all — so `SceneReport.reconstructChapters`
+  rebuilds a stand-in by recognising heading-shaped paragraphs (`CHAPTER I`, `Book II`, a
+  bare numeral) before calling the segmenter. That reconstruction is report-side-only
+  (`spike/pipeline`, not `core/attribution/scenes`): a real EPUB import needs none of it,
+  because `EpubText` already sets `chapterIndex` from the spine. Sanity-checked by hand
+  against known chapter counts (OliverTwist: 53 detected vs 53 real; TheSignOfTheFour: 12 vs
+  12; TheAwakening: 39 vs 39) — good enough to trust the corpus-wide median, not exact for
+  every novel (the regex is documented as non-exhaustive in `SceneReport`'s class doc).
+  **What's left for QUI-009:** the splitter's `speakerOf` callback is a plain function the
+  caller supplies — QUI-009's prompt loop is what will actually thread Tier 1's resolved
+  speakers through it; nothing here assumes how that wiring looks. The 75%-over-budget
+  finding should feed QUI-031's throughput measurement directly: scene batching's win was
+  sized on rare splits, not routine ones.
