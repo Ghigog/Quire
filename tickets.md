@@ -50,7 +50,7 @@ already `In progress`.
 | QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
-| QUI-038 | Scene segmentation for scene-level attribution | Attribution | Todo | — | QUI-021 |
+| QUI-038 | Scene segmentation for scene-level attribution | Attribution | In progress | scene-segmentation-qui-038 | QUI-021 |
 
 Next free ID: **QUI-039**
 
