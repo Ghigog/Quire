@@ -249,8 +249,13 @@ it is also what proves the Android sources compile on a machine that is not this
 Either way, **a green `gradle test` says nothing about whether the Android code compiles**:
 the root build does not include `spike/ttsbinding` at all.
 
-Also blocked: Hugging Face and Project Gutenberg. GitHub release assets are reachable,
-which is where the TTS models and the sherpa AAR come from.
+**Hugging Face is reachable since 2026-09-06, with one trap.** `huggingface.co` serves the
+API and small files, but every large file 307s to a CDN host, and the Python client prefers
+the newer *Xet* protocol whose hosts are refused. It does not fail, it **hangs**. Set
+`HF_HUB_DISABLE_XET=1` and downloads take the classic path, which works. Berkeley's BookNLP
+host is reachable over **https** only; BookNLP's own code uses `http` URLs, which the proxy
+refuses. Project Gutenberg is still blocked. GitHub release assets are reachable, which is
+where the TTS models and the sherpa AAR come from.
 
 **Two habits follow from this, and both are worth keeping even once an SDK exists.**
 

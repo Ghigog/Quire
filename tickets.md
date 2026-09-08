@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | local-model-voice-accents | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In review | — | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -3539,6 +3539,54 @@ only one is answered. The SLM half needs QUI-009's prompt and QUI-006's runtime,
 on-device measurements need hardware. What this ticket set out to decide about *encoders*
 is decided; whoever closes it should either split the SLM half into its own ticket or
 re-open this one against QUI-009's results.
+
+**2026-09-08 — the scene-level SLM harness works; the 1B model does not, and I am not
+certain which of those is the finding.** Llama 3.2 1B Instruct Q4_K_M, one call per scene
+piece, `A Handful of Dust`, scored by the same harness as every other candidate.
+
+| | coverage | precision | accuracy | wrong voice |
+| --- | ---: | ---: | ---: | ---: |
+| Tier 1 | 18.4% | 88.6% | 16.3% | **2.1%** |
+| BookNLP `small` | 98.5% | 44.0% | 43.3% | 55.1% |
+| Llama 3.2 1B, per scene | 9.4% | 32.4% | 3.0% | 6.4% |
+
+**Read this as a lower bound on the approach, not a verdict on it.** Four harness faults
+were found and fixed on the way here, each of which produced a plausible-looking number
+first:
+
+1. **Unconstrained output.** Asked for a JSON array, the model returned a JSON object
+   mapping names to quotation text. 104 of 112 pieces unparseable. Fixed with a GBNF
+   grammar — **0 pieces dropped on alignment since.**
+2. **A `head -8` in the run command** closed the pipe and killed a run partway, leaving a
+   639-answer file that looked complete.
+3. **The whole book's cast offered as candidates** — 104 names per quotation, where
+   BookNLP and grimbert only ever rank mentions inside the window. Now scene-restricted.
+4. **Candidates built from PDNC's `Main Name` only**, not its aliases, so `Mrs. Beaver`
+   never matched `Mrs Beaver` in the text and **the correct speaker was frequently not on
+   the list at all.**
+
+Each was caught by a *sub-score* rather than the headline: precision on Explicit
+quotations, where the speech tag names the speaker in the same sentence, so anything that
+can read should be near-perfect. It is now **51.5%**, against Tier 1's 91.8%. That is much
+better than the 36.8% of fault 4, and still wrong enough that I do not believe the harness
+is clean.
+
+**What is established.** The pipeline runs end to end: QUI-038's scenes → a marked prompt →
+grammar-constrained output → the shared scorer. Constrained decoding is necessary and
+sufficient for format. Timing on this host is **4–11 s per scene piece**, roughly flat in
+the number of quotations, which is the amortisation ADR-0006 predicted.
+
+**What is not.** Whether a 1B model can do this at all. The Explicit sub-score says
+something is still wrong, and the obvious suspects are untested: the `[Qn: ...]` markers may
+be confusing it, the system prompt invites `"?"` and it takes that offer 90% of the time,
+and no larger model has been tried. **Do not quote 3.0% as the SLM's number.** It is the
+number for this prompt, this model, and a harness with a known-suspicious sub-score.
+
+*Next, in order:* fix the Explicit sub-score before anything else — a scene whose tag says
+`said Mrs Beaver` must resolve to Mrs Beaver essentially always, and until it does no other
+number here means anything. Then a prompt without `"?"` as an easy out, then Qwen 2.5 1.5B
+or a 3B, then a wider corpus. `predictors/slm_predict.py --rethreshold` does not exist for
+this candidate; scores are not cached, so each variation costs a full run (~20 min/novel).
 
 ---
 
