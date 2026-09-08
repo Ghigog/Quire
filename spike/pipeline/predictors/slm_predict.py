@@ -148,6 +148,26 @@ def resolve(name, cast):
     return None
 
 
+def scene_cast(text, cast, recent):
+    """The characters this scene could plausibly be about.
+
+    **Offering the whole book's cast is not the same task.** `A Handful of Dust` names 104
+    characters; asking a 1B model to pick one of 104 for every quotation is a far harder
+    problem than the one the encoders were scored on, because BookNLP and grimbert only ever
+    rank mentions *present in the window*. A reader has the same advantage: they are choosing
+    between the people in the room, not the people in the book.
+
+    So a scene offers the names that appear in its own text, plus whoever spoke most recently
+    before it — which is how a speaker survives a paragraph that does not name them.
+    """
+    lowered = text.lower()
+    present = [name for name in cast if name.lower() in lowered]
+    for name in recent:
+        if name not in present:
+            present.append(name)
+    return present or cast
+
+
 def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
     from llama_cpp import LlamaGrammar
     paragraphs = read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
@@ -155,21 +175,22 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
     pieces = read_jsonl(os.path.join(dump_dir, f"{novel}.scenes.jsonl"))
     cast = cast_of(os.path.join(corpus, "data", novel))
 
-    answers, misaligned, asked = {}, 0, 0
+    answers, misaligned, asked, recent = {}, 0, 0, []
     started = time.time()
     for done, piece in enumerate(pieces, start=1):
         text, inside = mark_quotations(paragraphs, questions, piece)
         if not text:
             continue
         asked += len(inside)
+        here = scene_cast(text, cast, recent[-4:])
         prompt = (
-            f"Cast: {', '.join(cast)}\n\n"
+            f"Cast: {', '.join(here)}\n\n"
             f"Scene:\n{text}\n\n"
             f"Who speaks each of the {len(inside)} marked quotations? "
             f"Answer with a JSON array of {len(inside)} names."
         )
         try:
-            grammar = LlamaGrammar.from_string(grammar_for(cast, len(inside)), verbose=False)
+            grammar = LlamaGrammar.from_string(grammar_for(here, len(inside)), verbose=False)
         except Exception:                                # noqa: BLE001 — a piece, not the run
             grammar = None
         out = llm.create_chat_completion(
@@ -190,9 +211,12 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
         if named is None:
             continue                                    # fails closed: the whole piece drops
         for question, name in zip(inside, named):
-            resolved = resolve(name, cast)
+            resolved = resolve(name, here)
             if resolved:
                 answers[question["id"]] = resolved
+                if resolved in recent:
+                    recent.remove(resolved)
+                recent.append(resolved)
 
     out_path = os.path.join(dump_dir, f"{novel}.answers.tsv")
     with open(out_path, "w", encoding="utf-8") as fh:
