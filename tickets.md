@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In review | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -2957,10 +2957,15 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **In progress, unclaimed — the host-side half is done.** The corpus fetch, the harness,
-> the Tier 1 baseline and the out-of-domain holdouts landed 2026-09-02 and are on `main`.
-> Both model candidates are blocked on model files no session container can reach; the
-> Worklog names them exactly. The claim is free to take by whoever has the files.
+> **In progress, unclaimed again — released 2026-09-08.** The encoder half is closed
+> (ADR-0005). The SLM half's Explicit-quotation sub-score is still unfixed (51.5% vs Tier
+> 1's 91.8%), and the leading suspect — the candidate list omitting the gold speaker — is
+> now ruled out as the main cause (94.4% of gold Explicit speakers are offered; see the
+> 2026-09-08 Worklog entry). What is actually needed next — a prompt change and a larger
+> model, both requiring the model file — cannot be attempted: `huggingface.co` and
+> `people.ischool.berkeley.edu` are both refused by this environment's egress policy right
+> now (403, confirmed not transient), which blocks every remaining model candidate. The
+> claim is free to take by whoever has the files or a session where that host resolves.
 
 **Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
@@ -3587,6 +3592,129 @@ number for this prompt, this model, and a harness with a known-suspicious sub-sc
 number here means anything. Then a prompt without `"?"` as an easy out, then Qwen 2.5 1.5B
 or a 3B, then a wider corpus. `predictors/slm_predict.py --rethreshold` does not exist for
 this candidate; scores are not cached, so each variation costs a full run (~20 min/novel).
+
+**2026-09-08 — the leading suspect for the Explicit sub-score is ruled out; the model
+itself cannot be run this session, and that is a new, separate blocker.** Two independent
+findings, `A Handful of Dust`, no model run required for either.
+
+#### The candidate-list gap is real but small — at most 5.6 of the 40.3 points
+
+The obvious next suspect, unchecked until now: does `scene_cast()` even *offer* the gold
+speaker as a choice? The grammar in `grammar_for` restricts every answer to the scene's
+candidate list plus `"?"`, so if the correct name is not in that list the model cannot
+answer correctly no matter how well it reads.
+
+Measured directly against `build/bakeoff` (no model needed — this only exercises
+`cast_of`, `mark_quotations` and `scene_cast` from `predictors/slm_predict.py`):
+
+| | Explicit quotations | gold speaker offered | ceiling on precision |
+| --- | ---: | ---: | ---: |
+| current `cast_of` (PDNC's own aliases) | 409 | 386 (94.4%) | 94.4% |
+
+So candidate-list omission caps at most **5.6** of the **40.3**-point gap between 51.5% and
+Tier 1's 91.8%. Most of the gap is the model choosing wrong among names it *was* offered,
+which this check cannot see without running it.
+
+The misses are genuine, and one is worth naming because it is not PDNC noise: `John Andrew`
+(a child) is voiced only as `"[Q...] said John,"` in the text; PDNC's alias list for him is
+`{Johnny-Boy, John Last, John Andrew}` — no bare `John` — while `John Beaver` (an adult, the
+novel's other lead) is explicitly aliased to bare `John`. The scene offers `John Beaver` and
+never offers the right answer at all. A human reader disambiguates two Johns by context;
+that is exactly the judgement the SLM is supposed to supply, and the harness cannot hand it
+a candidate that was never on the list.
+
+**Tried the obvious repair and it does not pay for itself.** Adding each character's own
+unclaimed name-tokens as extra aliases (only when no other character already claims that
+token, so `John` stays with `John Beaver` and is not duplicated) recovers 3 more
+quotations — 95.1% — at the cost of **nearly doubling the average scene cast, 6.8 → 12.4
+names, max 24**. That is the shape of the harness fault QUI-028 already found and fixed
+once (fault 3, 2026-09-08 entry above: "the whole book's cast offered as candidates"). Not
+committed. `scene_cast`'s current candidate lists are tight (avg 6.8, max 17) and that is
+not, on this evidence, where the fix lives.
+
+#### What the marked text looks like, for anyone about to guess again
+
+Read three real pieces before proposing another harness fix (transcript kept out of this
+entry; reproduce with the script below). One thing worth knowing: **Explicit tags sit
+sparsely inside long runs of untagged back-and-forth.** A representative piece asks the
+model for 32 quotations in one JSON array; only 2 carry a tag, the other 30 are Tony and
+Brenda alternating with no tag at all. The prompt does not distinguish "answer this one
+from the tag beside it" from "answer this one by tracking twenty turns of alternation" —
+both are the same instruction, same array, same call. If a 1B model's turn-tracking drifts
+across the untagged majority, that drift is exactly the kind of thing that could also pull
+down an adjacent tagged answer, and nothing here rules that in or out — it wants the actual
+model, run scene by scene, with output inspected next to the piece it was asked about.
+
+*Verified clean, not the bug:* the `[Qn: ...]` marker numbers are local to each piece and
+are correctly independent of PDNC's own `quoteID` — the scorer joins on `quoteID`
+(`question["id"]`), never on the marker number, so this was checked and is not a
+mislabelling risk.
+
+#### Blocked: `huggingface.co` and `people.ischool.berkeley.edu`, both organization-policy denials, not transient
+
+CLAUDE.md §9 says Hugging Face has been reachable since 2026-09-06. It is not, in this
+session, and the failure is not the CDN-redirect trap that note describes — the top-level
+host itself is refused:
+
+```
+$ curl -sS -o /dev/null -w '%{http_code}\n' https://huggingface.co/api/models/bartowski/Llama-3.2-1B-Instruct-GGUF
+curl: (56) CONNECT tunnel failed, response 403
+$ curl -sS http://127.0.0.1:$PORT/__agentproxy/status | grep -A3 huggingface
+  { "kind": "connect_rejected", "detail": "gateway answered 403 to CONNECT (policy denial or upstream failure)", "host": "huggingface.co:443" }
+```
+
+Retried three times over ten seconds, same result each time — the proxy's own guidance
+(`/root/.ccr/README.md`) is explicit that a 403 from the egress proxy is an organization
+policy denial and should be reported, not retried or routed around. `people.ischool.berkeley.edu`
+(BookNLP's host) is refused the same way. `github.com`, `raw.githubusercontent.com` and
+`dl.google.com` are all still reachable, so this is not a general outage — it is these two
+hosts specifically, and it blocks both remaining model candidates (the Llama GGUF here and
+BookNLP's checkpoint) exactly as it did before 2026-08-28. `HF_HUB_DISABLE_XET=1` and the
+Xet-CDN trap are moot: the run never gets past the first request.
+
+**Nothing in this ticket's remaining work can proceed without either a model file already
+on disk or this host restored.** Releasing the claim rather than sitting on it blocked.
+
+**Reproduce the candidate-list measurement (no model, no PDNC-license risk beyond the
+existing fetch, a few seconds):**
+
+```sh
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike dump --out build/bakeoff --novels AHandfulOfDust
+python3 - <<'PY'
+import sys, os, csv
+sys.path.insert(0, "predictors")
+import slm_predict as sp
+
+dump, novel = "build/bakeoff", "AHandfulOfDust"
+corpus = os.path.expanduser("~/.cache/quire/pdnc")
+paragraphs = sp.read_jsonl(f"{dump}/{novel}.paragraphs.jsonl")
+questions = sp.read_jsonl(f"{dump}/{novel}.questions.jsonl")
+pieces = sp.read_jsonl(f"{dump}/{novel}.scenes.jsonl")
+cast = sp.cast_of(f"{corpus}/data/{novel}")
+gold = {r["quoteID"]: (r["speaker"], r["quoteType"])
+        for r in csv.DictReader(open(f"{corpus}/data/{novel}/quotation_info.csv", encoding="utf-8"))}
+
+total = present = 0
+for piece in pieces:
+    text, inside = sp.mark_quotations(paragraphs, questions, piece)
+    if not text: continue
+    here = sp.scene_cast(text, cast, [])
+    for q in inside:
+        speaker, qtype = gold.get(q["id"], ("", ""))
+        if qtype != "Explicit": continue
+        total += 1
+        present += speaker in here
+print(f"{present}/{total} ({100*present/total:.1f}%) gold Explicit speakers offered as candidates")
+PY
+```
+
+*What is left, unchanged from the entry above except that the model files needed to attempt
+any of it are, right now, unreachable:* a prompt without `"?"` as an easy out; Qwen 2.5 1.5B
+or a 3B to find where capability starts; a wider corpus once one novel looks right; and
+inspecting real model output beside the marked scene text once a run is possible, to see
+whether the untagged-majority-drift hypothesis above holds up.
 
 ---
 
