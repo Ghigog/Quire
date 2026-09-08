@@ -52,12 +52,32 @@ def read_jsonl(path):
         return [json.loads(line) for line in fh if line.strip()]
 
 
+def normalise(text):
+    """Lowercase, and drop the punctuation that separates `Mrs. Beaver` from `Mrs Beaver`."""
+    return re.sub(r"[^\w\s]", "", text.lower())
+
+
 def cast_of(novel_dir):
-    names = []
+    """{main name: [every name this character is called]}, from PDNC's own list.
+
+    **The aliases matter, and leaving them out silently broke three runs.** PDNC's
+    `Main Name` for a character can be `Mrs. Beaver` while the novel writes `Mrs Beaver`,
+    so matching main names alone against the text misses the speaker in scenes that name
+    her outright — the correct answer was simply not among the candidates offered, and the
+    model could only answer "?" or wrongly. It scored 45.6% on Explicit quotations, where a
+    speech tag names the speaker in the sentence, which is what gave it away. The other
+    predictors in this directory read the alias set; this one did not.
+    """
+    out = {}
     with open(os.path.join(novel_dir, "character_info.csv"), encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
-            names.append(row["Main Name"])
-    return names
+            names = {row["Main Name"]}
+            try:
+                names |= set(ast.literal_eval(row["Aliases"]))
+            except (ValueError, SyntaxError):
+                pass
+            out[row["Main Name"]] = sorted(names, key=len, reverse=True)
+    return out
 
 
 def mark_quotations(paragraphs, questions, piece):
@@ -160,12 +180,13 @@ def scene_cast(text, cast, recent):
     So a scene offers the names that appear in its own text, plus whoever spoke most recently
     before it — which is how a speaker survives a paragraph that does not name them.
     """
-    lowered = text.lower()
-    present = [name for name in cast if name.lower() in lowered]
+    lowered = normalise(text)
+    present = [main for main, names in cast.items()
+               if any(normalise(n) in lowered for n in names)]
     for name in recent:
         if name not in present:
             present.append(name)
-    return present or cast
+    return present or list(cast)
 
 
 def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
