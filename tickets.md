@@ -3891,6 +3891,49 @@ even a success there is a device question (ADR-0001, QUI-031), not a candidate. 
 lands near 40%, §8's fallback is the answer and it has arrived on evidence rather than by
 attrition, which is what §8 asked for.
 
+#### A 3x larger model buys 3.5 points, and that settles it
+
+Qwen 2.5 3B Instruct Q4_K_M, the same 40 `Implicit` quotations, the same best-case
+configuration — scene context, unmarked, one question per call, `"?"` unavailable in practice:
+
+| model | size | coverage | precision | prec. among offered | correct |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Llama 3.2 1B | 808 MB | 100% | 37.5% | 44.1% | 15/40 |
+| Qwen 2.5 3B | 1,930 MB | 97.5% | **41.0%** | 47.1% | 16/40 |
+
+**Three times the parameters bought one more correct answer.** At n=40 that is inside the
+noise, and it is the *slope* that matters rather than either number: reaching a wrong-voice
+rate this product could ship needs roughly fifty more points, and 1B to 3B delivered three and
+a half. Nothing in that slope suggests a 7B closes it, and a 7B does not fit the device either —
+the 3B is already 1.9 GB against PRD §5's **1.2 GB** RAM budget, so even the success case here
+was never a candidate. It is diagnostic only, exactly as it was taken.
+
+Wrong voice at 41.0% precision and full coverage is **59%**, against Tier 1's 2.1% over the
+whole novel.
+
+**So the stopping rule in `docs/handoff/2026-09-08-attribution-state-of-play.md` §8 is met, and
+met on evidence rather than by attrition.** Its words: *"If no available model takes untagged
+dialogue at an acceptable wrong-voice rate, the honest product is multi-voice on tagged
+dialogue, narrator elsewhere."* That is now the recommendation, and it is a PRD question rather
+than a ticket one — §8 says so, and this entry does not presume the answer.
+
+Three things worth carrying into that conversation:
+
+1. **The fallback is stronger than it sounds.** Tier 1 holds 88.6% precision at 2.1% wrong
+   voice, BookNLP `small` buys 11 accuracy points on the Explicit slice for 57 MB (ADR-0005),
+   and today's marking fix means a small model *can* read a tag at 90.6% if one is ever wanted
+   there. The failure mode is flat, not wrong, which is the trade PRD §3.1 asks for.
+2. **ADR-0006 §3 was right twice over** and should not be reverted on the way: scene context
+   tripled Implicit precision over a paragraph window, and the fourth cell of the marking square
+   cleared it of the crime the first reading charged it with.
+3. **Nothing here is a measurement of the design's ceiling with a bigger model on a bigger
+   machine** — only of what fits this device. If cloud TTS ever gets its V2 ticket (PRD §6),
+   cloud attribution is the same conversation and these numbers do not speak to it.
+
+**Limits, stated plainly.** One novel, 40 quotations per cell, so a standard error near 8
+points; one 3B rather than every 3B; `Anaphoric` (8.6%) never measured separately. None of that
+rescues a fifty-point gap, which is why this is written as settled rather than provisional.
+
 *Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
 and the confound above resolved on the way — that is the fix, and until it lands no SLM
 headline is worth quoting — and on the evidence above that fix is removing `"?"`, not a

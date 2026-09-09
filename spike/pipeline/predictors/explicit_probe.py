@@ -283,14 +283,22 @@ def report(path):
                 r["quoteID"], r["condition"], r["gold"][:18], said[:18], r["context"][:60]))
 
 
-def probe_path(dump_dir, novel, quote_type):
-    """One file per quotation type. `Explicit` keeps its original name, which earlier runs wrote."""
+def probe_path(dump_dir, novel, quote_type, tag=""):
+    """One file per quotation type, and per `--tag` when comparing models.
+
+    Rows are keyed on (quotation, condition), so a second model writing into the first one's
+    file would be skipped as already done and its numbers silently attributed to the first.
+    `--tag` is what keeps two models apart. `Explicit` untagged keeps its original name, which
+    earlier runs wrote.
+    """
     stem = "explicit-probe" if quote_type == "Explicit" else "%s-probe" % quote_type.lower()
+    if tag:
+        stem = "%s-%s" % (stem, tag)
     return os.path.join(dump_dir, "%s.%s.tsv" % (novel, stem))
 
 
 def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CONDITIONS,
-                quote_type="Explicit"):
+                quote_type="Explicit", tag=""):
     paragraphs = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
     pieces = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.scenes.jsonl"))
@@ -307,7 +315,7 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CON
     chosen = set(order[:min(sample, len(order))])
     print(f"{novel}: {len(explicit)} {quote_type} quotations, probing {len(chosen)}")
 
-    out_path = probe_path(dump_dir, novel, quote_type)
+    out_path = probe_path(dump_dir, novel, quote_type, tag)
     done = load_done(out_path)
     fresh = not os.path.exists(out_path)
     fh = open(out_path, "a", encoding="utf-8", newline="")
@@ -383,6 +391,8 @@ def main():
     # names the speaker, so it is answered by tracking turns rather than by reading a sentence.
     ap.add_argument("--quote-type", default="Explicit",
                     choices=("Explicit", "Anaphoric", "Implicit"))
+    ap.add_argument("--tag", default="",
+                    help="suffix the results file; use it when comparing models")
     # A `scene` call costs several times a `para` one, so firming up one comparison on a
     # larger sample should not mean paying for the conditions already settled.
     ap.add_argument("--conditions", default=",".join(CONDITIONS),
@@ -401,9 +411,10 @@ def main():
     if args.report_only:
         for novel in wanted:
             for quote_type in ("Explicit", "Anaphoric", "Implicit"):
-                path = probe_path(args.dump_dir, novel, quote_type)
+                path = probe_path(args.dump_dir, novel, quote_type, args.tag)
                 if os.path.exists(path):
-                    print("\n=== %s, %s quotations" % (novel, quote_type))
+                    print("\n=== %s, %s quotations%s" % (
+                        novel, quote_type, " [%s]" % args.tag if args.tag else ""))
                     report(path)
         return 0
 
@@ -412,7 +423,7 @@ def main():
         report(probe_novel(llm, args.dump_dir, novel, args.corpus, args.sample,
                            args.max_tokens, args.seed,
                            only=tuple(c.strip() for c in args.conditions.split(",") if c.strip()),
-                           quote_type=args.quote_type))
+                           quote_type=args.quote_type, tag=args.tag))
     return 0
 
 
