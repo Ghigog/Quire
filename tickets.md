@@ -3823,9 +3823,38 @@ one would have understated the very gap being explained.
 The probe reads gold, so it lives apart from `slm_predict.py`, which stays gold-blind. It is
 never wired into a `bakeoff --candidate` run.
 
+#### The addressing scheme was tried, and it does not rescue the array
+
+Measured rather than assumed, which is the whole habit here. `batch-plain` is the shipped
+shape with the marking taken out: one call per piece, unmarked text, every target addressed by
+its opening words in the question (lengthened until unique, or two identical `"Yes,"` openers
+would ask the same question twice and misalign the array).
+
+| | coverage | precision | `"?"` |
+| --- | ---: | ---: | ---: |
+| `batch` — marked, addressed by marker number | 12.5% | 80.0% (n=5) | 35/40 |
+| `batch-plain` — unmarked, addressed by opening words | 22.5% | 66.7% (n=9) | 31/40 |
+| `scene-plain` — same unmarked text, **one question per call** | 100% | 82.5% | 0/40 |
+
+**The array is the fault, not only the marking.** Asked one at a time over exactly the same
+unmarked scene text the model declines *never*; asked for the whole array it declines 31 times
+in 40, and better addressing moved that by four quotations. So the 50-point marking effect is
+real but it is only reachable once the array stops collapsing into `"?"`, and an addressing
+scheme alone does not get there.
+
+That makes **removing `"?"` from the grammar the next experiment rather than a later one** —
+the ordering argument in the entry above still holds and is now satisfied: the marking question
+is answered, so the free out is what is left. With `"?"` gone the model must name somebody, and
+the question becomes whether array-form precision holds near `scene-plain`'s 82.5% or collapses
+under the drift the 2026-09-08 entry suspected. That is one cheap run and it is the gate.
+
+`batch-plain`'s 66.7% rests on the nine it answered and is not a precision worth quoting; its
+coverage column, on all 40, is the finding.
+
 *Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
 and the confound above resolved on the way — that is the fix, and until it lands no SLM
-headline is worth quoting. Then remove `"?"`, in that order and not the other. Then Qwen 2.5
+headline is worth quoting — and on the evidence above that fix is removing `"?"`, not a
+better addressing scheme, which was tried. Then Qwen 2.5
 1.5B and a 3B against the *fixed* prompt, which is a different and much fairer question than
 the one yesterday's list assumed. Then the untagged classes, which is where scene context
 earns its place and where none of today's numbers reach. The stopping rule in

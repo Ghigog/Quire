@@ -25,12 +25,20 @@ legible: nothing here is ever wired into a `bakeoff --candidate` run.
 So the same sampled quotations are asked three ways, changing one thing at a time:
 
   batch  one call per scene piece for the whole array — what `slm_predict.py` does today
+  batch-plain  the same one call for the whole array, over unmarked text, each target
+         addressed by its opening words in the question instead of by an in-text marker
   scene  one call, the same scene text and the same cast, asking about one marked quotation
   para   one call, only the paragraph the quotation sits in, one marked quotation
   plain  the same paragraph with **no `[Qn: ...]` marker at all**, the quotation quoted back
          in the question instead
   scene-plain  the scene text, unmarked, the quotation quoted back — the fourth cell of the
          window x marking square, without which neither effect can be told from the other
+
+**`batch-plain` is the one that decides anything.** Every other unmarked cell asks about one
+quotation per call, which is not what would ship: ADR-0006 §3's throughput arithmetic — ~3,000
+unresolved quotations against a 30-minute scan — is what rules per-quotation calls out. So
+knowing that the marking costs 50 points is only useful if the array survives losing it, and
+the `"?"` flood appeared in the batch condition alone. This is that test.
 
 `scene` isolates the batch array from the context: same text, same candidates, one answer.
 `para` then isolates the long context from the task. `plain` is the last harness suspect the
@@ -57,7 +65,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import slm_predict as sp
 
-CONDITIONS = ("batch", "scene", "scene-plain", "para", "plain")
+CONDITIONS = ("batch", "batch-plain", "scene", "scene-plain", "para", "plain")
 # `raw` is the model's literal answer, kept beside the resolved one because they fail
 # differently and the difference is the next item on this ticket's list: an empty `raw` is a
 # piece dropped on alignment, `"?"` is the free out the prompt offers and the model takes ~90%
@@ -105,15 +113,47 @@ def tag_excerpt(paragraphs, question, width=70):
     return ""
 
 
-def ask(llm, cast, text, count, max_tokens, quote=None):
+def openers(paragraphs, targets, width=48):
+    """Each target's opening words, lengthened until no two in the piece read the same.
+
+    Addressing a quotation by how it starts only works while that start is unique. A scene of
+    `"Yes,"` / `"Yes,"` would ask two indistinguishable questions and score whatever came back
+    against both, which is the misalignment ADR-0006 makes the most expensive failure here.
+    """
+    text_of = {p["n"]: p["text"] for p in paragraphs}
+    full = [text_of.get(q["paragraph"], "")[q["start"]:q["end"]] for q in targets]
+    out = [" ".join(t[:width].split()) for t in full]
+    for i, short in enumerate(out):
+        n = width
+        while sum(1 for other in out if other == short) > 1 and n < 400:
+            n += 48
+            short = " ".join(full[i][:n].split())
+        out[i] = short
+    return out
+
+
+def ask(llm, cast, text, count, max_tokens, quote=None, quotes=None):
     """One grammar-constrained call. Returns the parsed list of `count` names, or None.
 
     `quote` switches to the unmarked form: the passage as the novel wrote it and the words
-    quoted back in the question. Everything else — system prompt, grammar, temperature — is
-    held identical, so the only difference measured is the marking.
+    quoted back in the question. `quotes` is that same form for a whole array at once — the
+    shipped shape with the marking taken out. Everything else — system prompt, grammar,
+    temperature — is held identical, so the only difference measured is the marking.
+
+    The system prompt is deliberately *not* adjusted for the unmarked forms, even though it
+    still describes quotations "numbered Q1, Q2". Rewriting it would change two things at
+    once, and leaving it stale can only understate the unmarked cells, never flatter them.
     """
     from llama_cpp import LlamaGrammar
-    if quote is not None:
+    if quotes is not None:
+        listed = "\n".join("%d. \u201c%s\u201d" % (n, q) for n, q in enumerate(quotes, start=1))
+        prompt = (
+            f"Cast: {', '.join(cast)}\n\n"
+            f"Scene:\n{text}\n\n"
+            f"Who speaks each of these {count} quotations, in order?\n{listed}\n\n"
+            f"Answer with a JSON array of {count} names."
+        )
+    elif quote is not None:
         prompt = (
             f"Cast: {', '.join(cast)}\n\n"
             f"Passage:\n{text}\n\n"
@@ -280,12 +320,22 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CON
         # The scene's cast, held constant across all three conditions — see the module doc.
         scene_names = sp.scene_cast(text, cast, [])
 
-        if "batch" in only and any((q["id"], "batch") not in done for q in here):
-            named = ask(llm, scene_names, text, len(inside), max_tokens)
+        # Both array conditions ask about every quotation in the piece, as the shipped form
+        # does, and record only the sampled ones — so they stay paired with each other and
+        # with the single-question cells.
+        for condition in ("batch", "batch-plain"):
+            if condition not in only or all((q["id"], condition) in done for q in here):
+                continue
+            if condition == "batch":
+                named = ask(llm, scene_names, text, len(inside), max_tokens)
+            else:
+                named = ask(llm, scene_names, one_unmarked(paragraphs, piece), len(inside),
+                            max_tokens, quotes=openers(paragraphs, inside))
             calls += 1
             for q, name in zip(inside, named or [None] * len(inside)):
-                if q["id"] in chosen and (q["id"], "batch") not in done:
-                    record(q["id"], "batch", name, sp.resolve(name, scene_names) if name else None,
+                if q["id"] in chosen and (q["id"], condition) not in done:
+                    record(q["id"], condition, name,
+                           sp.resolve(name, scene_names) if name else None,
                            gold[q["id"]][0] in scene_names, tag_excerpt(paragraphs, q))
 
         for q in here:
