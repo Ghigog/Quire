@@ -2,6 +2,11 @@
 """
 Why is the SLM's precision on Explicit quotations 51.5% when Tier 1's is 91.8% (QUI-028)?
 
+**Built for that question, but `--quote-type Implicit` is the one that matters.** Explicit
+quotations are 17.5% of this novel and Tier 1 already answers them at 91.8%; `Implicit` is
+**73.9%** and is the only reason a generative model is in the design at all. The Explicit
+sub-score is the instrument. Once it reads true, point it at the product question.
+
 An Explicit quotation is one whose speech tag names the speaker in the same sentence, so a
 model that can read English should be near-perfect and the sub-score should be boring. It is
 not, and the handoff of 2026-09-08 makes fixing it the gate on every other SLM number. Four
@@ -278,7 +283,14 @@ def report(path):
                 r["quoteID"], r["condition"], r["gold"][:18], said[:18], r["context"][:60]))
 
 
-def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CONDITIONS):
+def probe_path(dump_dir, novel, quote_type):
+    """One file per quotation type. `Explicit` keeps its original name, which earlier runs wrote."""
+    stem = "explicit-probe" if quote_type == "Explicit" else "%s-probe" % quote_type.lower()
+    return os.path.join(dump_dir, "%s.%s.tsv" % (novel, stem))
+
+
+def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CONDITIONS,
+                quote_type="Explicit"):
     paragraphs = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
     pieces = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.scenes.jsonl"))
@@ -286,16 +298,16 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CON
     gold = gold_of(os.path.join(corpus, "data", novel))
     by_id = {q["id"]: q for q in questions}
 
-    explicit = [q["id"] for q in questions if gold.get(q["id"], ("", ""))[1] == "Explicit"]
+    explicit = [q["id"] for q in questions if gold.get(q["id"], ("", ""))[1] == quote_type]
     # Shuffle once and take a prefix, rather than `sample`, so raising --sample keeps every
     # quotation the earlier run chose. Otherwise the conditions stop being paired on the same
     # quotations and the comparison between them quietly stops meaning anything.
     order = list(explicit)
     random.Random(seed).shuffle(order)
     chosen = set(order[:min(sample, len(order))])
-    print(f"{novel}: {len(explicit)} Explicit quotations, probing {len(chosen)}")
+    print(f"{novel}: {len(explicit)} {quote_type} quotations, probing {len(chosen)}")
 
-    out_path = os.path.join(dump_dir, f"{novel}.explicit-probe.tsv")
+    out_path = probe_path(dump_dir, novel, quote_type)
     done = load_done(out_path)
     fresh = not os.path.exists(out_path)
     fh = open(out_path, "a", encoding="utf-8", newline="")
@@ -367,6 +379,10 @@ def main():
     ap.add_argument("--novels", default="")
     ap.add_argument("--model", default="", help="a local GGUF; overrides the HF download")
     ap.add_argument("--sample", type=int, default=30)
+    # PDNC's own label. `Implicit` is 73.9% of this novel and is the product question: no tag
+    # names the speaker, so it is answered by tracking turns rather than by reading a sentence.
+    ap.add_argument("--quote-type", default="Explicit",
+                    choices=("Explicit", "Anaphoric", "Implicit"))
     # A `scene` call costs several times a `para` one, so firming up one comparison on a
     # larger sample should not mean paying for the conditions already settled.
     ap.add_argument("--conditions", default=",".join(CONDITIONS),
@@ -384,14 +400,19 @@ def main():
 
     if args.report_only:
         for novel in wanted:
-            report(os.path.join(args.dump_dir, f"{novel}.explicit-probe.tsv"))
+            for quote_type in ("Explicit", "Anaphoric", "Implicit"):
+                path = probe_path(args.dump_dir, novel, quote_type)
+                if os.path.exists(path):
+                    print("\n=== %s, %s quotations" % (novel, quote_type))
+                    report(path)
         return 0
 
     llm = sp.load_model(args.model, args.ctx, args.threads)
     for novel in wanted:
         report(probe_novel(llm, args.dump_dir, novel, args.corpus, args.sample,
                            args.max_tokens, args.seed,
-                           only=tuple(c.strip() for c in args.conditions.split(",") if c.strip())))
+                           only=tuple(c.strip() for c in args.conditions.split(",") if c.strip()),
+                           quote_type=args.quote_type))
     return 0
 
 

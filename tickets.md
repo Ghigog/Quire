@@ -3851,6 +3851,46 @@ under the drift the 2026-09-08 entry suspected. That is one cheap run and it is 
 `batch-plain`'s 66.7% rests on the nine it answered and is not a precision worth quoting; its
 coverage column, on all 40, is the finding.
 
+#### The instrument reads true, so here is the product question it was blocking
+
+Explicit quotations are **17.5%** of this novel. `Implicit` — no tag names the speaker anywhere,
+so it is answered by tracking turns — is **73.9%**, and it is the only reason a generative model
+is in this design at all. It had never been measured. `--quote-type Implicit`, 40 quotations,
+the same probe:
+
+| | coverage | precision | prec. among offered |
+| --- | ---: | ---: | ---: |
+| `scene-plain` — scene context, unmarked, forced to answer | 100% | **37.5%** | 44.1% |
+| `plain` — the paragraph alone | 100% | 12.5% | 14.7% |
+
+**ADR-0006 §3 is vindicated a second time.** Scene context tripled precision on the same 40
+quotations. Turn-taking is a property of the scene, exactly as the ADR argues from first
+principles, and the paragraph window that wins on Explicit collapses here — which is the
+sanity check that says this measurement is wired up right.
+
+**And 37.5% is not a product.** `wrong voice = coverage x (1 - precision)` puts this at **62.5%**
+on the untagged three quarters, against Tier 1's 2.1% over the whole novel. That is the band
+ADR-0005 already rejected the encoders for (41-55%), and for the same reason: confidently wrong
+is the failure PRD §3.1 says a reader hears.
+
+**This is the ceiling, not a starting point.** One question per call — which cannot ship, on
+ADR-0006 §3's own throughput arithmetic — marking removed, `"?"` unavailable, full scene context,
+every affordance the probe can give it. A 1B model does not do this job, and the gap to usable is
+roughly fifty points rather than five.
+
+So the honest reading of today: **the sub-score is fixed, the instrument reads true, and its
+first trustworthy reading is negative.** Everything measured before this entry was on the 17.5%
+Tier 1 already answers at 91.8%, where the best configuration merely draws level with rules that
+cost nothing.
+
+One question stands between here and the §8 conversation in
+`docs/handoff/2026-09-08-attribution-state-of-play.md`: does the capability exist at *any* size.
+Taking Qwen 2.5 **3B** before the 1.5B the handoff lists first, because going straight to the
+larger model settles it in one run — and note a 3B Q4 is ~2 GB against PRD §5's 1.2 GB budget, so
+even a success there is a device question (ADR-0001, QUI-031), not a candidate. If a 3B also
+lands near 40%, §8's fallback is the answer and it has arrived on evidence rather than by
+attrition, which is what §8 asked for.
+
 *Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
 and the confound above resolved on the way — that is the fix, and until it lands no SLM
 headline is worth quoting — and on the evidence above that fix is removing `"?"`, not a
