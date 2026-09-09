@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | quire-explicit-subscore | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -2957,17 +2957,14 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **In progress, unclaimed again — released 2026-09-08.** The encoder half is closed
-> (ADR-0005). The SLM half's Explicit-quotation sub-score is still unfixed (51.5% vs Tier
-> 1's 91.8%), and the leading suspect — the candidate list omitting the gold speaker — is
-> now ruled out as the main cause (94.4% of gold Explicit speakers are offered; see the
-> 2026-09-08 Worklog entry). What is actually needed next — a prompt change and a larger
-> model, both requiring the model file — cannot be attempted: `huggingface.co` and
-> `people.ischool.berkeley.edu` are both refused by this environment's egress policy right
-> now (403, confirmed not transient), which blocks every remaining model candidate. The
-> claim is free to take by whoever has the files or a session where that host resolves.
+> **Claimed 2026-09-09 by `quire-explicit-subscore`.** The encoder half is closed
+> (ADR-0005). The SLM half's Explicit-quotation sub-score is still the blocker (51.5% vs
+> Tier 1's 91.8%); the candidate-list suspect is ruled out as the main cause (94.4% of gold
+> Explicit speakers are offered; see the 2026-09-08 Worklog entry). The egress block that
+> released this claim yesterday is gone — `huggingface.co` answers 200 and large-file range
+> requests work — so the prompt and larger-model work can be attempted.
 
-**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** quire-explicit-subscore · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
