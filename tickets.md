@@ -2957,12 +2957,14 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **Claimed 2026-09-09 by `quire-explicit-subscore`.** The encoder half is closed
-> (ADR-0005). The SLM half's Explicit-quotation sub-score is still the blocker (51.5% vs
-> Tier 1's 91.8%); the candidate-list suspect is ruled out as the main cause (94.4% of gold
-> Explicit speakers are offered; see the 2026-09-08 Worklog entry). The egress block that
-> released this claim yesterday is gone — `huggingface.co` answers 200 and large-file range
-> requests work — so the prompt and larger-model work can be attempted.
+> **Claimed 2026-09-09 by `quire-explicit-subscore`** — PR #7, in flight. The encoder half is
+> closed (ADR-0005). The Explicit-quotation sub-score is **answered, and it was a harness
+> fault**: marking a quotation `[Qn: ...]` inside the text costs 50 points of Explicit
+> precision at scene length, and unmarked the same 1B model reaches 90.6% among offered
+> speakers against Tier 1's 91.8% (2026-09-09 Worklog). Fault 5, and the fifth found by this
+> one sub-score. **No SLM headline follows yet** — the fix needs an addressing scheme for N
+> targets in one call that is not in-text marking, which is the next piece of work. `51.5%`
+> and `3.0%` remain the numbers for the marked, batched prompt.
 
 **Status:** In progress · **Owner:** quire-explicit-subscore · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
@@ -3712,6 +3714,148 @@ any of it are, right now, unreachable:* a prompt without `"?"` as an easy out; Q
 or a 3B to find where capability starts; a wider corpus once one novel looks right; and
 inspecting real model output beside the marked scene text once a run is possible, to see
 whether the untagged-majority-drift hypothesis above holds up.
+
+**2026-09-09 — the Explicit sub-score is a harness fault after all, and it is the in-text
+marker. Fault 5.** `A Handful of Dust`, Llama 3.2 1B Q4_K_M, one novel, the model that
+produced the 51.5%. `predictors/explicit_probe.py` asks the same Explicit quotations several
+ways and changes one thing at a time, which is what the entry above asks for instead of more
+guessing.
+
+The square that matters — same 40 quotations, same scene cast offered in every cell, one
+question per call, grammar and temperature identical:
+
+| window given to the model | quotation marked `[Qn: ...]` in the text | unmarked, target words quoted back in the question |
+| --- | ---: | ---: |
+| the whole scene piece | **32.5%** | **82.5%** |
+| its paragraph alone | 80.0% | 87.5% |
+
+**Marking the quotation inside the text costs 50 points of Explicit precision at scene
+length.** Window length costs ~5. On the larger paired sample the marker effect holds:
+199 quotations, `para` 83.9% against `plain` 89.4%, and 84.9% against **90.6%** among the
+quotations whose gold speaker was offered at all — which is Tier 1's 91.8% to within noise.
+So a 1B model can read a speech tag. It could not read one *through our marking*.
+
+**I got this wrong once on the way, and the wrong version is the instructive one.** With only
+the two marked cells measured, `scene` 32.5% against `para` 80.0% reads as "scene-length
+context destroys tag reading", which would have put a hole in ADR-0006 §3 — the claim that a
+scene-sized call "is not a speed compromise, it is the better answer". Both of those cells are
+*marked*; the comparison conflated the window with how much marked text surrounds the target.
+The fourth cell reverses the attribution and ADR-0006 §3 survives intact. **Never read a 2x2
+from two cells** — and the missing cell was cheap, 40 calls and five minutes.
+
+**What the failures looked like before the fix**, so nobody has to take this on trust:
+
+```
+"Aren't you coming home with us?" said Babs.     -> Jock Grant-Menzies
+"He wants a man up," said Ben.                   -> John Beaver
+"Yes, I'll go," said Jock.                       -> Tony Last
+"You are one for making people learn things,"
+                              said Beaver.       -> Tony Last
+```
+
+Eleven of eleven are tags a reader answers without pausing, and in every one the right name
+was on the candidate list. That is what 32.5% looks like from the inside, and it is why the
+sub-score was worth trusting over the headline for a fourth time.
+
+#### The confound I cannot separate, and it decides the fix
+
+The two unmarked cells change two things at once: the marker leaves the text, **and** the
+target stops being addressed by marker number and starts being addressed by quoting its words
+back. Those co-vary in every cell above, so "the marker is the fault" is really "the marking
+scheme — in-text marker plus addressing by number — is the fault". Which half carries the 50
+points is untested and it is not academic:
+
+- if the *addressing* is what helps, the batch fix lists each target's opening words in the
+  question over unmarked text;
+- if the *marker's presence* is what hurts, numbers can stay in the question and merely leave
+  the text.
+
+**And the fix is not free either way, because both unmarked cells ask about one quotation per
+call.** The shipped form asks for all N in one array, and an array needs the targets addressed
+somehow — which is why the markers exist. So this does not reduce to deleting them: it needs an
+addressing scheme that survives N targets in one call while keeping ADR-0006 §3's shape. That
+is the next piece of work and it is a prompt design question, not a model question.
+
+#### The `"?"` free out is confirmed, separately, and it is the coverage story
+
+In the batch condition the model answered `"?"` for **35 of 40** Explicit quotations — 87.5% —
+and dropped no piece on alignment. Forced to one quotation per call it never declined once.
+So the 9.4% coverage is the free out being taken, as the 2026-09-08 entry suspected, and it is
+a *batch* phenomenon rather than a property of the model.
+
+**One thing this changes about the order of the remaining work.** Removing `"?"` on its own
+would have made wrong-voice worse, not better: it raises coverage against whatever precision
+the prompt actually sustains, and marked-and-batched that was 32.5%. Fix the marking first,
+then remove the out. `wrong voice = coverage x (1 - precision)` is unforgiving of doing those
+two in the other order.
+
+#### Numbers, and what they are not
+
+| condition | asked | coverage | precision | prec. among offered |
+| --- | ---: | ---: | ---: | ---: |
+| `batch` — one call per piece, whole array, as shipped | 40 | 12.5% | 80.0% (n=5) | 80.0% |
+| `scene` — one question, scene text, marked | 40 | 100% | 32.5% | 32.4% |
+| `scene-plain` — one question, scene text, unmarked | 40 | 100% | 82.5% | 82.5% |
+| `para` — one question, paragraph, marked | 199 | 100% | 83.9% | 84.9% |
+| `plain` — one question, paragraph, unmarked | 199 | 100% | 89.4% | 90.6% |
+
+Explicit quotations only, one novel, 409 of them in it. `batch`'s precision rests on the five
+it did not decline and means nothing on its own; it is in the table for its coverage column.
+The window comparison rests on 40, the marker comparison on 199. **No headline SLM number
+follows from any of this** — every cell asks one quotation per call, which is not what would
+ship, and the untagged three quarters of dialogue are untouched here. `3.0%` accuracy and
+`51.5%` Explicit precision remain the numbers for the marked, batched prompt, and both are now
+known to be measuring our marking as much as the model.
+
+#### Two faults found in the probe itself while writing it
+
+Worth recording because they are the same species as the five in the harness, and the second
+one would have understated the very gap being explained.
+
+1. **Precision printed as correct over *asked*.** That is an accuracy. Declining and answering
+   wrongly are opposite problems with opposite fixes, and one denominator hides which is
+   happening. Three columns now, as `Bakeoff`'s own doc requires.
+2. **A stricter matcher than the harness's.** It scored `Reggie` against gold `Reggie St Cloud`
+   as a miss; `Pdnc.matches` counts either name's words containing the other's as a match.
+   `Pdnc.matches` and `Pdnc.words` are now ported verbatim, with the reason the usual refusal
+   to duplicate a scorer is suspended for a diagnostic.
+
+The probe reads gold, so it lives apart from `slm_predict.py`, which stays gold-blind. It is
+never wired into a `bakeoff --candidate` run.
+
+*Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
+and the confound above resolved on the way — that is the fix, and until it lands no SLM
+headline is worth quoting. Then remove `"?"`, in that order and not the other. Then Qwen 2.5
+1.5B and a 3B against the *fixed* prompt, which is a different and much fairer question than
+the one yesterday's list assumed. Then the untagged classes, which is where scene context
+earns its place and where none of today's numbers reach. The stopping rule in
+`docs/handoff/2026-09-08-attribution-state-of-play.md` §8 is unchanged and its clock has not
+started: today moved a harness fault, not a model.
+
+**Environment, corrected.** `huggingface.co` and `people.ischool.berkeley.edu` were still 403
+at the start of this session, as the entry above records; they began answering 200 mid-session
+after the domains were added to the environment's allow-list. Maven Central 429s
+intermittently and `gradle installDist` needs a retry loop. The 1B GGUF is 808 MB and
+`slm_predict.py --model` now takes a path, so a reclaimed container does not re-download it.
+
+**Reproduce** (needs the model; ~15 min for the marker square, ~25 for all five conditions):
+
+```sh
+tools/fetch-pdnc.sh
+python3 -m pip install llama-cpp-python huggingface_hub
+cd spike/pipeline && gradle installDist
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike dump --out build/bakeoff --novels AHandfulOfDust
+curl -L -o ~/llama-1b.gguf https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf
+python3 predictors/explicit_probe.py build/bakeoff --novels AHandfulOfDust \
+    --model ~/llama-1b.gguf --sample 40                       # all five conditions
+python3 predictors/explicit_probe.py build/bakeoff --novels AHandfulOfDust \
+    --model ~/llama-1b.gguf --sample 200 --conditions para,plain   # the marker effect
+python3 predictors/explicit_probe.py build/bakeoff --report-only   # re-read, run nothing
+```
+
+Rows are appended and flushed as they are produced and a rerun skips what is there, because
+this container is reclaimed every 20-40 minutes. `--sample` may be raised freely; the sample
+is a prefix of one seeded shuffle, so a larger run keeps every quotation the smaller one chose.
 
 ---
 

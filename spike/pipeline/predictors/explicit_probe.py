@@ -29,6 +29,8 @@ So the same sampled quotations are asked three ways, changing one thing at a tim
   para   one call, only the paragraph the quotation sits in, one marked quotation
   plain  the same paragraph with **no `[Qn: ...]` marker at all**, the quotation quoted back
          in the question instead
+  scene-plain  the scene text, unmarked, the quotation quoted back — the fourth cell of the
+         window x marking square, without which neither effect can be told from the other
 
 `scene` isolates the batch array from the context: same text, same candidates, one answer.
 `para` then isolates the long context from the task. `plain` is the last harness suspect the
@@ -55,7 +57,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import slm_predict as sp
 
-CONDITIONS = ("batch", "scene", "para", "plain")
+CONDITIONS = ("batch", "scene", "scene-plain", "para", "plain")
 # `raw` is the model's literal answer, kept beside the resolved one because they fail
 # differently and the difference is the next item on this ticket's list: an empty `raw` is a
 # piece dropped on alignment, `"?"` is the free out the prompt offers and the model takes ~90%
@@ -157,6 +159,12 @@ def one_marked(paragraphs, questions, piece, target):
     return ("\n\n".join(scene_lines) if para_line else None), para_line
 
 
+def one_unmarked(paragraphs, piece):
+    """The piece's text exactly as the novel wrote it — no markers of any kind."""
+    return "\n\n".join(p["text"] for p in paragraphs
+                        if piece["start"] <= p["n"] < piece["endExclusive"]) or None
+
+
 def load_done(path):
     if not os.path.exists(path):
         return set()
@@ -183,7 +191,7 @@ def report(path):
     def pct(n, of):
         return "%6.1f%%" % (100.0 * n / of) if of else "     — "
 
-    print("\n%-7s %6s %6s %6s %7s %7s %7s  %7s %5s %7s" % (
+    print("\n%-11s %6s %6s %6s %7s %7s %7s  %7s %5s %7s" % (
         "", "asked", "answ.", "corr.", "cover", "prec.", "acc.", "prec.@off", '"?"', "dropped"))
     for condition in CONDITIONS:
         here = [r for r in rows if r["condition"] == condition]
@@ -193,7 +201,7 @@ def report(path):
         ok = [r for r in answered if matches(r["predicted"], r["gold"])]
         off = [r for r in answered if r["offered"] == "yes"]
         ok_off = [r for r in off if r in ok]
-        print("%-7s %6d %6d %6d %7s %7s %7s  %7s %5d %7d" % (
+        print("%-11s %6d %6d %6d %7s %7s %7s  %7s %5d %7d" % (
             condition, len(here), len(answered), len(ok),
             pct(len(answered), len(here)),               # coverage
             pct(len(ok), len(answered)),                 # precision — over attributed
@@ -218,7 +226,7 @@ def report(path):
                 continue
             ok_a = sum(1 for q in answered if matches(by_condition[a][q]["predicted"], by_condition[a][q]["gold"]))
             ok_b = sum(1 for q in answered if matches(by_condition[b][q]["predicted"], by_condition[b][q]["gold"]))
-            print("  %-6s %6.1f%%   vs  %-6s %6.1f%%   on %d both answered (%d shared)" % (
+            print("  %-11s %6.1f%%  vs  %-11s %6.1f%%  on %d both answered (%d shared)" % (
                 a, 100.0 * ok_a / len(answered), b, 100.0 * ok_b / len(answered),
                 len(answered), len(shared)))
 
@@ -284,8 +292,9 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CON
             scene_text, para_text = one_marked(paragraphs, questions, piece, q)
             unmarked = next((p["text"] for p in paragraphs if p["n"] == q["paragraph"]), None)
             quote = unmarked[q["start"]:q["end"]] if unmarked else None
-            plans = (("scene", scene_text, None), ("para", para_text, None),
-                     ("plain", unmarked, quote))
+            scene_unmarked = one_unmarked(paragraphs, piece)
+            plans = (("scene", scene_text, None), ("scene-plain", scene_unmarked, quote),
+                     ("para", para_text, None), ("plain", unmarked, quote))
             for condition, body, quoted in plans:
                 if condition not in only or (q["id"], condition) in done or not body:
                     continue
