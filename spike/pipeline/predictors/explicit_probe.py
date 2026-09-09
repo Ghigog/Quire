@@ -201,6 +201,27 @@ def report(path):
             pct(len(ok_off), len(off)),
             sum(1 for r in here if r["raw"] == "?"),
             sum(1 for r in here if not r["raw"])))
+    # The per-condition table above pools every row in the file, and `--sample` can be raised
+    # between runs, so two conditions there need not rest on the same quotations. A difference
+    # between conditions is only a difference if it is measured on the same questions, so it
+    # gets its own table over the quotations both conditions actually answered.
+    by_condition = {c: {r["quoteID"]: r for r in rows if r["condition"] == c} for c in CONDITIONS}
+    pairs = [(a, b) for i, a in enumerate(CONDITIONS) for b in CONDITIONS[i + 1:]
+             if by_condition[a] and by_condition[b]]
+    if pairs:
+        print("\nPaired on the same quotations")
+        for a, b in pairs:
+            shared = sorted(set(by_condition[a]) & set(by_condition[b]))
+            answered = [q for q in shared
+                        if by_condition[a][q]["predicted"] and by_condition[b][q]["predicted"]]
+            if not answered:
+                continue
+            ok_a = sum(1 for q in answered if matches(by_condition[a][q]["predicted"], by_condition[a][q]["gold"]))
+            ok_b = sum(1 for q in answered if matches(by_condition[b][q]["predicted"], by_condition[b][q]["gold"]))
+            print("  %-6s %6.1f%%   vs  %-6s %6.1f%%   on %d both answered (%d shared)" % (
+                a, 100.0 * ok_a / len(answered), b, 100.0 * ok_b / len(answered),
+                len(answered), len(shared)))
+
     print("\nWrong answers, %s:" % os.path.basename(path))
     for r in rows:
         if not r["predicted"] or not matches(r["predicted"], r["gold"]):
@@ -209,7 +230,7 @@ def report(path):
                 r["quoteID"], r["condition"], r["gold"][:18], said[:18], r["context"][:60]))
 
 
-def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed):
+def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CONDITIONS):
     paragraphs = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
     pieces = sp.read_jsonl(os.path.join(dump_dir, f"{novel}.scenes.jsonl"))
@@ -218,7 +239,12 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed):
     by_id = {q["id"]: q for q in questions}
 
     explicit = [q["id"] for q in questions if gold.get(q["id"], ("", ""))[1] == "Explicit"]
-    chosen = set(random.Random(seed).sample(explicit, min(sample, len(explicit))))
+    # Shuffle once and take a prefix, rather than `sample`, so raising --sample keeps every
+    # quotation the earlier run chose. Otherwise the conditions stop being paired on the same
+    # quotations and the comparison between them quietly stops meaning anything.
+    order = list(explicit)
+    random.Random(seed).shuffle(order)
+    chosen = set(order[:min(sample, len(order))])
     print(f"{novel}: {len(explicit)} Explicit quotations, probing {len(chosen)}")
 
     out_path = os.path.join(dump_dir, f"{novel}.explicit-probe.tsv")
@@ -246,7 +272,7 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed):
         # The scene's cast, held constant across all three conditions — see the module doc.
         scene_names = sp.scene_cast(text, cast, [])
 
-        if any((q["id"], "batch") not in done for q in here):
+        if "batch" in only and any((q["id"], "batch") not in done for q in here):
             named = ask(llm, scene_names, text, len(inside), max_tokens)
             calls += 1
             for q, name in zip(inside, named or [None] * len(inside)):
@@ -261,7 +287,7 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed):
             plans = (("scene", scene_text, None), ("para", para_text, None),
                      ("plain", unmarked, quote))
             for condition, body, quoted in plans:
-                if (q["id"], condition) in done or not body:
+                if condition not in only or (q["id"], condition) in done or not body:
                     continue
                 named = ask(llm, scene_names, body, 1, max_tokens, quote=quoted)
                 calls += 1
@@ -282,6 +308,10 @@ def main():
     ap.add_argument("--novels", default="")
     ap.add_argument("--model", default="", help="a local GGUF; overrides the HF download")
     ap.add_argument("--sample", type=int, default=30)
+    # A `scene` call costs several times a `para` one, so firming up one comparison on a
+    # larger sample should not mean paying for the conditions already settled.
+    ap.add_argument("--conditions", default=",".join(CONDITIONS),
+                    help="comma-separated subset of " + ",".join(CONDITIONS))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ctx", type=int, default=4096)
     ap.add_argument("--max-tokens", type=int, default=512)
@@ -300,8 +330,9 @@ def main():
 
     llm = sp.load_model(args.model, args.ctx, args.threads)
     for novel in wanted:
-        report(probe_novel(llm, args.dump_dir, novel, args.corpus,
-                           args.sample, args.max_tokens, args.seed))
+        report(probe_novel(llm, args.dump_dir, novel, args.corpus, args.sample,
+                           args.max_tokens, args.seed,
+                           only=tuple(c.strip() for c in args.conditions.split(",") if c.strip())))
     return 0
 
 
