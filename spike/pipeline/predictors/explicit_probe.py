@@ -27,9 +27,14 @@ So the same sampled quotations are asked three ways, changing one thing at a tim
   batch  one call per scene piece for the whole array — what `slm_predict.py` does today
   scene  one call, the same scene text and the same cast, asking about one marked quotation
   para   one call, only the paragraph the quotation sits in, one marked quotation
+  plain  the same paragraph with **no `[Qn: ...]` marker at all**, the quotation quoted back
+         in the question instead
 
 `scene` isolates the batch array from the context: same text, same candidates, one answer.
-`para` then isolates the long context from the task. **The cast is the scene's cast in all
+`para` then isolates the long context from the task. `plain` is the last harness suspect the
+2026-09-08 entry names and does not test: the markers themselves. If a 1B model reads
+`"Yes, I'll go," said Jock.` correctly but `[Q1: "Yes, I'll go,"] said Jock.` wrongly, the
+marking is the fault and it is ours, not the model's. **The cast is the scene's cast in all
 three**, deliberately — give `para` a two-name cast and it wins for a reason that has nothing
 to do with what is being measured.
 
@@ -43,18 +48,41 @@ import argparse
 import csv
 import os
 import random
+import re
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import slm_predict as sp
 
-CONDITIONS = ("batch", "scene", "para")
+CONDITIONS = ("batch", "scene", "para", "plain")
 # `raw` is the model's literal answer, kept beside the resolved one because they fail
 # differently and the difference is the next item on this ticket's list: an empty `raw` is a
 # piece dropped on alignment, `"?"` is the free out the prompt offers and the model takes ~90%
 # of the time, and a name that resolved to nothing would be a `resolve` bug.
 FIELDS = ("quoteID", "condition", "gold", "raw", "predicted", "offered", "context")
+
+
+def words(name):
+    """`Pdnc.words`, ported. Both sides folded the same way — see its doc for why."""
+    return {w for w in re.sub(r"[^a-z ]", " ", name.lower()).split(" ") if w}
+
+
+def matches(predicted, gold):
+    """`Pdnc.matches`, ported: count a match when either name's words contain the other's.
+
+    **This has to be the harness's rule, not a stricter one.** Scoring `Reggie` against gold
+    `Reggie St Cloud` as a miss — which exact-match-after-normalising does — understates this
+    probe against the very 51.5% it exists to explain, and an understated diagnostic sends the
+    next session after the wrong bug. Porting a scorer is normally the thing this repository
+    refuses (`ExternalCandidate`: what is compared is models, not two scoring codebases); the
+    exception is narrow and deliberate, because the alternative here is two rules rather than
+    one. Anything that decides a candidate still goes through `Bakeoff`.
+    """
+    p, g = words(predicted), words(gold)
+    if not p or not g:
+        return False
+    return p == g or p >= g or g >= p
 
 
 def gold_of(novel_dir):
@@ -75,15 +103,28 @@ def tag_excerpt(paragraphs, question, width=70):
     return ""
 
 
-def ask(llm, cast, text, count, max_tokens):
-    """One grammar-constrained call. Returns the parsed list of `count` names, or None."""
+def ask(llm, cast, text, count, max_tokens, quote=None):
+    """One grammar-constrained call. Returns the parsed list of `count` names, or None.
+
+    `quote` switches to the unmarked form: the passage as the novel wrote it and the words
+    quoted back in the question. Everything else — system prompt, grammar, temperature — is
+    held identical, so the only difference measured is the marking.
+    """
     from llama_cpp import LlamaGrammar
-    prompt = (
-        f"Cast: {', '.join(cast)}\n\n"
-        f"Scene:\n{text}\n\n"
-        f"Who speaks each of the {count} marked quotations? "
-        f"Answer with a JSON array of {count} names."
-    )
+    if quote is not None:
+        prompt = (
+            f"Cast: {', '.join(cast)}\n\n"
+            f"Passage:\n{text}\n\n"
+            f"Who speaks the words \u201c{quote}\u201d in this passage? "
+            f"Answer with a JSON array of 1 name."
+        )
+    else:
+        prompt = (
+            f"Cast: {', '.join(cast)}\n\n"
+            f"Scene:\n{text}\n\n"
+            f"Who speaks each of the {count} marked quotations? "
+            f"Answer with a JSON array of {count} names."
+        )
     try:
         grammar = LlamaGrammar.from_string(sp.grammar_for(cast, count), verbose=False)
     except Exception:                                    # noqa: BLE001 — a call, not the run
@@ -124,31 +165,45 @@ def load_done(path):
 
 
 def report(path):
-    """Precision per condition, raw and among quotations whose gold speaker was offered.
+    """Coverage, precision and accuracy per condition — the three numbers, never one.
 
-    Both columns matter: the candidate-list gap caps precision at 94.4% and is a known,
-    separate issue, so a fix to the prompt shows up in the `offered` column first.
+    **Precision is correct over *attributed*, not over asked.** [Bakeoff]'s doc is explicit
+    that these three trade against each other and that the tradeoff is the decision, and the
+    51.5% this probe exists to explain is a precision. Dividing by everything asked would
+    print an accuracy under a precision's name and make every condition look like the same
+    kind of failure, when declining and answering wrongly are opposite problems with opposite
+    fixes — the whole point of the `"?"` and `dropped` columns beside them.
+
+    `offered` repeats precision over just the quotations whose gold speaker was on the
+    candidate list. The candidate-list gap caps precision at 94.4% and is a known, separate
+    issue, so a prompt fix shows up in that column first.
     """
     with open(path, encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh, delimiter="\t"))
-    print("\n%-7s %6s %6s %8s  %6s %6s %8s  %6s %7s" % (
-        "", "asked", "corr.", "prec.", "offered", "corr.", "prec.", '"?"', "dropped"))
+    def pct(n, of):
+        return "%6.1f%%" % (100.0 * n / of) if of else "     — "
+
+    print("\n%-7s %6s %6s %6s %7s %7s %7s  %7s %5s %7s" % (
+        "", "asked", "answ.", "corr.", "cover", "prec.", "acc.", "prec.@off", '"?"', "dropped"))
     for condition in CONDITIONS:
         here = [r for r in rows if r["condition"] == condition]
         if not here:
             continue
-        ok = [r for r in here if r["predicted"] and sp.normalise(r["predicted"]) == sp.normalise(r["gold"])]
-        off = [r for r in here if r["offered"] == "yes"]
+        answered = [r for r in here if r["predicted"]]
+        ok = [r for r in answered if matches(r["predicted"], r["gold"])]
+        off = [r for r in answered if r["offered"] == "yes"]
         ok_off = [r for r in off if r in ok]
-        declined = sum(1 for r in here if r["raw"] == "?")
-        dropped = sum(1 for r in here if not r["raw"])
-        print("%-7s %6d %6d %7.1f%%  %6d %6d %7.1f%%  %6d %7d" % (
-            condition, len(here), len(ok), 100.0 * len(ok) / max(1, len(here)),
-            len(off), len(ok_off), 100.0 * len(ok_off) / max(1, len(off)),
-            declined, dropped))
+        print("%-7s %6d %6d %6d %7s %7s %7s  %7s %5d %7d" % (
+            condition, len(here), len(answered), len(ok),
+            pct(len(answered), len(here)),               # coverage
+            pct(len(ok), len(answered)),                 # precision — over attributed
+            pct(len(ok), len(here)),                     # accuracy
+            pct(len(ok_off), len(off)),
+            sum(1 for r in here if r["raw"] == "?"),
+            sum(1 for r in here if not r["raw"])))
     print("\nWrong answers, %s:" % os.path.basename(path))
     for r in rows:
-        if not r["predicted"] or sp.normalise(r["predicted"]) != sp.normalise(r["gold"]):
+        if not r["predicted"] or not matches(r["predicted"], r["gold"]):
             said = r["predicted"] or ("?" if r["raw"] == "?" else "(piece dropped)")
             print("  %-6s %-5s gold %-18s said %-18s | %s" % (
                 r["quoteID"], r["condition"], r["gold"][:18], said[:18], r["context"][:60]))
@@ -201,10 +256,14 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed):
 
         for q in here:
             scene_text, para_text = one_marked(paragraphs, questions, piece, q)
-            for condition, body in (("scene", scene_text), ("para", para_text)):
+            unmarked = next((p["text"] for p in paragraphs if p["n"] == q["paragraph"]), None)
+            quote = unmarked[q["start"]:q["end"]] if unmarked else None
+            plans = (("scene", scene_text, None), ("para", para_text, None),
+                     ("plain", unmarked, quote))
+            for condition, body, quoted in plans:
                 if (q["id"], condition) in done or not body:
                     continue
-                named = ask(llm, scene_names, body, 1, max_tokens)
+                named = ask(llm, scene_names, body, 1, max_tokens, quote=quoted)
                 calls += 1
                 record(q["id"], condition, named[0] if named else None,
                        sp.resolve(named[0], scene_names) if named else None,
