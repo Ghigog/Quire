@@ -31,7 +31,28 @@ $B bakeoff --per-novel --mistakes         # per book, and a sample of wrong answ
 $B holdouts                               # the split, and why each novel is in it
 $B novels                                 # what PDNC holds, from its own index
 $B conformance                            # how far the prose obeys the dialogue conventions
+$B listen                                 # the script for a listening test (QUI-039)
 ```
+
+## The listening test (QUI-039)
+
+`listen` writes one JSON file holding **two renderings of the same prose**: identical text,
+identical cast, identical voices, and only the speaker of each line differing between them.
+`spike/hostbench/listen.py` turns it into audio. Everything that decides what is said and by
+whom happens here, in the JVM, where it has tests; the Python half only synthesises.
+
+Two things in it are less obvious than they look, and both were found by reading the output
+rather than by reasoning about it:
+
+**The passage chooser cannot see who is right**, because the type it is handed has no room
+for a speaker (`Passages.Spot`). A selector that quietly preferred passages where one setting
+loses would rig the listen and would not look rigged.
+
+**Disagreements are sampled stratified across the book.** Consecutive disagreements are mostly
+*one* inverted alternation rather than several independent mistakes, so a naive sample plays
+the same error five times: on Daisy Miller it drew a set the conventions got 3 of 8 right,
+against 80.0% for the same rule over the whole novel. Stratifying brought the sample back to
+6 of 10.
 
 `Pdnc` loads the corpus and folds names; `bakeoff/Bakeoff` scores; `bakeoff/Candidate` is
 the seam a new candidate implements — it sees the whole novel and answers the same questions

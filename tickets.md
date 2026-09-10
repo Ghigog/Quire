@@ -51,8 +51,9 @@ already `In progress`.
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
+| QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | In review | — | QUI-028, QUI-037 |
 
-Next free ID: **QUI-039**
+Next free ID: **QUI-040**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -4190,6 +4191,182 @@ $B bakeoff --candidate alternation-anygap   # and what dropping the delay clause
 Whole-corpus run: about 7 seconds per candidate on the build container. No SLA from PRD §5
 is measured here — this is scoring quality on the build machine, and nothing in it is a
 device number.
+
+---
+
+## QUI-039 — Listening test: what the wrong-voice rate sounds like
+
+**Status:** In review · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-028, QUI-037
+**PRD:** §2 Phase 2 step 3 · **Timebox:** 1 day
+
+### User story
+As the product owner, I want to hear the two attribution settings played against each other
+on real prose, so that I can set the confidence gates in PRD §2 Phase 2 on something I have
+listened to rather than on a percentage I have read.
+
+### Context (why)
+QUI-028 finished with a number and a decision it cannot make. Whole corpus, 36,970
+quotations:
+
+```
+                coverage  precision  accuracy  wrong voice
+tier1              26.8%      93.2%     25.0%       1.82%
+alternation        34.3%      87.5%     30.0%       4.29%
+```
+
+Per novel — PDNC averages 1,320 quotations — that is **330 against 396 lines given the right
+character's voice, and 24 against 57 given the wrong one.** ADR-0005 prices a wrong voice as
+the expensive failure, and PRD §2 Phase 2 already encodes the same instinct: below 0.65
+confidence a line goes to "the most active speaker in the current scene", and below 0.40 to
+the narrator. The conventions are a concrete implementation of that middle band, and whether
+the band should exist at all is an audio question.
+
+**Nobody has heard either rate.** Every judgement in this repository about wrong voice has
+been made from a table. A line the narrator reads is a normal audiobook convention; a line
+read by the wrong character is a different kind of wrong, and the whole tradeoff turns on how
+much worse it is. That is not knowable from a percentage.
+
+### Description (what)
+Two renderings of the same prose, differing only in attribution, produced as audio a person
+can play back to back.
+
+The listener hears **A** and **B** without being told which is which, and answers one
+question: which would you rather listen to. Nothing is counted by ear.
+
+Two tracks, because they answer different questions:
+
+- **Natural** — a continuous passage taken without regard to what either candidate says.
+  This is the everyday experience, and the honest test of "would I even notice".
+- **Disagreements** — only the paragraphs where the two candidates differ, each kept in the
+  context of the turns around it. This is what the difference sounds like when it happens,
+  and it is where the ~1 in 13 quotations that separate the two settings actually live.
+
+Casting is held constant. The same character gets the same voice in both renderings, so the
+only variable is who is speaking.
+
+### Requirements (how)
+- Owns: `spike/pipeline/src/main/kotlin/quire/spike/listen/` (new package),
+  `spike/hostbench/listen.py`, one dispatch line in `spike/pipeline/.../Main.kt`, and a
+  section each in `spike/pipeline/README.md` and `spike/hostbench/README.md`.
+- **The Kotlin half emits a script, not audio.** Passage selection, both candidates'
+  attributions and the narrator fallback are decided in the JVM where they can be tested;
+  the Python half only synthesises. This is CLAUDE.md §9's rule about putting logic where a
+  test can reach it, and it is why the passage chooser gets unit tests and the renderer does
+  not.
+- **The passage chooser must not be able to see who is right.** It selects on structure —
+  density of dialogue, number of speakers, contiguity — and on a seed, never on gold or on
+  agreement with either candidate. A selector that preferred passages where the conventions
+  lose would produce a rigged listen, and it would not look rigged.
+- **Casting is shared between the two renderings and fixed by name.** Voice assignment is a
+  separate question (QUI-011, QUI-032, QUI-037) and varying it here would confound the only
+  thing being measured.
+- Render with `vits-piper-en_US-libritts_r-medium`, the incumbent from ADR-0002, through
+  `spike/hostbench`'s existing sherpa-onnx setup. No new dependency: `sherpa-onnx`, `onnx`
+  and `numpy` are already what the voice probes install.
+- **Nothing rendered is committed.** The passages come from PDNC and the audio derives from
+  them, so §8 applies: audio and scripts are build output, handed to the listener directly.
+- Out of scope: rendering on the device, any change to CI, and any change to shipped
+  behaviour. This ticket produces evidence, not a setting. The setting is PRD's and the
+  rewrite that follows is QUI-009's.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The two renderings differ only in attribution
+  Given one passage and the two candidates
+  When both renderings are produced
+  Then the text, the cast and the voice of each character are identical between them
+  And only the speaker assigned to each line differs
+
+Scenario: Passages are chosen without reference to the answer
+  Given the passage chooser and a seed
+  When it selects passages
+  Then it has read neither the gold speakers nor either candidate's answers
+  And the same seed selects the same passages
+
+Scenario: Both tracks are produced
+  Given a novel
+  When the listening set is built
+  Then it contains a continuous unselected passage and a disagreements-only passage
+  And each is rendered once per candidate
+
+Scenario: The listener is not told which is which
+  Given the rendered set
+  When it is handed over
+  Then the files are labelled A and B
+  And the mapping from A and B to candidate is written down somewhere the listener does not read first
+
+Scenario: A verdict is recorded either way
+  Given the listen has happened
+  When the result is written into this ticket's Worklog
+  Then it says which rendering was preferred, or that no difference was audible
+  And it says what that implies for the confidence gates in PRD §2 Phase 2
+```
+
+### Worklog
+
+**2026-09-10 — `quire-dialogue-attribution`.** Harness built, audio rendered, and handed to the
+product owner. `In review` rather than `Done`: the deliverable is finished and the thing that
+closes the ticket is a listen, which is outside this repository.
+
+**What was produced.** Two tracks, each rendered twice, from *Daisy Miller*:
+
+```
+natural         61 pieces, 30 spoken,  4 lines differ    9:00 per rendering
+disagreements   46 pieces, 20 spoken, 10 lines differ    3:30 per rendering
+```
+
+**Daisy Miller was chosen because it is where the two settings diverge most** — coverage 43.3%
+against 66.2%, precision 96.2% against 89.8% — so the listen is an **upper bound** on the
+difference and not an average. Choosing on divergence is not choosing on who is right, which
+is the line the acceptance criteria draw. For contrast, Pride and Prejudice was the first
+candidate and had to be abandoned: a random forty-line stretch of it contained **zero**
+differences, because Austen tags almost everything and 28 of those 40 lines went to the
+narrator under both settings. That is itself worth recording — the conventions are close to a
+no-op in heavily tagged prose.
+
+**Four things the output taught me that reasoning had not.** Each was found by reading the
+rendered script rather than by thinking about the code, which is the argument for the script
+being a file a person can read at all.
+
+1. **The disagreement sampler was quietly rigged against the conventions.** Sampling
+   disagreements and merging overlapping windows over-weights *runs*, and a run of consecutive
+   disagreements is mostly one inverted alternation rather than several independent mistakes —
+   the chain stays out of phase until the next tag re-seats it. The first sample drew a set the
+   conventions got **3 of 8** right, against **80.0%** for that same rule across the whole
+   novel. Stratifying across the book brought it to **6 of 10**. Had this shipped, the listener
+   would have heard a rule perform at half its measured rate and nothing would have looked
+   wrong.
+2. **Aliases had to be folded before casting.** Tier 1 names a speaker by whatever the tag
+   said, so one woman arrived as `Daisy Miller`, `Miss Daisy` and `Miss Miller` and was cast as
+   three different voices. It also inflated the disagreement count, because two names for one
+   person is not a disagreement. Folded through QUI-028's `Pdnc.Identity`, the cast went from
+   9 characters to 5.
+3. **PDNC's spans stop inside the quotation marks.** A naive cut left the opening `"` trailing
+   the narration and the closing one leading the next piece, and both were read aloud.
+4. **Length is the binding constraint on a listen, not fidelity.** The first build was
+   honest and useless: 60 quotations of Austen drags in 5,578 words of narration and renders to
+   **37 minutes** per rendering, 74 minutes for the pair. Requiring the quotations to arrive
+   close together — a structural filter, not a peek at the answers — bought a passage of actual
+   conversation at a length a person will sit through twice.
+
+**Not measured.** No PRD §5 SLA. This is host-side rendering for a human to judge; nothing in
+it is a device number, and `spike/hostbench/README.md`'s caveat applies — the audio says what
+the attribution sounds like, not what the device sounds like.
+
+**What closes this ticket.** A verdict in this Worklog: which rendering was preferred, or that
+no difference was audible, and what that implies for the confidence gates in PRD §2 Phase 2.
+Until then the answer to "should the conventions ship" remains the one QUI-028 left: not as a
+default, and worth far more as a prior handed to QUI-009's model.
+
+Reproduce:
+
+```bash
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist && gradle test
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike listen
+cd ../hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
+python3 listen.py ../pipeline/build/listen/script.json --wav-dir ../../build/listen
+```
 
 ---
 
