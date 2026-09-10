@@ -16,6 +16,25 @@ python3 voiceprobe.py --mode accent                 # espeak variant, determinis
 python3 voiceprobe.py --mode accent --wav-dir out   # ...and keep the audio to listen to
 ```
 
+
+## listen.py — the QUI-039 listening test
+
+Renders the script written by `quire-pipeline-spike listen`: the same passage twice, differing
+only in which character each line is given to. It decides nothing — passages, both
+attributions and the narrator fallback are settled in the JVM where they have tests.
+
+```bash
+./fetch-models.sh vits-piper-en_US-libritts_r-medium
+../pipeline/build/install/quire-pipeline-spike/bin/quire-pipeline-spike listen
+python3 listen.py ../pipeline/build/listen/script.json --wav-dir ../../build/listen
+```
+
+Unlike `voiceprobe.py` this one does **not** pin the noise terms. The probes need determinism
+so two variants can be compared sample for sample; this one is judged by ear, and the flat
+render determinism buys would be the wrong thing to listen to. Files come out as `A` and `B`
+with the mapping in `key.txt`, so the listen can be blind.
+
+
 ## What it can and cannot tell you
 
 **It cannot give you an SLA number.** A desktop core with wide vectors is not a Cortex-A77.
