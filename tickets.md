@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | — | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | quire-explicit-subscore | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -2957,17 +2957,16 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **In progress, unclaimed again — released 2026-09-08.** The encoder half is closed
-> (ADR-0005). The SLM half's Explicit-quotation sub-score is still unfixed (51.5% vs Tier
-> 1's 91.8%), and the leading suspect — the candidate list omitting the gold speaker — is
-> now ruled out as the main cause (94.4% of gold Explicit speakers are offered; see the
-> 2026-09-08 Worklog entry). What is actually needed next — a prompt change and a larger
-> model, both requiring the model file — cannot be attempted: `huggingface.co` and
-> `people.ischool.berkeley.edu` are both refused by this environment's egress policy right
-> now (403, confirmed not transient), which blocks every remaining model candidate. The
-> claim is free to take by whoever has the files or a session where that host resolves.
+> **Claimed 2026-09-09 by `quire-explicit-subscore`** — PR #7, in flight. The encoder half is
+> closed (ADR-0005). The Explicit-quotation sub-score is **answered, and it was a harness
+> fault**: marking a quotation `[Qn: ...]` inside the text costs 50 points of Explicit
+> precision at scene length, and unmarked the same 1B model reaches 90.6% among offered
+> speakers against Tier 1's 91.8% (2026-09-09 Worklog). Fault 5, and the fifth found by this
+> one sub-score. **No SLM headline follows yet** — the fix needs an addressing scheme for N
+> targets in one call that is not in-text marking, which is the next piece of work. `51.5%`
+> and `3.0%` remain the numbers for the marked, batched prompt.
 
-**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** quire-explicit-subscore · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### User story
@@ -3715,6 +3714,331 @@ any of it are, right now, unreachable:* a prompt without `"?"` as an easy out; Q
 or a 3B to find where capability starts; a wider corpus once one novel looks right; and
 inspecting real model output beside the marked scene text once a run is possible, to see
 whether the untagged-majority-drift hypothesis above holds up.
+
+**2026-09-09 — the Explicit sub-score is a harness fault after all, and it is the in-text
+marker. Fault 5.** `A Handful of Dust`, Llama 3.2 1B Q4_K_M, one novel, the model that
+produced the 51.5%. `predictors/explicit_probe.py` asks the same Explicit quotations several
+ways and changes one thing at a time, which is what the entry above asks for instead of more
+guessing.
+
+The square that matters — same 40 quotations, same scene cast offered in every cell, one
+question per call, grammar and temperature identical:
+
+| window given to the model | quotation marked `[Qn: ...]` in the text | unmarked, target words quoted back in the question |
+| --- | ---: | ---: |
+| the whole scene piece | **32.5%** | **82.5%** |
+| its paragraph alone | 80.0% | 87.5% |
+
+**Marking the quotation inside the text costs 50 points of Explicit precision at scene
+length.** Window length costs ~5. On the larger paired sample the marker effect holds:
+199 quotations, `para` 83.9% against `plain` 89.4%, and 84.9% against **90.6%** among the
+quotations whose gold speaker was offered at all — which is Tier 1's 91.8% to within noise.
+So a 1B model can read a speech tag. It could not read one *through our marking*.
+
+**I got this wrong once on the way, and the wrong version is the instructive one.** With only
+the two marked cells measured, `scene` 32.5% against `para` 80.0% reads as "scene-length
+context destroys tag reading", which would have put a hole in ADR-0006 §3 — the claim that a
+scene-sized call "is not a speed compromise, it is the better answer". Both of those cells are
+*marked*; the comparison conflated the window with how much marked text surrounds the target.
+The fourth cell reverses the attribution and ADR-0006 §3 survives intact. **Never read a 2x2
+from two cells** — and the missing cell was cheap, 40 calls and five minutes.
+
+**What the failures looked like before the fix**, so nobody has to take this on trust:
+
+```
+"Aren't you coming home with us?" said Babs.     -> Jock Grant-Menzies
+"He wants a man up," said Ben.                   -> John Beaver
+"Yes, I'll go," said Jock.                       -> Tony Last
+"You are one for making people learn things,"
+                              said Beaver.       -> Tony Last
+```
+
+Eleven of eleven are tags a reader answers without pausing, and in every one the right name
+was on the candidate list. That is what 32.5% looks like from the inside, and it is why the
+sub-score was worth trusting over the headline for a fourth time.
+
+#### The confound I cannot separate, and it decides the fix
+
+The two unmarked cells change two things at once: the marker leaves the text, **and** the
+target stops being addressed by marker number and starts being addressed by quoting its words
+back. Those co-vary in every cell above, so "the marker is the fault" is really "the marking
+scheme — in-text marker plus addressing by number — is the fault". Which half carries the 50
+points is untested and it is not academic:
+
+- if the *addressing* is what helps, the batch fix lists each target's opening words in the
+  question over unmarked text;
+- if the *marker's presence* is what hurts, numbers can stay in the question and merely leave
+  the text.
+
+**And the fix is not free either way, because both unmarked cells ask about one quotation per
+call.** The shipped form asks for all N in one array, and an array needs the targets addressed
+somehow — which is why the markers exist. So this does not reduce to deleting them: it needs an
+addressing scheme that survives N targets in one call while keeping ADR-0006 §3's shape. That
+is the next piece of work and it is a prompt design question, not a model question.
+
+#### The `"?"` free out is confirmed, separately, and it is the coverage story
+
+In the batch condition the model answered `"?"` for **35 of 40** Explicit quotations — 87.5% —
+and dropped no piece on alignment. Forced to one quotation per call it never declined once.
+So the 9.4% coverage is the free out being taken, as the 2026-09-08 entry suspected, and it is
+a *batch* phenomenon rather than a property of the model.
+
+**One thing this changes about the order of the remaining work.** Removing `"?"` on its own
+would have made wrong-voice worse, not better: it raises coverage against whatever precision
+the prompt actually sustains, and marked-and-batched that was 32.5%. Fix the marking first,
+then remove the out. `wrong voice = coverage x (1 - precision)` is unforgiving of doing those
+two in the other order.
+
+#### Numbers, and what they are not
+
+| condition | asked | coverage | precision | prec. among offered |
+| --- | ---: | ---: | ---: | ---: |
+| `batch` — one call per piece, whole array, as shipped | 40 | 12.5% | 80.0% (n=5) | 80.0% |
+| `scene` — one question, scene text, marked | 40 | 100% | 32.5% | 32.4% |
+| `scene-plain` — one question, scene text, unmarked | 40 | 100% | 82.5% | 82.5% |
+| `para` — one question, paragraph, marked | 199 | 100% | 83.9% | 84.9% |
+| `plain` — one question, paragraph, unmarked | 199 | 100% | 89.4% | 90.6% |
+
+Explicit quotations only, one novel, 409 of them in it. `batch`'s precision rests on the five
+it did not decline and means nothing on its own; it is in the table for its coverage column.
+The window comparison rests on 40, the marker comparison on 199. **No headline SLM number
+follows from any of this** — every cell asks one quotation per call, which is not what would
+ship, and the untagged three quarters of dialogue are untouched here. `3.0%` accuracy and
+`51.5%` Explicit precision remain the numbers for the marked, batched prompt, and both are now
+known to be measuring our marking as much as the model.
+
+#### Two faults found in the probe itself while writing it
+
+Worth recording because they are the same species as the five in the harness, and the second
+one would have understated the very gap being explained.
+
+1. **Precision printed as correct over *asked*.** That is an accuracy. Declining and answering
+   wrongly are opposite problems with opposite fixes, and one denominator hides which is
+   happening. Three columns now, as `Bakeoff`'s own doc requires.
+2. **A stricter matcher than the harness's.** It scored `Reggie` against gold `Reggie St Cloud`
+   as a miss; `Pdnc.matches` counts either name's words containing the other's as a match.
+   `Pdnc.matches` and `Pdnc.words` are now ported verbatim, with the reason the usual refusal
+   to duplicate a scorer is suspended for a diagnostic.
+
+The probe reads gold, so it lives apart from `slm_predict.py`, which stays gold-blind. It is
+never wired into a `bakeoff --candidate` run.
+
+#### The addressing scheme was tried, and it does not rescue the array
+
+Measured rather than assumed, which is the whole habit here. `batch-plain` is the shipped
+shape with the marking taken out: one call per piece, unmarked text, every target addressed by
+its opening words in the question (lengthened until unique, or two identical `"Yes,"` openers
+would ask the same question twice and misalign the array).
+
+| | coverage | precision | `"?"` |
+| --- | ---: | ---: | ---: |
+| `batch` — marked, addressed by marker number | 12.5% | 80.0% (n=5) | 35/40 |
+| `batch-plain` — unmarked, addressed by opening words | 22.5% | 66.7% (n=9) | 31/40 |
+| `scene-plain` — same unmarked text, **one question per call** | 100% | 82.5% | 0/40 |
+
+**The array is the fault, not only the marking.** Asked one at a time over exactly the same
+unmarked scene text the model declines *never*; asked for the whole array it declines 31 times
+in 40, and better addressing moved that by four quotations. So the 50-point marking effect is
+real but it is only reachable once the array stops collapsing into `"?"`, and an addressing
+scheme alone does not get there.
+
+That makes **removing `"?"` from the grammar the next experiment rather than a later one** —
+the ordering argument in the entry above still holds and is now satisfied: the marking question
+is answered, so the free out is what is left. With `"?"` gone the model must name somebody, and
+the question becomes whether array-form precision holds near `scene-plain`'s 82.5% or collapses
+under the drift the 2026-09-08 entry suspected. That is one cheap run and it is the gate.
+
+`batch-plain`'s 66.7% rests on the nine it answered and is not a precision worth quoting; its
+coverage column, on all 40, is the finding.
+
+#### The instrument reads true, so here is the product question it was blocking
+
+Explicit quotations are **17.5%** of this novel. `Implicit` — no tag names the speaker anywhere,
+so it is answered by tracking turns — is **73.9%**, and it is the only reason a generative model
+is in this design at all. It had never been measured. `--quote-type Implicit`, 40 quotations,
+the same probe:
+
+| | coverage | precision | prec. among offered |
+| --- | ---: | ---: | ---: |
+| `scene-plain` — scene context, unmarked, forced to answer | 100% | **37.5%** | 44.1% |
+| `plain` — the paragraph alone | 100% | 12.5% | 14.7% |
+
+**ADR-0006 §3 is vindicated a second time.** Scene context tripled precision on the same 40
+quotations. Turn-taking is a property of the scene, exactly as the ADR argues from first
+principles, and the paragraph window that wins on Explicit collapses here — which is the
+sanity check that says this measurement is wired up right.
+
+**And 37.5% is not a product.** `wrong voice = coverage x (1 - precision)` puts this at **62.5%**
+on the untagged three quarters, against Tier 1's 2.1% over the whole novel. That is the band
+ADR-0005 already rejected the encoders for (41-55%), and for the same reason: confidently wrong
+is the failure PRD §3.1 says a reader hears.
+
+**This is the ceiling, not a starting point.** One question per call — which cannot ship, on
+ADR-0006 §3's own throughput arithmetic — marking removed, `"?"` unavailable, full scene context,
+every affordance the probe can give it. A 1B model does not do this job, and the gap to usable is
+roughly fifty points rather than five.
+
+So the honest reading of today: **the sub-score is fixed, the instrument reads true, and its
+first trustworthy reading is negative.** Everything measured before this entry was on the 17.5%
+Tier 1 already answers at 91.8%, where the best configuration merely draws level with rules that
+cost nothing.
+
+One question stands between here and the §8 conversation in
+`docs/handoff/2026-09-08-attribution-state-of-play.md`: does the capability exist at *any* size.
+Taking Qwen 2.5 **3B** before the 1.5B the handoff lists first, because going straight to the
+larger model settles it in one run — and note a 3B Q4 is ~2 GB against PRD §5's 1.2 GB budget, so
+even a success there is a device question (ADR-0001, QUI-031), not a candidate. If a 3B also
+lands near 40%, §8's fallback is the answer and it has arrived on evidence rather than by
+attrition, which is what §8 asked for.
+
+#### A 3x larger model buys 3.5 points, and that settles it
+
+Qwen 2.5 3B Instruct Q4_K_M, the same 40 `Implicit` quotations, the same best-case
+configuration — scene context, unmarked, one question per call, `"?"` unavailable in practice:
+
+| model | size | coverage | precision | prec. among offered | correct |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Llama 3.2 1B | 808 MB | 100% | 37.5% | 44.1% | 15/40 |
+| Qwen 2.5 3B | 1,930 MB | 97.5% | **41.0%** | 47.1% | 16/40 |
+
+**Three times the parameters bought one more correct answer.** At n=40 that is inside the
+noise, and it is the *slope* that matters rather than either number: reaching a wrong-voice
+rate this product could ship needs roughly fifty more points, and 1B to 3B delivered three and
+a half. Nothing in that slope suggests a 7B closes it, and a 7B does not fit the device either —
+the 3B is already 1.9 GB against PRD §5's **1.2 GB** RAM budget, so even the success case here
+was never a candidate. It is diagnostic only, exactly as it was taken.
+
+Wrong voice at 41.0% precision and full coverage is **59%**, against Tier 1's 2.1% over the
+whole novel.
+
+**So the stopping rule in `docs/handoff/2026-09-08-attribution-state-of-play.md` §8 is met, and
+met on evidence rather than by attrition.** Its words: *"If no available model takes untagged
+dialogue at an acceptable wrong-voice rate, the honest product is multi-voice on tagged
+dialogue, narrator elsewhere."* That is now the recommendation, and it is a PRD question rather
+than a ticket one — §8 says so, and this entry does not presume the answer.
+
+Three things worth carrying into that conversation:
+
+1. **The fallback is stronger than it sounds.** Tier 1 holds 88.6% precision at 2.1% wrong
+   voice, BookNLP `small` buys 11 accuracy points on the Explicit slice for 57 MB (ADR-0005),
+   and today's marking fix means a small model *can* read a tag at 90.6% if one is ever wanted
+   there. The failure mode is flat, not wrong, which is the trade PRD §3.1 asks for.
+2. **ADR-0006 §3 was right twice over** and should not be reverted on the way: scene context
+   tripled Implicit precision over a paragraph window, and the fourth cell of the marking square
+   cleared it of the crime the first reading charged it with.
+3. **Nothing here is a measurement of the design's ceiling with a bigger model on a bigger
+   machine** — only of what fits this device. If cloud TTS ever gets its V2 ticket (PRD §6),
+   cloud attribution is the same conversation and these numbers do not speak to it.
+
+**Limits, stated plainly.** One novel, 40 quotations per cell, so a standard error near 8
+points; one 3B rather than every 3B; `Anaphoric` (8.6%) never measured separately. None of that
+rescues a fifty-point gap, which is why this is written as settled rather than provisional.
+
+#### Correction: "rules cannot reach untagged dialogue" was never measured, and it is wrong
+
+Raised in review, and right. Every candidate in this ticket was either a model or
+`core:attribution`'s `Heuristic`, and that heuristic has exactly three rules — speech tag,
+pronoun tag, action beat — after which it returns `"no tag"` and declines. So what the entries
+above establish is that *tag-reading* rules cannot reach untagged dialogue, which is true by
+construction and not the same claim at all.
+
+Untagged dialogue is not evidence-free. Prose alternates, and a reader applies the convention
+without noticing:
+
+```
+Geralt whispered:
+"You need to run that way."                       <- Geralt, by the beat before it
+"I can't, he'll see me!"                          <- the other one, by alternation
+"And I can hear you too!" growled the griffon.    <- the griffon, by its own tag
+```
+
+A speaker arriving mid-exchange is named *when they arrive*, which is why alternation and tag
+reading compose rather than fight. ADR-0006 calls this "QUI-009's turn-taking fallback"; QUI-009
+has not been written, so it had never been scored.
+
+`AlternationCandidate` is it, in the weakest form that could work: within a scene, if the
+previous turn's speaker is known and the turn before that is a *different* known speaker, this
+turn is the speaker from two back. No cast size, no gender, no model. **Whole corpus, 28 novels,
+36,970 quotations:**
+
+| candidate | coverage | precision | the alternation rule alone | wrong voice |
+| --- | ---: | ---: | ---: | ---: |
+| `tier1` | 26.8% | 84.9% | — | **4.0%** |
+| `alternation-adjacent-pairs` | 30.2% | 81.9% | 65.8% (n=701) | **5.5%** |
+| `alternation-adjacent` | 36.5% | 77.1% | 56.9% (n=3,043) | **8.4%** |
+| `alternation` (anywhere in a scene) | 66.2%* | 54.5%* | 41.1%* | — |
+| Qwen 2.5 3B, best case, `Implicit` | ~100% | ~41% | — | ~59% |
+
+\* one novel; the unrestricted variant was not worth a corpus run once the restricted ones were in.
+
+**Two preconditions carry almost all of it, and both are the convention rather than tuning.**
+
+- **Adjoining paragraphs.** A scene here averages ~97 paragraphs, so it is many conversations
+  with narration between them, and a chain spanning that gap guesses across a boundary the prose
+  drew. Requiring an unbroken run took the rule from 41.1% to 49.7% on one novel.
+- **Exactly two established speakers.** "Two turns back" is a two-person convention; in a scene
+  where five people have spoken it is a guess, and ADR-0005 prices a guess at the wrong-voice
+  rate. Both together reached 86.7% on one novel — **but that was n=30 and did not survive the
+  corpus, where it is 65.8%.** Recorded because quoting the 86.7% would be exactly the mistake
+  this ticket has made five times.
+
+**What this changes, and what it does not.**
+
+- **It beats the models, decisively.** 65.8% against the 3B's ~41%, in about twenty lines of
+  Kotlin, with no model file and no RAM. A 1.9 GB model performing worse than a stated rule is
+  the clearest argument in this ticket against the SLM, and it strengthens rather than softens
+  the conclusion above.
+- **It does not rescue the untagged majority.** At its strictest it fires on 1.9% of quotations
+  and the loose variant on 8.2%; `Implicit` coverage goes 2.3% → 6.4%. Most untagged dialogue
+  stays out of reach.
+- **It widens the shippable slice.** Overall coverage 26.8% → 30.2%, for 1.5 points of
+  wrong-voice (4.0% → 5.5%). Whether that trade is worth taking is PRD §3.1's call, and the two
+  variants are a dial rather than a switch.
+
+**The headroom is in the preconditions, not the rule.** "Two established speakers" is established
+*by tags*, so a crowd scene where only two are tagged reads as a duet; and a speech split across
+two paragraphs breaks the alternation with no tag to recover it. Detecting presence in a scene
+rather than taggedness, and merging paragraph-split speeches, are both mechanical and both
+measurable against this table — a far better bet on this evidence than more model work. That is
+QUI-009's proper scope and wants its own ticket.
+
+*Reproduce (no model, seconds per novel):* `bakeoff --candidate alternation-adjacent-pairs`,
+also `alternation`, `alternation-pairs`, `alternation-adjacent`, `alternation-tags-only`.
+
+*Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
+and the confound above resolved on the way — that is the fix, and until it lands no SLM
+headline is worth quoting — and on the evidence above that fix is removing `"?"`, not a
+better addressing scheme, which was tried. Then Qwen 2.5
+1.5B and a 3B against the *fixed* prompt, which is a different and much fairer question than
+the one yesterday's list assumed. Then the untagged classes, which is where scene context
+earns its place and where none of today's numbers reach. The stopping rule in
+`docs/handoff/2026-09-08-attribution-state-of-play.md` §8 is unchanged and its clock has not
+started: today moved a harness fault, not a model.
+
+**Environment, corrected.** `huggingface.co` and `people.ischool.berkeley.edu` were still 403
+at the start of this session, as the entry above records; they began answering 200 mid-session
+after the domains were added to the environment's allow-list. Maven Central 429s
+intermittently and `gradle installDist` needs a retry loop. The 1B GGUF is 808 MB and
+`slm_predict.py --model` now takes a path, so a reclaimed container does not re-download it.
+
+**Reproduce** (needs the model; ~15 min for the marker square, ~25 for all five conditions):
+
+```sh
+tools/fetch-pdnc.sh
+python3 -m pip install llama-cpp-python huggingface_hub
+cd spike/pipeline && gradle installDist
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike dump --out build/bakeoff --novels AHandfulOfDust
+curl -L -o ~/llama-1b.gguf https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf
+python3 predictors/explicit_probe.py build/bakeoff --novels AHandfulOfDust \
+    --model ~/llama-1b.gguf --sample 40                       # all five conditions
+python3 predictors/explicit_probe.py build/bakeoff --novels AHandfulOfDust \
+    --model ~/llama-1b.gguf --sample 200 --conditions para,plain   # the marker effect
+python3 predictors/explicit_probe.py build/bakeoff --report-only   # re-read, run nothing
+```
+
+Rows are appended and flushed as they are produced and a rerun skips what is there, because
+this container is reclaimed every 20-40 minutes. `--sample` may be raised freely; the sample
+is a prefix of one seeded shuffle, so a larger run keeps every quotation the smaller one chose.
 
 ---
 

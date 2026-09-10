@@ -47,6 +47,23 @@ SYSTEM = (
 )
 
 
+def load_model(path, ctx, threads):
+    """A `Llama` on a local GGUF, or on `REPO`/`FILENAME` fetched from Hugging Face.
+
+    A local path is not just a convenience. Hugging Face's egress has been refused twice in
+    this project's short life (2026-08-28, and again on 2026-09-08, which released this
+    ticket's claim), and the larger models this ticket still has to try are hundreds of
+    megabytes each on a container reclaimed every 20-40 minutes. A file already on disk
+    survives both.
+    """
+    from llama_cpp import Llama
+    if not path:
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(REPO, FILENAME)
+    print(f"loading {os.path.basename(path)} ({os.path.getsize(path) / 1e6:.0f} MB)")
+    return Llama(model_path=path, n_ctx=ctx, n_threads=threads, verbose=False)
+
+
 def read_jsonl(path):
     with open(path, encoding="utf-8") as fh:
         return [json.loads(line) for line in fh if line.strip()]
@@ -241,7 +258,7 @@ def predict_novel(llm, dump_dir, novel, corpus, max_tokens):
 
     out_path = os.path.join(dump_dir, f"{novel}.answers.tsv")
     with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(f"# slm {FILENAME}, one call per scene piece\n")
+        fh.write(f"# slm {os.path.basename(llm.model_path)}, one call per scene piece\n")
         for q in questions:
             fh.write("%s\t%s\tslm\n" % (q["id"], answers.get(q["id"], "")))
     print(f"  {novel}: {len(pieces)} pieces, {asked} quotations asked, "
@@ -254,21 +271,17 @@ def main():
     ap.add_argument("dump_dir")
     ap.add_argument("--corpus", default=os.path.expanduser("~/.cache/quire/pdnc"))
     ap.add_argument("--novels", default="")
+    ap.add_argument("--model", default="", help="a local GGUF; overrides the HF download")
     ap.add_argument("--ctx", type=int, default=4096)
     ap.add_argument("--max-tokens", type=int, default=512)
     ap.add_argument("--threads", type=int, default=os.cpu_count() or 4)
     args = ap.parse_args()
 
-    from huggingface_hub import hf_hub_download
-    from llama_cpp import Llama
-
     wanted = [n.strip() for n in args.novels.split(",") if n.strip()] or sorted(
         f[: -len(".questions.jsonl")]
         for f in os.listdir(args.dump_dir) if f.endswith(".questions.jsonl"))
 
-    path = hf_hub_download(REPO, FILENAME)
-    print(f"loading {FILENAME} ({os.path.getsize(path) / 1e6:.0f} MB)")
-    llm = Llama(model_path=path, n_ctx=args.ctx, n_threads=args.threads, verbose=False)
+    llm = load_model(args.model, args.ctx, args.threads)
 
     asked = answered = dropped = 0
     for novel in wanted:
