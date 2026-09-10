@@ -47,7 +47,7 @@ already `In progress`.
 | QUI-032 | Voice descriptor in `characters.json` | Attribution | In review | — | QUI-005 |
 | QUI-033 | Accent: listening test and per-character variants | Spike | Done | — | QUI-032 |
 | QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
-| QUI-035 | Gender coverage for the inferred cast | Spike | Todo | — | QUI-034 |
+| QUI-035 | Gender coverage for the inferred cast | Spike | In progress | quire-dialogue-attribution | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
@@ -4863,7 +4863,7 @@ phonemiser swap on this one. That is a different engine and a different ADR.
 
 ## QUI-035 — Gender coverage for the inferred cast
 
-**Status:** Todo · **Epic:** Spike · **Owner:** — · **Depends on:** QUI-034
+**Status:** In progress · **Epic:** Spike · **Owner:** quire-dialogue-attribution · **Depends on:** QUI-034
 
 ### User story
 
