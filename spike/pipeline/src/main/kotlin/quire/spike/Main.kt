@@ -2,8 +2,9 @@ package quire.spike
 
 import java.io.File
 import quire.attribution.Roster
-import quire.spike.bakeoff.BakeoffCli
 import quire.epub.EpubText
+import quire.spike.bakeoff.BakeoffCli
+import quire.spike.listen.ListenScript
 import kotlin.system.exitProcess
 
 private const val USAGE = """
@@ -33,6 +34,11 @@ quire-pipeline-spike (QUI-018)
                                budget
   conformance [--corpus DIR]  how far the prose itself obeys the dialogue conventions the
            [--novels A,B]     alternation candidate reads — the ceiling on those rules
+  listen   [--corpus DIR]     write the script for a listening test (QUI-039): one passage,
+           [--novel NAME]     two candidates, so only the speaker differs between renderings
+           [--a ID] [--b ID] [--quotations N] [--passages N] [--max-paragraphs N]
+           [--disagreements N] [--context N]
+           [--seed N] [--out FILE]     then: cd spike/hostbench && python3 listen.py FILE
 
 Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only, alternation and its
 ablations (alternation-anyspeakers, -anygap, -loose, -nocontinued, -tags-only), or any
@@ -47,7 +53,7 @@ fun main(args: Array<String>) {
     if (args.isEmpty()) { println(USAGE.trim()); exitProcess(2) }
     // The bake-off commands take valued flags and a corpus root rather than a list of
     // files, so they are dispatched before the file-existence check below.
-    if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump", "scenes", "conformance")) { bakeoff(args); return }
+    if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump", "scenes", "conformance", "listen")) { bakeoff(args); return }
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
@@ -99,6 +105,42 @@ private fun bakeoff(args: Array<String>) {
     when (args[0]) {
         "holdouts" -> BakeoffCli.holdouts(root)
         "novels" -> BakeoffCli.novels(root)
+        // QUI-039: the script a listening test is rendered from. Two candidates over one
+        // passage, so the only thing that differs between the renderings is the speaker.
+        "listen" -> {
+            val a = BakeoffCli.candidate(flags["a"]?.ifEmpty { null } ?: "tier1")
+            val b = BakeoffCli.candidate(flags["b"]?.ifEmpty { null } ?: "alternation")
+            if (a == null || b == null) {
+                System.err.println("unknown candidate")
+                exitProcess(2)
+            }
+            val novel = flags["novel"]?.ifEmpty { null } ?: "DaisyMiller"
+            val script = ListenScript.build(
+                novelDir = File(File(root, "data"), novel),
+                a = a,
+                b = b,
+                quotations = flags["quotations"]?.toIntOrNull() ?: 14,
+                maxParagraphs = flags["max-paragraphs"]?.toIntOrNull() ?: 24,
+                passages = flags["passages"]?.toIntOrNull() ?: 2,
+                disagreements = flags["disagreements"]?.toIntOrNull() ?: 6,
+                context = flags["context"]?.toIntOrNull() ?: 1,
+                seed = flags["seed"]?.toLongOrNull() ?: 39L,
+            )
+            val out = File(flags["out"]?.ifEmpty { null } ?: "build/listen/script.json")
+            ListenScript.write(script, out)
+            println("Listening script — QUI-039")
+            println("novel:      ${script.novel}")
+            println("candidates: A=${script.candidateA}  B=${script.candidateB}")
+            println("cast:       ${script.cast.size} characters")
+            for (track in script.tracks) {
+                val lines = track.pieces.count { it.quotationId != null }
+                val differing = track.pieces.count { it.a != it.b }
+                println("  %-14s %4d pieces, %3d spoken, %3d where the candidates differ"
+                    .format(track.name, track.pieces.size, lines, differing))
+            }
+            println("\nwrote ${out.path}")
+            println("Render it: cd spike/hostbench && python3 listen.py ${out.absolutePath}")
+        }
         "conformance" -> BakeoffCli.conformance(
             root = root,
             only = flags["novels"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
