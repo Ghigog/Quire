@@ -62,12 +62,23 @@ object Bakeoff {
         val (paragraphs, gold) = Pdnc.locate(novelDir)
         val (questions, unlocatable) = questions(paragraphs, gold)
         val answers = candidate.answer(paragraphs.map { it.unit }, questions)
-        return tally(questions, answers, keepMistakes)
+        return tally(questions, answers, keepMistakes, Pdnc.identity(novelDir))
             .copy(meta = meta, unscorable = gold.count { !it.scorable }, unlocatable = unlocatable)
     }
 
-    /** The tallying, apart from the corpus, so it can be tested without one. */
-    fun tally(questions: List<Question>, answers: Map<String, Answer>, keepMistakes: Int = 12): NovelScore {
+    /**
+     * The tallying, apart from the corpus, so it can be tested without one.
+     *
+     * [identity] folds the novel's own aliases, so predicting `Miss Lucas` for gold
+     * `Charlotte Lucas` counts as the right voice. Null falls back to string matching, which
+     * is what a caller with no `character_info.csv` to hand has.
+     */
+    fun tally(
+        questions: List<Question>,
+        answers: Map<String, Answer>,
+        keepMistakes: Int = 12,
+        identity: Pdnc.Identity? = null,
+    ): NovelScore {
         val byType = linkedMapOf<String, Pdnc.Tally>()
         val byEvidence = linkedMapOf<String, Pdnc.Tally>()
         val mistakes = mutableListOf<Mistake>()
@@ -79,7 +90,7 @@ object Bakeoff {
             type.scored++; evidence.scored++
             val predicted = answer.speaker ?: continue
             type.attributed++; evidence.attributed++
-            if (Pdnc.matches(predicted, question.gold)) {
+            if (identity?.matches(predicted, question.gold) ?: Pdnc.matches(predicted, question.gold)) {
                 type.correct++; evidence.correct++
             } else if (mistakes.size < keepMistakes) {
                 mistakes += Mistake(question.id, question.type, question.gold, predicted, question.text.take(60))
