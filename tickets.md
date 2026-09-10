@@ -51,7 +51,7 @@ already `In progress`.
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
-| QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | In progress | quire-dialogue-attribution | QUI-028, QUI-037 |
+| QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | In review | — | QUI-028, QUI-037 |
 
 Next free ID: **QUI-040**
 
@@ -4196,7 +4196,7 @@ device number.
 
 ## QUI-039 — Listening test: what the wrong-voice rate sounds like
 
-**Status:** In progress · **Owner:** quire-dialogue-attribution · **Epic:** Spike · **Depends on:** QUI-028, QUI-037
+**Status:** In review · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-028, QUI-037
 **PRD:** §2 Phase 2 step 3 · **Timebox:** 1 day
 
 ### User story
@@ -4303,6 +4303,71 @@ Scenario: A verdict is recorded either way
 ```
 
 ### Worklog
+
+**2026-09-10 — `quire-dialogue-attribution`.** Harness built, audio rendered, and handed to the
+product owner. `In review` rather than `Done`: the deliverable is finished and the thing that
+closes the ticket is a listen, which is outside this repository.
+
+**What was produced.** Two tracks, each rendered twice, from *Daisy Miller*:
+
+```
+natural         61 pieces, 30 spoken,  4 lines differ    9:00 per rendering
+disagreements   46 pieces, 20 spoken, 10 lines differ    3:30 per rendering
+```
+
+**Daisy Miller was chosen because it is where the two settings diverge most** — coverage 43.3%
+against 66.2%, precision 96.2% against 89.8% — so the listen is an **upper bound** on the
+difference and not an average. Choosing on divergence is not choosing on who is right, which
+is the line the acceptance criteria draw. For contrast, Pride and Prejudice was the first
+candidate and had to be abandoned: a random forty-line stretch of it contained **zero**
+differences, because Austen tags almost everything and 28 of those 40 lines went to the
+narrator under both settings. That is itself worth recording — the conventions are close to a
+no-op in heavily tagged prose.
+
+**Four things the output taught me that reasoning had not.** Each was found by reading the
+rendered script rather than by thinking about the code, which is the argument for the script
+being a file a person can read at all.
+
+1. **The disagreement sampler was quietly rigged against the conventions.** Sampling
+   disagreements and merging overlapping windows over-weights *runs*, and a run of consecutive
+   disagreements is mostly one inverted alternation rather than several independent mistakes —
+   the chain stays out of phase until the next tag re-seats it. The first sample drew a set the
+   conventions got **3 of 8** right, against **80.0%** for that same rule across the whole
+   novel. Stratifying across the book brought it to **6 of 10**. Had this shipped, the listener
+   would have heard a rule perform at half its measured rate and nothing would have looked
+   wrong.
+2. **Aliases had to be folded before casting.** Tier 1 names a speaker by whatever the tag
+   said, so one woman arrived as `Daisy Miller`, `Miss Daisy` and `Miss Miller` and was cast as
+   three different voices. It also inflated the disagreement count, because two names for one
+   person is not a disagreement. Folded through QUI-028's `Pdnc.Identity`, the cast went from
+   9 characters to 5.
+3. **PDNC's spans stop inside the quotation marks.** A naive cut left the opening `"` trailing
+   the narration and the closing one leading the next piece, and both were read aloud.
+4. **Length is the binding constraint on a listen, not fidelity.** The first build was
+   honest and useless: 60 quotations of Austen drags in 5,578 words of narration and renders to
+   **37 minutes** per rendering, 74 minutes for the pair. Requiring the quotations to arrive
+   close together — a structural filter, not a peek at the answers — bought a passage of actual
+   conversation at a length a person will sit through twice.
+
+**Not measured.** No PRD §5 SLA. This is host-side rendering for a human to judge; nothing in
+it is a device number, and `spike/hostbench/README.md`'s caveat applies — the audio says what
+the attribution sounds like, not what the device sounds like.
+
+**What closes this ticket.** A verdict in this Worklog: which rendering was preferred, or that
+no difference was audible, and what that implies for the confidence gates in PRD §2 Phase 2.
+Until then the answer to "should the conventions ship" remains the one QUI-028 left: not as a
+default, and worth far more as a prior handed to QUI-009's model.
+
+Reproduce:
+
+```bash
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist && gradle test
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike listen
+cd ../hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
+python3 listen.py ../pipeline/build/listen/script.json --wav-dir ../../build/listen
+```
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
