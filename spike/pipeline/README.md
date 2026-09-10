@@ -30,6 +30,7 @@ $B bakeoff --candidate tier1-tags-only    # the same with the softer rules switc
 $B bakeoff --per-novel --mistakes         # per book, and a sample of wrong answers
 $B holdouts                               # the split, and why each novel is in it
 $B novels                                 # what PDNC holds, from its own index
+$B conformance                            # how far the prose obeys the dialogue conventions
 ```
 
 `Pdnc` loads the corpus and folds names; `bakeoff/Bakeoff` scores; `bakeoff/Candidate` is
@@ -49,11 +50,26 @@ nothing here says anything about contemporary prose. `Holdouts.External` is the 
 that would, and filling it needs a decision rather than a script: CLAUDE.md §8 forbids
 committing book text.
 
+**Speakers are scored by character, not by string.** PDNC ships an alias table and until
+2026-09-10 the scoring never opened it, so predicting `Miss Lucas` for gold `Charlotte
+Lucas` — the same woman, both names the novel's own — counted as a wrong voice. Folding
+them is worth about **8 points of precision to every candidate**: Tier 1's explicit-tag
+precision is 99.0%, not the 89.9% this repository reported before that date. An alias two
+characters claim is dropped rather than trusted, so the fold can never credit naming one
+person as another. See `Pdnc.Identity`.
+
 ## What is implemented
 
-Tier 1 only (QUI-008): quote segmentation, a model-free roster bootstrap, explicit speech
-tags, action beats, and an addressee guard. Tier 2 and Tier 3 need the runtime that
-ADR-0001 has not chosen yet, so they are absent rather than stubbed.
+Tier 1 (QUI-008): quote segmentation, a model-free roster bootstrap, explicit speech tags,
+action beats, and an addressee guard. Tier 2 and Tier 3 need the runtime that ADR-0001 has
+not chosen yet, so they are absent rather than stubbed.
+
+Beside it, `AlternationCandidate` reads the **published dialogue conventions** — one speaker
+per paragraph, two-speaker turn-taking, establishment and re-establishment, and continued
+speech across a paragraph break. These are not heuristics we invented: they are what CMOS
+and New Hart's Rules tell typesetters and what conversation analysis says readers do with
+them. The `conformance` command measures how far PDNC's prose actually obeys each one,
+which is the ceiling any rule reading them can reach; the rest is ours.
 
 ## Two things worth knowing before reading the numbers
 

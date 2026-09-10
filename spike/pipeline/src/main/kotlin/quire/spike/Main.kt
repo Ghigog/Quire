@@ -31,9 +31,12 @@ quire-pipeline-spike (QUI-018)
   scenes   [--corpus DIR]     scene segmentation over the corpus (QUI-038): scenes per
            [--novels A,B]     novel, quotations per scene, and the share over a 2,048-token
                                budget
+  conformance [--corpus DIR]  how far the prose itself obeys the dialogue conventions the
+           [--novels A,B]     alternation candidate reads — the ceiling on those rules
 
-Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only, or any name at
-all with --answers DIR, which scores what a predictor outside this JVM wrote there.
+Candidates: tier1, tier1-nobeats, tier1-nopronouns, tier1-tags-only, alternation and its
+ablations (alternation-anyspeakers, -anygap, -loose, -nocontinued, -tags-only), or any
+name at all with --answers DIR, which scores what a predictor outside this JVM wrote.
 PDNC is not committed; fetch it with tools/fetch-pdnc.sh. --corpus defaults to
 ${'$'}PDNC_HOME, then ~/.cache/quire/pdnc.
 
@@ -44,7 +47,7 @@ fun main(args: Array<String>) {
     if (args.isEmpty()) { println(USAGE.trim()); exitProcess(2) }
     // The bake-off commands take valued flags and a corpus root rather than a list of
     // files, so they are dispatched before the file-existence check below.
-    if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump", "scenes")) { bakeoff(args); return }
+    if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump", "scenes", "conformance")) { bakeoff(args); return }
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
@@ -96,6 +99,10 @@ private fun bakeoff(args: Array<String>) {
     when (args[0]) {
         "holdouts" -> BakeoffCli.holdouts(root)
         "novels" -> BakeoffCli.novels(root)
+        "conformance" -> BakeoffCli.conformance(
+            root = root,
+            only = flags["novels"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+        )
         "scenes" -> BakeoffCli.scenes(
             root = root,
             only = flags["novels"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),

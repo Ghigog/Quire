@@ -111,6 +111,32 @@ class PdncTest {
     }
 
     @Test
+    fun `an alias the novel uses is the same character`() {
+        // PDNC's own table says Charlotte Lucas is also "Miss Lucas". The strings share no
+        // word, so string matching alone scored a correctly-read line as a wrong voice.
+        val identity = Pdnc.Identity(listOf(
+            Pdnc.GoldCharacter("Charlotte Lucas", setOf("Charlotte Lucas", "Miss Lucas", "Charlotte"), "F", "intermediate"),
+            Pdnc.GoldCharacter("Mr. Darcy", setOf("Mr. Darcy", "Darcy"), "M", "major"),
+        ))
+        assertTrue(identity.matches("Miss Lucas", "Charlotte Lucas"))
+        assertTrue(identity.matches("Charlotte", "Charlotte Lucas"))
+        assertFalse(identity.matches("Mr. Darcy", "Charlotte Lucas"))
+    }
+
+    @Test
+    fun `an alias two characters claim is not trusted`() {
+        // PDNC's sets are hand-made and leak: Charlotte Lucas's list carries "Lady Lucas",
+        // who is a character in her own right. Crediting one for the other would invent
+        // precision, so an ambiguous alias is dropped and only string matching remains.
+        val identity = Pdnc.Identity(listOf(
+            Pdnc.GoldCharacter("Charlotte Lucas", setOf("Charlotte Lucas", "Lady Lucas"), "F", "intermediate"),
+            Pdnc.GoldCharacter("Lady Lucas", setOf("Lady Lucas"), "F", "minor"),
+        ))
+        assertFalse(identity.matches("Lady Lucas", "Charlotte Lucas"))
+        assertTrue(identity.matches("Charlotte Lucas", "Charlotte Lucas"))
+    }
+
+    @Test
     fun `python span literals parse`() {
         assertEquals(listOf(2309 to 2585, 2600 to 2610), Pdnc.spans("[[2309, 2585], [2600, 2610]]"))
         assertEquals(emptyList(), Pdnc.spans(""))

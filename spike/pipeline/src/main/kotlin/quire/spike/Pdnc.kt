@@ -279,6 +279,47 @@ object Pdnc {
         }
 
     /**
+     * Two names for the same person, decided by the novel's own alias table (QUI-028).
+     *
+     * [matches] alone compares strings: predicted `Miss Lucas` against gold `Charlotte Lucas`
+     * shares no word, so it scored as a wrong voice even though the book uses both names for
+     * the same woman and a listener would hear the right one. PDNC ships `character_info.csv`
+     * precisely so a quotation can be scored by *character* rather than by string, and until
+     * now only QUI-032's cast scoring read it. This penalised every candidate equally, and
+     * hardest wherever the prose alternates between a formal and a familiar name.
+     *
+     * **An alias is only usable when it belongs to exactly one character.** PDNC's sets are
+     * hand-made and leak: Charlotte Lucas's list includes `Lady Lucas`, who is a separate
+     * character in the same file. An alias claimed by two people is dropped rather than
+     * trusted, so folding can never credit naming one character as another.
+     */
+    class Identity(characters: List<GoldCharacter>) {
+
+        private val owner: Map<String, String> = buildMap {
+            val claims = mutableMapOf<String, MutableSet<String>>()
+            for (character in characters) {
+                for (alias in character.aliases) {
+                    val key = words(alias).sorted().joinToString(" ")
+                    if (key.isNotEmpty()) claims.getOrPut(key) { mutableSetOf() } += character.mainName
+                }
+            }
+            for ((key, owners) in claims) if (owners.size == 1) put(key, owners.first())
+        }
+
+        /** The character this name belongs to, or null when it is unknown or ambiguous. */
+        fun character(name: String): String? = owner[words(name).sorted().joinToString(" ")]
+
+        /** Same string by [matches], or two names the novel gives the same character. */
+        fun matches(predicted: String, gold: String): Boolean {
+            if (Pdnc.matches(predicted, gold)) return true
+            val mine = character(predicted) ?: return false
+            return mine == character(gold)
+        }
+    }
+
+    fun identity(novelDir: File) = Identity(characters(novelDir))
+
+    /**
      * Score the roster itself, rather than what it attributes.
      *
      * A cast is the first thing a reader sees after an import, and a wrong one is visible

@@ -59,6 +59,15 @@ Eight novels, 12,521 quotations — four headline, four of PDNC's own out-of-dom
 The 431 MB SpanBERT encoder was measured on one novel before being ruled out on size and
 speed: 88.0% coverage at 52.9% precision, a 41.4% wrong-voice rate. Same shape.
 
+> **Note, 2026-09-10 (QUI-028).** Every precision figure in this ADR is measured **low**, on
+> both sides. The scorer compared speaker strings and never read PDNC's alias table, so a
+> candidate naming Charlotte Lucas "Miss Lucas" — the novel's own name for her — was counted
+> wrong. Folding aliases is worth about 8 points of precision to Tier 1 (89.2% → 93-ish on
+> this split; 93.2% over the whole corpus). BookNLP was not re-scored, and it predicts its
+> own names, so it would gain too. **The decision stands**: a 12-point gap in wrong voice
+> does not close on 8 points of precision applied to both, and the shape of the tradeoff is
+> unchanged. Read the columns as ordering the candidates, not as absolute numbers.
+
 **Doubling accuracy costs a twelvefold increase in lines spoken by the wrong character.**
 For a reader that is very likely worse than the flat narrator it replaces.
 

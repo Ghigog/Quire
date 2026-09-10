@@ -20,13 +20,19 @@ object BakeoffCli {
         id == "tier1-nobeats" -> Tier1Candidate(actionBeats = false)
         id == "tier1-nopronouns" -> Tier1Candidate(pronouns = false)
         id == "tier1-tags-only" -> Tier1Candidate(pronouns = false, actionBeats = false)
-        // The turn-taking rule ADR-0006 assumes and QUI-009 has not written. Scored beside the
-        // models because untagged dialogue is what they were brought in for.
+        // The published dialogue conventions, which ADR-0006 assumes and QUI-009 has not
+        // written. Scored beside the models because untagged dialogue is what they were brought
+        // in for. `alternation` is the conventions as the style guides state them; the rest drop
+        // one precondition each, which is the only fair way to say what each is worth.
         id == "alternation" -> AlternationCandidate()
-        id == "alternation-pairs" -> AlternationCandidate(pairsOnly = true)
-        id == "alternation-adjacent" -> AlternationCandidate(adjacentOnly = true)
-        id == "alternation-adjacent-pairs" ->
-            AlternationCandidate(pairsOnly = true, adjacentOnly = true)
+        id == "alternation-anyspeakers" -> AlternationCandidate(requirePair = false)
+        id == "alternation-anygap" -> AlternationCandidate(requireAdjacent = false)
+        id == "alternation-loose" ->
+            AlternationCandidate(requirePair = false, requireAdjacent = false)
+        id == "alternation-nocontinued" -> AlternationCandidate(continuedSpeech = false)
+        id == "alternation-strongseats" -> AlternationCandidate(strongSeatsOnly = true)
+        id.startsWith("alternation-chain") ->
+            id.removePrefix("alternation-chain").toIntOrNull()?.let { AlternationCandidate(maxChain = it) }
         id == "alternation-tags-only" ->
             AlternationCandidate(Tier1Candidate(pronouns = false, actionBeats = false))
         // Anything a predictor outside this JVM produced — see ExternalCandidate. The id is
@@ -151,6 +157,9 @@ object BakeoffCli {
     }
 
     fun scenes(root: File, only: Set<String>) = SceneReport.run(root, only)
+
+    /** What the prose itself does at each place a convention makes a claim. See ConventionReport. */
+    fun conformance(root: File, only: Set<String>) = ConventionReport.run(root, only)
 
     fun novels(root: File) {
         println("%-30s %-26s %-10s %-12s %6s %s".format("folder", "title", "person", "genre", "year", "held out"))
