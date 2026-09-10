@@ -53,13 +53,43 @@ class RosterTest {
     }
 
     @Test
-    fun `one sighting is not enough to claim a gender`() {
+    fun `one clean sighting is enough`() {
         val cast = Roster.scan(paragraphs(
             "\"I know,\" said Sarah.",
             "Sarah put down her cup.",
         ))
-        // A single pronoun could be anyone's — the cup's owner is not necessarily Sarah.
-        assertEquals(null, cast.genders["Sarah"])
+        // This used to assert null, on the reasoning that one pronoun could be anyone's —
+        // the cup's owner is not necessarily Sarah. Measured over PDNC's 742 characters that
+        // caution cost far more than it saved: requiring two sightings left coverage at 78.8%
+        // against 83.7%, for 0.2 points of accuracy. A character with no gender is voiced
+        // arbitrarily and is wrong half the time, so the trade is not close (QUI-035).
+        assertEquals(Gender.FEMALE, cast.genders["Sarah"])
+    }
+
+    @Test
+    fun `a title settles a gender the pronouns never would`() {
+        // Two people sharing a surname draw the same pronouns around the same sentences, so
+        // pronouns alone correctly refuse to call it — and the book has been printing the
+        // answer beside both names the whole time.
+        val cast = Roster.scan(paragraphs(
+            "\"You mistake me,\" said Mrs. Bennet.",
+            "\"I have heard it before,\" said Mr. Bennet.",
+            "He folded the letter, and so did she.",
+        ))
+        assertEquals(Gender.FEMALE, cast.genders["Mrs. Bennet"])
+        assertEquals(Gender.MALE, cast.genders["Mr. Bennet"])
+    }
+
+    @Test
+    fun `a rank is not a sex`() {
+        // Doctors, captains and colonels are not men by default, and guessing would trade
+        // the accuracy this change is not allowed to cost.
+        val cast = Roster.scan(paragraphs(
+            "\"Steady,\" said Captain Reyes.",
+            "\"We wait,\" said Dr. Okonkwo.",
+        ))
+        assertEquals(null, cast.genders["Captain Reyes"])
+        assertEquals(null, cast.genders["Dr. Okonkwo"])
     }
 
     @Test

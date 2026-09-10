@@ -47,7 +47,7 @@ already `In progress`.
 | QUI-032 | Voice descriptor in `characters.json` | Attribution | In review | — | QUI-005 |
 | QUI-033 | Accent: listening test and per-character variants | Spike | Done | — | QUI-032 |
 | QUI-034 | Cast discovery precision on real books | Spike | In review | session-visibility-check | QUI-008 |
-| QUI-035 | Gender coverage for the inferred cast | Spike | In progress | quire-dialogue-attribution | QUI-034 |
+| QUI-035 | Gender coverage for the inferred cast | Spike | In review | — | QUI-034 |
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
@@ -4863,7 +4863,7 @@ phonemiser swap on this one. That is a different engine and a different ADR.
 
 ## QUI-035 — Gender coverage for the inferred cast
 
-**Status:** In progress · **Epic:** Spike · **Owner:** quire-dialogue-attribution · **Depends on:** QUI-034
+**Status:** In review · **Epic:** Spike · **Owner:** — · **Depends on:** QUI-034
 
 ### User story
 
@@ -4935,6 +4935,77 @@ The underlying problem is real either way — 58.7% coverage means most of the c
 casting with nothing said about how they sound. But "infer a binary gender for more of the
 cast" may be the wrong shape of fix, and "infer a pitch and timbre target for more of the
 cast" the right one, which would subsume this ticket. Settle that before writing code.
+
+### Worklog
+
+**2026-09-10 — `quire-dialogue-attribution`.** Two changes to `Roster.scan`, measured over
+PDNC's 28 novels and 742 real characters:
+
+```
+                      coverage  accuracy   right sex heard
+before                   52.6%     91.1%             71.6%
++ titles decide sex      78.8%     91.6%             82.8%
++ GENDER_MIN 2 -> 1      83.7%     91.4%             84.7%
+```
+
+The third column is the one a listener hears: a character with no gender is voiced
+arbitrarily and so is wrong about half the time, which makes it
+`coverage x accuracy + (1 - coverage) x 0.5`. **It goes from 71.6% to 84.7%** — roughly a
+46% cut in characters heard in the wrong sex. Accuracy is flat to +0.3, so the acceptance
+criterion (coverage rises without costing accuracy) is met on both numbers.
+
+**1. A title settles the sex outright and outranks the pronoun vote.** `Mr`, `Sir`, `Lord`,
+`Uncle`, `Father`; `Mrs`, `Ms`, `Miss`, `Lady`, `Aunt`, `Mother`. These were already in
+`Names.TITLES` and already kept on the stored name — nothing read them. This is not evidence
+to be weighed: the book prints it beside her name on every appearance, and counting it as one
+vote among many left exactly the characters the text is clearest about unvoiced. It is also
+what two people sharing a surname need — `Mr Bennet` and `Mrs Bennet` draw the same pronouns
+around the same sentences, the case `GENDER_MAJORITY` was written to refuse, and refusing it
+is right on pronouns alone and needless once the title is read.
+
+**The ranks are deliberately excluded.** `Dr`, `Prof`, `St`, `Captain`, `Colonel`, `Major`
+are worn by women in fiction, and guessing male from them would trade the accuracy this
+change is not allowed to cost. Tested both ways.
+
+**2. `GENDER_MIN` drops from 2 to 1, and the reason is the first change.** The threshold
+existed to stop a single stray pronoun deciding a character, and the case it was really
+protecting against was the shared surname — which titles now settle definitively. Swept
+against the corpus rather than argued:
+
+```
+MIN  MAJORITY   accuracy  coverage
+  1      0.60      91.4%     83.7%   <- taken
+  2      0.60      91.6%     78.8%
+  3      0.60      91.7%     74.7%
+  2      0.55      89.8%     82.5%
+  1      0.75      92.9%     71.6%
+```
+
+`0.55` is the only row that actually costs accuracy, and it is rejected. `0.75` buys 1.5
+points of accuracy for 12 of coverage, which loses 4 points on the column that matters.
+
+`RosterTest`'s `one sighting is not enough to claim a gender` asserted the behaviour this
+overturns, on the reasoning that "the cup's owner is not necessarily Sarah". The corpus
+disagrees, so the test now asserts the rule that holds and carries the numbers that changed
+it, plus two new cases: a title settling what pronouns cannot, and a rank settling nothing.
+
+**What is left.** 16.3% of characters still arrive with no gender — no title, and no clean
+pronoun sighting anywhere in the book. The ticket's other two candidate signals are untried:
+possessives (`Geralt's sword ... his`) and pronouns in the paragraph after the naming one.
+Both are mechanical and measurable against the table above.
+
+**Not measured.** No device number. This is a host-side corpus measurement; what it predicts
+is that fewer characters come out in the wrong sex, and confirming that needs a listen on the
+reference device with a book whose cast is mostly one sex.
+
+Reproduce:
+
+```bash
+tools/fetch-pdnc.sh
+gradle test
+cd spike/pipeline && gradle installDist
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast ~/.cache/quire/pdnc/data/*/
+```
 
 ---
 

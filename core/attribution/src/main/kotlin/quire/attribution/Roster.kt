@@ -35,7 +35,7 @@ object Roster {
     const val ADJACENCY_MIN = 8
 
     /** How many pronoun sightings must agree before a gender is claimed. */
-    const val GENDER_MIN = 2
+    const val GENDER_MIN = 1
 
     /** How much the winning pronoun must lead by, as a share of that name's sightings. */
     const val GENDER_MAJORITY = 0.6
@@ -90,7 +90,7 @@ object Roster {
             pending = countPronouns(narration, pronouns, pending)
         }
 
-        val genders = pronouns.mapNotNull { (name, votes) ->
+        val voted = pronouns.mapNotNull { (name, votes) ->
             val total = votes.values.sum()
             val (best, count) = votes.maxByOrNull { it.value } ?: return@mapNotNull null
             // Both thresholds matter. A single sighting is noise, and a name that draws
@@ -101,6 +101,20 @@ object Roster {
                 null
             }
         }.toMap()
+
+        // **A title outranks the vote, because it is not evidence (QUI-035).** "Mrs" is not
+        // a hint about Mrs Bennet that a run of stray pronouns could outweigh; it is her sex,
+        // printed beside her name on every appearance. Counting it as one vote among many
+        // would leave exactly the characters the book is clearest about still unvoiced.
+        //
+        // It is also what two names sharing a surname need. "Mr Bennet" and "Mrs Bennet" draw
+        // the same pronouns around the same sentences, which is the case GENDER_MAJORITY was
+        // written to refuse — correctly, on pronouns alone, and needlessly once the titles
+        // are read.
+        val titled = (tags.keys + adjacency.keys).mapNotNull { name ->
+            Names.titleGender(name)?.let { name to it }
+        }
+        val genders = voted + titled
 
         return Cast(tags, adjacency - tags.keys, genders)
     }
