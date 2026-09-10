@@ -15,7 +15,7 @@ already `In progress`.
 | --- | --- | --- | --- | --- | --- |
 | QUI-020 | TTS service registration and NeoReader binding | Spike | Todo | — | — |
 | QUI-017 | TTS engine bake-off on target hardware | Spike | Done | session-visibility-check | — |
-| QUI-028 | Encoder vs SLM for quotation attribution | Spike | In progress | quire-dialogue-attribution | — |
+| QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
 | QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
@@ -2957,7 +2957,8 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **Claimed 2026-09-10 by `quire-dialogue-attribution`**, taking over from
+> **Released 2026-09-10 by `quire-dialogue-attribution`** (PR #8, merged). Nobody owns this;
+> what it still needs is listed under *What is left* below. Took over from
 > `quire-explicit-subscore` (PR #7, merged). The encoder half is closed (ADR-0005). The
 > Explicit sub-score was answered and was a harness fault: marking a quotation `[Qn: ...]`
 > in the text costs 50 points of Explicit precision, and unmarked the same 1B model reaches
@@ -2969,8 +2970,24 @@ mid-clause would have been voiced wrongly.
 > naming Charlotte Lucas "Miss Lucas" — which the novel does — counted as a wrong voice.
 > Tier 1's explicit-tag precision is **99.0%**, not 89.9%. See the 2026-09-10 Worklog.
 
-**Status:** In progress · **Owner:** quire-dialogue-attribution · **Epic:** Spike · **Depends on:** —
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
+
+### What is left (2026-09-10)
+
+The encoder half is closed by ADR-0005 and the rule half is measured. Three things in the
+Requirements above are still unanswered, and none of them belongs to a session that only has
+a build container:
+
+- **No SLM headline.** The batched prompt needs an addressing scheme for N targets in one
+  call that is not in-text marking; `51.5%` / `3.0%` remain the marked-prompt numbers.
+- **No device measurements at all.** Wall-clock for a 100k-word novel, peak RSS, on-disk
+  size and sustained power are five of this ticket's acceptance criteria and every one of
+  them needs the Note Air5 C. Nothing measured here is a device number.
+- **`Holdouts.External` is empty.** The out-of-domain split is PDNC novels unlike the rest
+  of PDNC; the corpus stops in 1934, so no figure here speaks to contemporary prose.
+  Filling it needs a decision rather than a script, because CLAUDE.md §8 forbids committing
+  book text.
 
 ### User story
 As a team, I want to know whether a small purpose-built encoder attributes dialogue better
