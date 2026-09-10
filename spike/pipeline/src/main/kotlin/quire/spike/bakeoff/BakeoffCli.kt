@@ -20,6 +20,15 @@ object BakeoffCli {
         id == "tier1-nobeats" -> Tier1Candidate(actionBeats = false)
         id == "tier1-nopronouns" -> Tier1Candidate(pronouns = false)
         id == "tier1-tags-only" -> Tier1Candidate(pronouns = false, actionBeats = false)
+        // The turn-taking rule ADR-0006 assumes and QUI-009 has not written. Scored beside the
+        // models because untagged dialogue is what they were brought in for.
+        id == "alternation" -> AlternationCandidate()
+        id == "alternation-pairs" -> AlternationCandidate(pairsOnly = true)
+        id == "alternation-adjacent" -> AlternationCandidate(adjacentOnly = true)
+        id == "alternation-adjacent-pairs" ->
+            AlternationCandidate(pairsOnly = true, adjacentOnly = true)
+        id == "alternation-tags-only" ->
+            AlternationCandidate(Tier1Candidate(pronouns = false, actionBeats = false))
         // Anything a predictor outside this JVM produced — see ExternalCandidate. The id is
         // kept as given so the report names the model rather than the mechanism.
         answers != null -> ExternalCandidate(answers, id)

@@ -3934,6 +3934,77 @@ Three things worth carrying into that conversation:
 points; one 3B rather than every 3B; `Anaphoric` (8.6%) never measured separately. None of that
 rescues a fifty-point gap, which is why this is written as settled rather than provisional.
 
+#### Correction: "rules cannot reach untagged dialogue" was never measured, and it is wrong
+
+Raised in review, and right. Every candidate in this ticket was either a model or
+`core:attribution`'s `Heuristic`, and that heuristic has exactly three rules — speech tag,
+pronoun tag, action beat — after which it returns `"no tag"` and declines. So what the entries
+above establish is that *tag-reading* rules cannot reach untagged dialogue, which is true by
+construction and not the same claim at all.
+
+Untagged dialogue is not evidence-free. Prose alternates, and a reader applies the convention
+without noticing:
+
+```
+Geralt whispered:
+"You need to run that way."                       <- Geralt, by the beat before it
+"I can't, he'll see me!"                          <- the other one, by alternation
+"And I can hear you too!" growled the griffon.    <- the griffon, by its own tag
+```
+
+A speaker arriving mid-exchange is named *when they arrive*, which is why alternation and tag
+reading compose rather than fight. ADR-0006 calls this "QUI-009's turn-taking fallback"; QUI-009
+has not been written, so it had never been scored.
+
+`AlternationCandidate` is it, in the weakest form that could work: within a scene, if the
+previous turn's speaker is known and the turn before that is a *different* known speaker, this
+turn is the speaker from two back. No cast size, no gender, no model. **Whole corpus, 28 novels,
+36,970 quotations:**
+
+| candidate | coverage | precision | the alternation rule alone | wrong voice |
+| --- | ---: | ---: | ---: | ---: |
+| `tier1` | 26.8% | 84.9% | — | **4.0%** |
+| `alternation-adjacent-pairs` | 30.2% | 81.9% | 65.8% (n=701) | **5.5%** |
+| `alternation-adjacent` | 36.5% | 77.1% | 56.9% (n=3,043) | **8.4%** |
+| `alternation` (anywhere in a scene) | 66.2%* | 54.5%* | 41.1%* | — |
+| Qwen 2.5 3B, best case, `Implicit` | ~100% | ~41% | — | ~59% |
+
+\* one novel; the unrestricted variant was not worth a corpus run once the restricted ones were in.
+
+**Two preconditions carry almost all of it, and both are the convention rather than tuning.**
+
+- **Adjoining paragraphs.** A scene here averages ~97 paragraphs, so it is many conversations
+  with narration between them, and a chain spanning that gap guesses across a boundary the prose
+  drew. Requiring an unbroken run took the rule from 41.1% to 49.7% on one novel.
+- **Exactly two established speakers.** "Two turns back" is a two-person convention; in a scene
+  where five people have spoken it is a guess, and ADR-0005 prices a guess at the wrong-voice
+  rate. Both together reached 86.7% on one novel — **but that was n=30 and did not survive the
+  corpus, where it is 65.8%.** Recorded because quoting the 86.7% would be exactly the mistake
+  this ticket has made five times.
+
+**What this changes, and what it does not.**
+
+- **It beats the models, decisively.** 65.8% against the 3B's ~41%, in about twenty lines of
+  Kotlin, with no model file and no RAM. A 1.9 GB model performing worse than a stated rule is
+  the clearest argument in this ticket against the SLM, and it strengthens rather than softens
+  the conclusion above.
+- **It does not rescue the untagged majority.** At its strictest it fires on 1.9% of quotations
+  and the loose variant on 8.2%; `Implicit` coverage goes 2.3% → 6.4%. Most untagged dialogue
+  stays out of reach.
+- **It widens the shippable slice.** Overall coverage 26.8% → 30.2%, for 1.5 points of
+  wrong-voice (4.0% → 5.5%). Whether that trade is worth taking is PRD §3.1's call, and the two
+  variants are a dial rather than a switch.
+
+**The headroom is in the preconditions, not the rule.** "Two established speakers" is established
+*by tags*, so a crowd scene where only two are tagged reads as a duet; and a speech split across
+two paragraphs breaks the alternation with no tag to recover it. Detecting presence in a scene
+rather than taggedness, and merging paragraph-split speeches, are both mechanical and both
+measurable against this table — a far better bet on this evidence than more model work. That is
+QUI-009's proper scope and wants its own ticket.
+
+*Reproduce (no model, seconds per novel):* `bakeoff --candidate alternation-adjacent-pairs`,
+also `alternation`, `alternation-pairs`, `alternation-adjacent`, `alternation-tags-only`.
+
 *Next, in order.* An addressing scheme for N targets in one call that is not in-text marking,
 and the confound above resolved on the way — that is the fix, and until it lands no SLM
 headline is worth quoting — and on the evidence above that fix is removing `"?"`, not a
