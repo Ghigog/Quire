@@ -4043,6 +4043,137 @@ Rows are appended and flushed as they are produced and a rerun skips what is the
 this container is reclaimed every 20-40 minutes. `--sample` may be raised freely; the sample
 is a prefix of one seeded shuffle, so a larger run keeps every quotation the smaller one chose.
 
+
+**2026-09-10 — `quire-dialogue-attribution`.** The published dialogue conventions, all of
+them, implemented and measured. And a sixth harness fault, which moves every precision
+number this repository has printed.
+
+**Fault 6: quotations were scored by string, not by character.** PDNC ships
+`character_info.csv`, an alias table naming everything each novel calls each person, and the
+quotation scoring never opened it — only QUI-032's cast scoring did. So predicting `Miss
+Lucas` where gold said `Charlotte Lucas` scored as a wrong voice, though both names are
+Austen's own for the same woman and a listener would have heard the right one. Folding the
+aliases is worth about **8 points of precision to every candidate**:
+
+| | before | after |
+| --- | --- | --- |
+| Tier 1, whole corpus | 84.9% | **93.2%** |
+| Tier 1, `speech tag` rule | 89.9% | **99.0%** |
+| Tier 1, `action beat` rule | 61.3% | **66.0%** |
+
+An alias claimed by two characters is dropped rather than trusted — PDNC's sets are
+hand-made and leak, and Charlotte Lucas's includes `Lady Lucas`, who is a separate character
+in the same file. `Pdnc.Identity`, tested both ways in `PdncTest`.
+
+Read every earlier figure in this ticket and in QUI-018's as ~8 points low on precision.
+The *comparisons* between candidates mostly survive, because the fault hit all of them.
+
+**The conventions, and where they come from.** Four are mechanically checkable and all four
+are now in `AlternationCandidate`: one speaker per paragraph; two-speaker turn-taking; the
+establishment and re-establishment clause (a third speaker or a delay ends the licence to
+drop tags); and continued speech, where one speaker runs across a paragraph break taking an
+opening quote on each and a closing quote only at the end. The fifth — attribution by voice,
+idiolect and knowledge asymmetry — needs a model of the characters and is QUI-009's, not a
+rule's.
+
+**First, whether the corpus obeys them.** A rule cannot score above the conformance of the
+text it reads, so `bakeoff conformance` measures each convention against gold speakers alone,
+with nothing attributed. Whole corpus:
+
+```
+one speaker per paragraph                       1230 / 1497    82.2%
+a paragraph break means the speaker changed    25914 / 27132   95.5%
+A-B-? continues as A                           17705 / 21133   83.8%
+an unclosed quotation continues the speaker      180 / 186     96.8%
+```
+
+So the prose conforms, and **83.8% is the ceiling on turn-taking**, measured with the two
+previous speakers known for certain. That number settles the framing this work started from:
+where the rule is wrong, it is overwhelmingly us, not the novel.
+
+**The rule itself, whole corpus, 36,970 quotations.** `wrong voice = coverage x (1 -
+precision)` (ADR-0005) is the column that decides.
+
+```
+                          coverage  precision  accuracy  wrong voice
+tier1-tags-only              22.6%      99.0%     22.4%       0.23%
+tier1                        26.8%      93.2%     25.0%       1.82%
+alternation                  34.3%      87.5%     30.0%       4.29%
+alternation-chain2           31.9%      89.1%     28.4%       3.48%
+alternation-strongseats      32.6%      89.1%     29.0%       3.55%
+alternation-anyspeakers      37.9%      84.5%     32.0%       5.87%
+alternation-anygap           64.0%      65.1%     41.6%      22.34%
+alternation-loose            77.7%      60.2%     46.8%      30.92%
+```
+
+Headline/holdout for `alternation`: 31.1% against 26.7%, a gap of 4.4 points, next to Tier
+1's 26.0% / 22.0% and 4.0. The conventions do not travel worse than tag-reading does.
+
+**Read the last two rows as the answer to "why not just apply the rule everywhere".**
+Dropping the delay clause alone (`-anygap`) buys 12 points of accuracy and costs 18 points of
+wrong voice. The preconditions are not conservatism bolted onto the rule; they are the rule.
+
+**Two bugs found by measurement, both worth the sentence they cost.**
+
+*The floor survived a decline.* When no rule could name a turn, the machine kept the previous
+speaker as the floor holder, so the next tag established a pair with a speaker one turn stale
+and then alternated confidently on it. It showed up as the continued-speech rule scoring
+**11.0% on 91 fires** — worse than chance, which is what a systematically inverted phase
+looks like. Every decline now forgets the floor: 10 fires at **90.0%**. Regression test in
+`AlternationCandidateTest`.
+
+*The exchange was only half-checked.* The rule required this turn to adjoin the last, but not
+the last to adjoin the one before it, so a pair could be seated across a paragraph of
+narration. Requiring the whole run cut alternation from 4,048 fires to 2,215 and moved the
+candidate from 39.3% coverage at 75.2% precision to 34.3% at 79.1% — both measured before the
+alias fold, so comparable only with each other.
+
+**A structural finding, left open.** Alternation precision alternates with chain depth, and
+the odd steps are consistently ~10 points worse than the even ones:
+
+```
+alternation (x1)   984   71.6%
+alternation x2     456   80.3%
+alternation x3     265   64.5%
+alternation x4+    510   64.1%
+```
+
+The even steps name *the speaker two turns back*, which is right whenever the exchange
+returns to them — it survives being wrong about who the partner is. The odd steps have to
+name the partner, and in a scene with three people present but only two tagged, that is where
+the rule breaks. The `requirePair` clause catches a third speaker who is *tagged*; one who
+never is, it cannot see. That is a knowledge-asymmetry problem, which is the fifth convention,
+which is QUI-009's.
+
+**What QUI-009 should take.** Not `alternation` as its default. 4.29% wrong voice against
+Tier 1's 1.82% is a poor trade at 87.5% precision when the same signal is worth far more as a
+*prior*: the conventions say what the speaker probably is at 34.3% of quotations, with a
+measured reliability per rule and per chain depth, and a model that is given that alongside
+the scene will do better than one asked cold. Ship `tier1` as the confident tier; hand the
+alternation answer to the SLM as evidence, not as an answer.
+
+**Not done, and why.** The trailing action beat — `"We don't have enough time." Marcus set
+his mug down.` — is still unread, because detecting it needs name detection, which lives in
+`core:attribution`'s internals, and CLAUDE.md §9 forbids copying that into a spike. It is
+QUI-009's to add where `Names` is already on the classpath. British single-quote setting is
+also unread: `'` is an apostrophe far more often than a quotation mark, and PDNC is
+double-quoted throughout, so there was nothing here to test a detector against.
+
+Reproduce:
+
+```bash
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist && gradle test
+B=build/install/quire-pipeline-spike/bin/quire-pipeline-spike
+$B conformance                              # the ceilings, from gold speakers alone
+$B bakeoff --candidate alternation          # the conventions as the style guides state them
+$B bakeoff --candidate alternation-anygap   # and what dropping the delay clause costs
+```
+
+Whole-corpus run: about 7 seconds per candidate on the build container. No SLA from PRD §5
+is measured here — this is scoring quality on the build machine, and nothing in it is a
+device number.
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
