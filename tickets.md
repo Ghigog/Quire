@@ -53,11 +53,12 @@ already `In progress`.
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
-| QUI-041 | Encoder attribution: abstention-first, BookNLP+ baseline | Attribution | Todo | — | QUI-028 |
+| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
-| QUI-043 | Host-side MOS screening for TTS candidates | Quality | Todo | — | QUI-017 |
+| QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
+| QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
 
-Next free ID: **QUI-044**
+Next free ID: **QUI-045**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -4420,6 +4421,20 @@ front of ears, and it takes any two candidates.
 
 ## QUI-040 — TTS on the GPU or the DSP, not the CPU
 
+> **Resolved by research, 2026-09-11 — the answer is two engines, not one.** Post-training
+> int8 on a transposed-convolution vocoder (HiFi-GAN/VITS) produces severe metallic phase
+> artifacts, so a single int8 graph is out. The shape to build is **split execution**: the
+> acoustic model (text → mel) in int8 on the Hexagon DSP via `libQnnHtp.so`, and the vocoder
+> in fp16 on the Adreno GPU via `libQnnGpu.so`. Budget for two sessions and the handoff
+> between them, not one.
+>
+> **And `Ort::GetAvailableProviders()` does not answer the question this ticket is most
+> likely to get wrong.** It confirms only that the provider was *compiled in*. To prove a
+> node actually ran off the CPU, enable `ORT_LOGGING_LEVEL_VERBOSE` or parse
+> `session.GetProfilingOutput()` and confirm placement on `QnnExecutionProvider`. Every
+> benchmark row in this ticket's Worklog must be backed by one of those, not by a throughput
+> number that looks plausible.
+
 **Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
 **PRD:** §5 · **Timebox:** 3 days
 
@@ -4459,15 +4474,6 @@ on whether any engine better than Piper gets inside the RTF and TTFS budgets on 
   back to CPU and reports nothing; a 0.354 RTF "on the GPU" that is really the CPU again is the
   most likely wrong answer this ticket can produce. Log the resolved provider per session and
   put it in the Worklog beside every number.
-- **The two backends are named** (2026-09-11): **QNN HTP** (`libQnnHtp.so`) for the Hexagon
-  DSP and **QNN GPU** (`libQnnGpu.so`) for the Adreno. ONNX Runtime ships no Vulkan EP and its
-  OpenCL EP was never mainlined, so the specification's "Vulkan / OpenCL EP" is not a thing to
-  configure. WebGPU over Dawn is the only other real Adreno path and is not the first choice.
-- **`Ort::GetAvailableProviders()` does not verify offload** and must not be used as the
-  guard: it lists providers compiled into the build, not which initialised or where nodes were
-  placed, so it returns `QnnExecutionProvider` on exactly the silent CPU fallback above.
-  Confirm placement by parsing node assignments at `ORT_LOGGING_LEVEL_VERBOSE`, or by
-  inspecting `session.GetProfilingOutput()`.
 - Candidates, under GPU/DSP only: Piper `libritts_r` first, as the control with a known CPU
   number; then Matcha-TTS and StyleTTS 2, both flow-matching architectures the memo names.
 - Measure per candidate per provider: RTF, load time, peak RSS, on-disk size, and **whether it
@@ -4500,13 +4506,36 @@ Scenario: A negative result closes the question
 
 ---
 
-## QUI-041 — Encoder attribution: abstention-first, BookNLP+ baseline
+## QUI-041 — Encoder attribution: the 110M joint-scoring model
 
-> **Retitled and re-scoped 2026-09-11**, on the researchers' answers to the review note.
-> There is no public checkpoint for the 110M joint-scoring paper and we are told not to look
-> for one. The baseline is `bodyanats/booknlp-plus-speaker-attribution`, and **abstention is
-> now a requirement rather than an option**: below threshold the quotation routes to the
-> narrator. See `docs/handoff/2026-09-11-engineering-spec-review.md` §7.
+> **Resolved by research, 2026-09-11.** Three answers, and one instruction that must not be
+> followed literally.
+>
+> **The 94.5% assumes gold candidate lists.** End to end, with cast discovery feeding it, the
+> realistic figure is **82–85%**, and **~60% on modern novels it has not seen**. That is still
+> far above anything we have, and it is not 94.5%. Plan against 82–85%.
+>
+> **No public ONNX checkpoint exists for arXiv:2608.02359.** Use
+> `bodyanats/booknlp-plus-speaker-attribution` (BERT-base, 413 MB fp32) as the baseline to
+> benchmark through the harness. Reimplementing the paper is not in this timebox.
+>
+> **Abstention is mandatory and is a product rule, not a tuning knob.** The model must never
+> be asked for a forced choice: below **P(character) < 0.75** the line goes to the narrator.
+> The reasoning is sharper than ours was — under QUI-042 a confidently wrong voice is not just
+> heard, it is *paid for*, because it was rendered by a metered cloud API.
+>
+> ⚠️ **"Run inference strictly on extracted dialogue quotes" would destroy attribution and
+> must not be implemented as written.** Our single best signal is the speech tag, and the tag
+> is not in the quote — `Names.tagName(segment.before, segment.after)` reads the prose either
+> side of it. `"Yes."` carries nothing; `"Yes," said Elizabeth` carries everything, and the
+> part that carries it is the half outside the quotation marks. Stripping prose would remove
+> the rule that scores **99.0%** and leave the encoder guessing from the words spoken.
+>
+> The intent behind it is sound and worth keeping: **do not run the transformer over the whole
+> book.** Run it over a *window centred on each quotation* — the quotation plus the prose
+> around it — which is the same ~3,000 inferences per book and the same sub-3-minute budget,
+> without discarding the evidence. This ticket implements the window, and says so here because
+> the directive as phrased would look like it was being ignored.
 
 **Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
@@ -4529,14 +4558,6 @@ window at once instead of generating token by token, so ~110M parameters at fp16
 220 MB and milliseconds of work — and it needs no int8, which on this SoC is the trap
 (QUI-040). **If it transfers, the attribution wall is gone.**
 
-**Read the 2026-09-11 Worklog entry below before budgeting against 94.5%.** That number has
-still never been reproduced or explained — `arxiv.org` is refused at the proxy and no
-checkpoint matching the claim has been found — and the one public PDNC-trained encoder that
-reports held-out-novel numbers gets **60.5%**, with a 24.9-point in-domain premium that
-plausibly accounts for the whole difference. The ticket is still worth doing; its premise is
-now an open question rather than a result. See
-[`docs/handoff/2026-09-11-engineering-spec-review.md`](docs/handoff/2026-09-11-engineering-spec-review.md) §1.
-
 ### Description (what)
 The encoder, scored on the same 36,970 PDNC quotations every other candidate was scored on, and
 then on prose PDNC does not contain, with a verdict on whether it runs inside the import budget.
@@ -4558,24 +4579,6 @@ then on prose PDNC does not contain, with a verdict on whether it runs inside th
 - Then the budget: export to ONNX fp16, and measure load time, peak RSS and wall-clock for a
   100k-word novel **at import**, not during playback — import is where attribution runs
   (`BookImport`), and it has seconds to spend rather than milliseconds.
-- **The baseline encoder is `bodyanats/booknlp-plus-speaker-attribution`** (2026-09-11
-  directive). Apache-2.0, BERT-base cased, 413.85 MB fp32, trained on PDNC with a published
-  leave-novels-out evaluation. Do not spend time searching for the joint-scoring paper's
-  binary; there isn't one. Its five fold checkpoints are 414 MB each — take fold 2, the one
-  its own card names best, and say so.
-- **Abstention is a requirement, not a tuning knob.** The engine must not force a choice.
-  Below the confidence threshold the quotation abstains and routes to the **narrator voice**,
-  which costs nothing and reads as ordinary audiobook behaviour. `booknlp_predict.py` already
-  caches a per-quotation score and re-thresholds without re-running the model; use it.
-- **Sweep the whole threshold curve, do not measure 0.75 alone.** The directive names
-  `P < 0.75` as the cut. We have run this experiment twice with a negative result — ADR-0005
-  found no threshold recovered SpanBERT or BookNLP `small`, because both were confidently
-  wrong rather than unsure. BookNLP+ is a different checkpoint and deserves the run, but the
-  deliverable is the coverage/precision curve with 0.75 marked on it, and the wrong-voice
-  figure at the knee. A single point cannot show whether the threshold is doing anything.
-- **Inference runs over dialogue windows only, never prose blocks** (2026-09-11 directive).
-  ~3,000 quotations at ~40k tokens a book rather than the whole text. QUI-007's budget is
-  confirmed at **30 minutes**, not the 30–60s the specification carried.
 - Out of scope: replacing Tier 1. Tier 1 is 93.2% precise and free; this fills what it declines.
 
 ### Acceptance criteria (Gherkin)
@@ -4606,67 +4609,29 @@ Scenario: The decision is recorded either way
   Then it says whether the SLM keeps any attribution job at all
 ```
 
+### Requirements added 2026-09-11 (`inspiring-einstein`)
+
+- **The BookNLP+ baseline runs through the existing harness**, as flavour `booknlp-plus` in
+  `spike/pipeline/predictors/booknlp_predict.py`. `tools/fetch-attribution-models.sh` pulls
+  fold 2 — the fold its own card names best — as one 414 MB file rather than BookNLP's 1.1 GB
+  zip. The predictor caches a per-quotation score, so re-thresholding costs a file read.
+- **Report the whole threshold curve, not the directive's 0.75 alone.** A single point cannot
+  show whether the cut is doing anything, and on this checkpoint it turns out to do rather
+  more than ADR-0005 predicted — see the Worklog.
+
 ### Worklog
 
-**2026-09-11 — `inspiring-einstein`.** No code. Responding to the researchers' 2026-09-11
-Engineering Handoff Specification, which makes this ticket its Sprint 1 and restates 94.5% as
-settled. Two findings, both from published artefacts, no download taken.
+**2026-09-11 — `inspiring-einstein`.** Ran the BookNLP+ baseline and swept the threshold.
+Landed after PR #13, which answered the same research reply from another session; that
+ticket text stands and this entry only adds what was measured.
 
-**1. The paper is still unreachable and the checkpoint is still unnamed.** `arxiv.org` is
-refused at the proxy (`CONNECT` 403), `export.arxiv.org` and `api.semanticscholar.org` the
-same, and `huggingface.co/api/papers/2608.02359` 404s. Hub searches for `quotation
-attribution`, `speaker attribution`, `PDNC`, `dialogism` and `quote attribution` surface no
-joint-scoring encoder. The spec names `microsoft/deberta-v3-small` as the backbone with an
-"e.g.", which is a guess and not a citation. Asked back as question 1 of the review note.
-
-**2. The best available PDNC encoder gets 60.5% on unseen novels, and the in-domain premium
-is ~25 points.** `bodyanats/booknlp-plus-speaker-attribution` (Apache-2.0, BERT-base,
-413.85 MB fp32, five-fold leave-novels-out) publishes `evaluation_results.json`:
-
-```
-fold   dev acc   test acc     gap
-  0     83.9%      62.3%     +21.6
-  1     87.1%      54.3%     +32.8
-  2     84.1%      72.5%     +11.6
-  3     85.8%      56.9%     +28.9
-  4     86.6%      56.8%     +29.8
- mean   85.5%      60.5%     +24.9
-```
-
-Same model, same corpus, same code; the only variable is whether the test novels were in
-training. At ~full coverage 60.5% accuracy is **~40% wrong voice**, which is SpanBERT's 41.4%
-again. Three independent BERT-class encoders now give the same answer, and a within-novel
-split is the most likely explanation for a published 94.5%.
-
-Its fp32 size also confirms the spec's sizing arithmetic: ~110M parameters, ~207 MB at fp16.
-Size was never the problem.
-
-*What this leaves for the next session,* in order:
-
-1. **Score the BookNLP+ fold-2 checkpoint through `bakeoff --answers`.** It needs no answer
-   from the researchers, it is one 414 MB download, and it converts the table above into our
-   own coverage / precision / wrong-voice columns, alias-folded, split by `quoteType`. If it
-   abstains at all, the threshold sweep ADR-0005 ran on SpanBERT is the next thing to run on
-   it — that is the only mechanism by which any encoder gets near Tier 1's 2.1%.
-2. **Only then, the paper's checkpoint,** if question 1 comes back with one.
-
-*Reproducing the two numbers above:*
-
-```sh
-curl -sSL https://huggingface.co/bodyanats/booknlp-plus-speaker-attribution/raw/main/evaluation_results.json
-curl -sS "https://huggingface.co/api/models/bodyanats/booknlp-plus-speaker-attribution?blobs=true"
-```
-
-**2026-09-11 (second entry) — `inspiring-einstein`.** BookNLP+ measured, on two novels, with
-the threshold swept. **The verdict is consistent with ADR-0005 and does not overturn it**, but
-one of its reasons is now wrong and that matters for what comes next.
-
-*Two preprocessing traps, both found before any number was believed.* The checkpoint's
-embedding matrix is 28,999 rows. bert-base-cased is 28,996, and booknlp added **three**
-special tokens until 1.0.5, when `[CAP]` and a lowercasing walk arrived together — so this
-was trained on 1.0.3-era code, cased, without `[CAP]`. Running it through the installed 1.0.8
-would have built a 29,000-row model and fed a cased model lowercased text. The strict load
-catches the first; nothing catches the second but arithmetic.
+**Two preprocessing traps first, because neither of them crashes.** The checkpoint's embedding
+matrix is 28,999 rows. bert-base-cased is 28,996, and booknlp added **three** special tokens
+until 1.0.5, when `[CAP]` and a lowercasing walk arrived together — so this was trained against
+1.0.3-era code, cased, without `[CAP]`. The installed 1.0.8 would have built a 29,000-row
+model and, forced past that, fed a cased model lowercased text carrying a token it has never
+seen. The loader now builds from a flavour table and loads **strictly**, so a wrong vocab or
+depth fails on load rather than twenty minutes later as a plausible number.
 
 Then `get_batches(doLowerCase=False)` turned out to be **internally inconsistent upstream**: it
 honours the flag when building token ids but calls `get_wp_position_for_all_tokens(xb[j])`
@@ -4674,34 +4639,29 @@ without it, so the position map is still built the lowercased way and indexes pa
 (`IndexError: index 173 is out of bounds for axis 0 with size 137`). Binding the flavour's
 casing as that method's default fixes the one caller and is a no-op for the uncased flavour.
 
-*The threshold sweep* — `AHandfulOfDust`, 2,337 quotations, alias-folded, wrong voice =
-coverage × (1 − precision):
+**The sweep** — `AHandfulOfDust`, 2,337 quotations, alias-folded, wrong voice = coverage ×
+(1 − precision):
 
 ```
 threshold   coverage  precision  wrong voice
   0.00        98.5%      65.3%      34.2%
   0.50        84.9%      68.2%      27.0%
-  0.60        67.5%      71.7%      19.1%
-  0.70        60.5%      73.0%      16.3%
   0.75        57.6%      73.8%      15.1%   <- the directive's cut
-  0.80        54.3%      74.7%      13.7%
-  0.85        51.1%      75.6%      12.5%
   0.90        47.0%      77.8%      10.4%
-  0.95        41.5%      79.9%       8.3%
   0.99        33.4%      82.5%       5.8%
 Tier 1        18.4%      89.6%       1.9%
 ```
 
 **ADR-0005's "no confidence threshold recovers them" is not true of this checkpoint.**
-Precision rises monotonically with the threshold, and at 0.99 BookNLP+ answers **nearly twice
-as many quotations as Tier 1** (33.4% against 18.4%). It is no longer confidently wrong. It is
-merely, and consistently, less precise — 82.5% against 89.6% — so it does not dominate Tier 1
-and Tier 1 does not dominate it. That is a real trade, and the first one an encoder has
-offered here. At the directive's 0.75 the wrong-voice rate is 15.1%, seven times Tier 1's.
+Precision rises monotonically with the cut, and at 0.99 BookNLP+ answers **nearly twice as many
+quotations as Tier 1** (33.4% against 18.4%) at 82.5% against 89.6%. Neither dominates the
+other. That is the first real trade an encoder has offered here — it is no longer confidently
+wrong, merely less precise. At the directive's 0.75 the wrong-voice rate is 15.1%, seven times
+Tier 1's.
 
-*Where the accuracy actually lives*, and why the first reading of it was wrong. Split by
-`quoteType` at 0.90, against a second novel — `TheSignOfTheFour`, a `Holdouts` book with the
-lowest explicit-tag share in PDNC, chosen precisely because it is the hard case:
+**But only the Explicit slice transfers.** Split by `quoteType` at 0.90, against a second novel
+chosen as the hard case — `TheSignOfTheFour`, a `Holdouts` book with the lowest explicit-tag
+share in PDNC:
 
 ```
                   AHandfulOfDust            TheSignOfTheFour (held out)
@@ -4713,40 +4673,38 @@ lowest explicit-tag share in PDNC, chosen precisely because it is the hard case:
 
 On the first novel alone, routing Explicit and Anaphoric to the encoder and abstaining on
 Implicit gives **21.5% coverage at 1.63% wrong voice** — more coverage than Tier 1 *and* less
-wrong voice, the first configuration measured here to beat it on both axes. **It does not
-survive the second novel.** The same configuration on `TheSignOfTheFour` is 31.0% coverage at
+wrong voice, which would have been the first configuration measured here to beat it on both
+axes. **It does not survive the second novel**: the same configuration reads 31.0% coverage at
 **10.2% wrong voice**, because Anaphoric precision falls from 81.4% to 45.8%. Explicit alone
-gives 0.61% and 0.15% on the two books respectively — safe, and worth about what Tier 1
-already gets.
+gives 0.61% and 0.15% — safe, and worth about what Tier 1 already gets.
 
-**So the finding is narrow and it is the one ADR-0005 and the 2026-09-08 handoff §8 already
-expected.** Only the Explicit slice transfers. Abstention makes the encoder *safe* — it can be
-tuned to any wrong-voice rate you like — but it cannot make the untagged three quarters
-*right*, because Implicit precision tops out around 65% in domain and 37% out of it, and no
-threshold moves that. Raising the cut discards Implicit answers rather than correcting them.
+**So the verdict is the one ADR-0005 and the 2026-09-08 handoff §8 already expected, and one
+of its reasons is now wrong.** Abstention makes the encoder *safe* — it can be tuned to any
+wrong-voice rate you like — but it cannot make the untagged three quarters *right*. Implicit
+precision tops out near 65% in domain and 37% out of it, and raising the cut discards those
+answers rather than correcting them. What is new: the encoder is a legitimate replacement for
+Tier 1 **on the Explicit slice** (98.8% precision at 98.8% coverage on the hard novel, against
+Tier 1's 98.7% at 96.3%), and the confidence threshold is a working dial rather than a dead one.
 
-*What this changes for the product.* Nothing yet contradicts shipping multi-voice on tagged
-dialogue with the narrator elsewhere. What is new is that the encoder is a legitimate
-*replacement* for Tier 1 on the Explicit slice — 98.8% precision at 98.8% coverage on the hard
-novel, against Tier 1's 98.7% at 96.3% — and that a confidence threshold is now a working
-dial rather than a dead one.
+This also puts a measured number under the research reply's "~60% on modern novels": at
+threshold 0 the whole-book accuracy is 64.4% in domain and 27.3% on the held-out novel.
 
 *What is left, in order:*
 
 1. **A measured composite, not a derived one.** Every configuration figure above is arithmetic
-   over per-type rows, and `quoteType` is a *gold label* the device will not have. The
+   over per-type rows, and `quoteType` is a **gold label the device will not have**. The
    implementable version routes on **Tier 1's own tag detection** — it already separates
-   "speech tag", "pronoun tag" and "no tag" — so the composite is Tier 1's classifier picking
-   which quotations the encoder is allowed to answer. That needs a candidate in the harness.
+   "speech tag", "pronoun tag" and "no tag". That needs a candidate in the harness. Note this
+   is the same point as the ⚠️ above: the routing evidence lives in the prose either side of
+   the quotation, so the window has to carry it.
 2. **More novels.** Two is enough to kill the Anaphoric result and not enough to trust the
-   Explicit one. The Anaphoric spread, 81.4% against 45.8%, is the whole reason this entry
-   does not claim a win.
+   Explicit one. The Anaphoric spread — 81.4% against 45.8% — is why this entry claims no win.
+   QUI-043's modern-prose set is what would settle it properly.
 3. **Whether fold 2 saw `AHandfulOfDust`.** The HF card publishes per-fold scores but not fold
-   membership, so this is unresolved. Our 64.4% at threshold 0 sits *below* fold 2's own
-   held-out 72.5%, so the number is not obviously flattered — but it cannot be ruled out, and
-   `TheSignOfTheFour` is the safer of the two readings.
+   membership. Our 64.4% sits *below* fold 2's own held-out 72.5%, so the number is not
+   obviously flattered, but it cannot be ruled out and `TheSignOfTheFour` is the safer reading.
 4. **Then the budget**: ONNX fp16 export, load time, peak RSS, wall-clock for 100k words at
-   import. None of it measured; none of it possible here. 414 MB fp32 is already over PRD §5's
+   import. None measured; none possible in this container. 414 MB fp32 is already over PRD §5's
    450 MB app budget on its own, so fp16 is not optional for this candidate.
 
 *Reproduce:*
@@ -4765,6 +4723,22 @@ python3 predictors/booknlp_predict.py build/bakeoff --flavour booknlp-plus \
 ---
 
 ## QUI-042 — Bring-your-own-key cloud voices
+
+> **Approved as the V1 architecture, 2026-09-11**, in the shape this repository proposed:
+> **cloud voices for dialogue, the local engine for narration.** Dialogue is ~25% of the word
+> count and carries ~90% of the emotional weight, so the quality goes where it is heard and
+> the metered spend is a quarter of sending the whole book.
+>
+> Two acoustic requirements came back with the approval, and they are what make the seam
+> inaudible rather than merely functional:
+>
+> * **Normalise every buffer to −16 to −18 LUFS**, local and cloud alike. This is the standard
+>   mobile audiobook target and it is what stops the cast sounding louder than the narrator.
+> * **Cross-fade across the local/cloud sentence boundary with low-level comfort noise** —
+>   an active fade at the seam, *not* a continuous noise floor laid under the whole book.
+>
+> That changes this ticket's shape: it is no longer "a second backend a power user might
+> enable", it is the default path for dialogue, and the mixing is part of the deliverable.
 
 **Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §6 (V2 scope, brought forward by the 2026-09-10 memo) · **Timebox:** 5 days
@@ -4810,17 +4784,6 @@ the player can use in place of the local engine. Plus the ADR recording the reve
 - **Latency is the real risk, not quality.** A per-line round trip against an 800 ms TTFS budget
   needs the ring buffer reading ahead, and a cost per book the reader can see before they start.
   Measure both.
-- **Loudness target is −16 to −18 LUFS** (2026-09-11, revised from the specification's −24,
-  which is the ATSC A/85 broadcast figure and too quiet for a tablet speaker). The same target
-  applies to both tiers, or the transition is audible as a level jump.
-- **No continuous room-tone bed.** Reframed on the same date as an **active cross-fade across
-  local/cloud transitions**: silence stays silent, and only the seam is smoothed. A continuous
-  comfort-noise floor is the opposite of the ≤ −60 dB noise floor audiobook distribution asks
-  for.
-- **QUI-041 gates this ticket.** Sprint ordering, stated 2026-09-11: abstention-first
-  attribution is the risk mitigation for cloud rendering. A confident wrong voice rendered
-  through a paid API is a worse failure than the same error locally — it is audible *and*
-  billed. Do not wire a paid backend to an attribution engine that cannot decline.
 - Out of scope: Quire-hosted inference, any key we supply, and sending anything but the current
   line.
 
@@ -4855,6 +4818,124 @@ Scenario: The reversal is recorded
   Given ADR-0010
   When I read it
   Then it states what CLAUDE.md §8 and PRD §6 said, who authorised the change, and what stayed
+```
+---
+
+## QUI-043 — A modern-prose test set we are allowed to keep
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-041
+**PRD:** §4 · **Timebox:** 2 days
+
+### User story
+As a team, I want a dialogue test set written after 1934, so that every accuracy figure we
+quote stops being a claim about Edwardian literary fiction.
+
+### Context (why)
+Confirmed by research 2026-09-11: **no open gold-standard post-1934 dialogue corpus exists**,
+and copyright is why. PDNC is 28 novels ending in 1934, weighted to literary fiction, and
+`Holdouts.External` — the slot for books unlike it — has been empty since QUI-028 opened it.
+Every out-of-domain number we owe anyone is blocked on this, and the research reply puts the
+encoder at **~82–85% in domain and ~60% on modern novels**, which is exactly the gap this
+would measure rather than estimate.
+
+### Description (what)
+A silver-standard set: ten modern EPUBs labelled off-device by a frontier model, stored as
+offsets rather than text, scoreable by the same harness as PDNC.
+
+### Requirements (how)
+- Owns: `tools/build-silver-set.sh`, `fixtures/silver/` (offsets only), and a
+  `Holdouts.External` implementation in `spike/pipeline/bakeoff/Holdouts.kt`.
+- **Store offsets and speaker labels, never prose.** CLAUDE.md §8 forbids committing book
+  text and this does not bend it: the artefact is `(book fingerprint, char offset, speaker)`,
+  useless without the reader's own copy of the book, and that is the point.
+- Labelling runs **off-device, once, by a frontier model**, and its output is checked by hand
+  before it is called a fixture. Silver means silver: record the spot-check rate in the ticket.
+- The ten books are chosen for what PDNC lacks, not for convenience: contemporary genre
+  fiction, translated work, first person, and at least one with a large cast.
+- Score it through `bakeoff --answers`, the same path as everything else.
+- Out of scope: publishing the set, and any use of it as training data.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: No book text is committed
+  Given the fixture set
+  When the repository is inspected
+  Then it holds offsets, fingerprints and speaker labels, and no prose
+
+Scenario: It measures what PDNC cannot
+  Given the ten books
+  When their composition is described
+  Then it names how each differs from PDNC — period, genre, person, translation, cast size
+
+Scenario: The labels are known to be silver, not gold
+  Given labels produced by a model
+  When the set is used
+  Then the ticket records the hand-checked sample size and the disagreement rate found
+
+Scenario: Every candidate can be scored on it
+  Given a candidate already scored on PDNC
+  When it is scored on the silver set
+  Then the harness reports the same coverage, precision and wrong-voice columns
+```
+
+---
+
+## QUI-044 — Screen voice quality without a listen
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**PRD:** §5 · **Timebox:** 1 day
+
+### User story
+As an engineer choosing between speech models, I want a quality number on the build machine,
+so that only the candidates worth hearing reach a person's ears.
+
+### Context (why)
+Our speed screening is cheap and host-side, which is why eight engines got measured; our
+quality screening is one person listening once, which is why the engine we shipped turned out
+not to be audiobook grade. That asymmetry is the reason this project over-optimised throughput
+and under-tested the thing the product is judged on.
+
+Research answered it 2026-09-11: **UTMOSv2** (`sarulab-speech/UTMOSv2`, Apache 2.0),
+reference-free MOS prediction, run host-side, with **3.5 MOS as the bar a candidate must clear
+before it is staged to hardware**.
+
+### Description (what)
+A `spike/hostbench` command that scores rendered audio and prints MOS beside the RTF numbers
+already there, so the screening table has both axes.
+
+### Requirements (how)
+- Owns: `spike/hostbench/mos.py`, a column in `spike/hostbench/README.md`'s screening table,
+  and one line in `tools/fetch-models.sh` if the checkpoint needs fetching.
+- **Score the incumbent first.** Piper `libritts_r` medium is the model a person has already
+  judged as not audiobook grade. If UTMOSv2 does not place it below a model judged better, the
+  screen does not work and that is the finding — say so rather than shipping it.
+- Score on **narration-length audio**, not single sentences: the bar is long-form listening and
+  a metric validated on short utterances may not carry. Use the passages `listen.py` renders.
+- **A MOS number never overrides a listen.** It is a filter that decides what gets heard, and
+  the ticket must say so where someone will read it before quoting a score as a result.
+- Out of scope: choosing an engine. This ticket builds the instrument.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The instrument is calibrated against a known judgement
+  Given Piper libritts_r, judged by ear as not audiobook quality
+  When UTMOSv2 scores it
+  Then its score is recorded, and stated against the 3.5 bar
+
+Scenario: It ranks rather than merely rates
+  Given two engines a person has ranked by ear
+  When both are scored
+  Then the Worklog says whether the metric put them in the same order
+
+Scenario: Long-form, not one sentence
+  Given a candidate
+  When it is screened
+  Then the audio scored is minutes of narration, and its length is recorded
+
+Scenario: The limit is written down
+  Given the README
+  When an engineer reads the screening table
+  Then it says a MOS score filters candidates and never settles a choice
 ```
 ---
 
@@ -5986,86 +6067,3 @@ Scenario: The corpus is counted, not estimated
   Two regression tests cover both paths — a dense scene that must cut at narration, and an
   unbroken run that cannot. Root and `spike/pipeline` suites green.
   Reproduce: `cd spike/pipeline && gradle run --args="scenes"`.
-
----
-
-## QUI-043 — Host-side MOS screening for TTS candidates
-
-**Status:** Todo · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-017
-**PRD:** §5 · **Timebox:** 1 day
-
-### User story
-As an engineer screening speech engines, I want a candidate ranked automatically on the build
-machine before it costs a device hour, so that the obviously bad ones never reach a listening
-test.
-
-### Context (why)
-The researchers' 2026-09-11 specification, §4B. `spike/hostbench` already screens candidates
-on cost — RTF, load time, size — and killed two before they cost a build, an install and a
-listen. It has nothing to say about whether a candidate *sounds* like anything, which is the
-bar QUI-039 established and the one ADR-0002 recorded a deviation against.
-
-A reference-free MOS estimator closes that half. It is cheap, it runs in this container, and
-it is the one directive in the specification that needs nothing from the device.
-
-**Two corrections to the specification, both checked 2026-09-11.**
-
-The model id it names, `sarulab-speech/UTMOS-sinc56-utmos-strong`, does not exist — the Hub
-API returns 401. What is published is `sarulab-speech/UTMOSv2`, plus community mirrors of the
-UTMOS22 strong learner (`vokra/utmos22-strong`, `Blinorot/UTMOS-PyTorch`,
-`TigreGotico/utmos-onnx`).
-
-And its **3.5 absolute rejection threshold is a host number quoted at a product bar**, which
-CLAUDE.md §1.6 forbids. UTMOS is trained on MOS listening data for short synthesis-comparison
-clips, not long-form narration, and `spike/hostbench/README.md` already qualifies exactly this:
-ratios within a tier and sample rate transfer well, absolutes do not. So this ticket builds a
-**screen, not a gate** — it ranks candidates and kills the clearly bad, and it never approves
-anything. QUI-039 exists because the listen found what the numbers could not.
-
-### Description (what)
-A script in `spike/hostbench` that renders a fixed narration passage through each candidate,
-scores it, and adds a MOS column to the bench table — reported beside RTF rather than instead
-of it.
-
-### Requirements (how)
-- Owns: `spike/hostbench/` (the scoring script, its README row and the results table). No
-  other module.
-- **Fixed passage, fixed seed, same text for every candidate.** A MOS estimate is only
-  comparable against itself; a candidate scored on different prose is not screened, it is
-  guessed at. Use a passage from the generated fixture EPUB (`spike/indexer`), never a real
-  book — CLAUDE.md §8.
-- **Report the spread, not a single score.** Per-utterance scores over at least 10
-  utterances, with median and range. A single number hides the variance that decides whether
-  a difference is real.
-- **State Piper `libritts_r`'s score as the control on every run.** It is the engine we ship
-  and the one candidate whose quality a human has actually judged (QUI-039), so it is what
-  every other score means anything relative to.
-- **No threshold in the script.** It prints a ranking. A human reads it. If a candidate is to
-  be rejected, the Worklog says who rejected it and why.
-- Model fetched by a documented script in `/tools/` like every other model; nothing committed.
-  `HF_HUB_DISABLE_XET=1` or the download hangs (CLAUDE.md §9).
-- Out of scope: putting this in CI, and any change to what ships. Wire it into CI in a later
-  ticket once the ranking has been sanity-checked against a listen.
-
-### Acceptance criteria (Gherkin)
-```gherkin
-Scenario: A candidate is ranked against the shipped control
-  Given a TTS candidate and Piper libritts_r
-  When the screen runs
-  Then both are scored on the same passage and the result names Piper as the control
-
-Scenario: The spread is visible
-  Given a scored candidate
-  When its result is written
-  Then it reports a median and a range over at least 10 utterances, not one number
-
-Scenario: The screen does not approve anything
-  Given a candidate scoring above any threshold
-  When the script finishes
-  Then it has rejected and approved nothing, and the decision is recorded by a human
-
-Scenario: The estimate is not quoted at an SLA
-  Given a MOS figure
-  When it appears in a document
-  Then it is labelled a host-side estimate and no product bar is stated against it
-```

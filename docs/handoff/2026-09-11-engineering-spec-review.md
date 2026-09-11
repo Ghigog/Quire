@@ -62,8 +62,8 @@ the checkpoint, or explain the difference in setup. **See question 1.**
   reached.
 - **Auto-regressive SLMs at 1–3B do not carry this.** QUI-028 measured 37.5% / 41.0%
   precision and 1.9 GB for the 3B. Agreed and closed.
-- **An automatic quality screen before a device listen is worth having.** Filed as QUI-043,
-  with two corrections (§4).
+- **An automatic quality screen before a device listen is worth having.** Filed as **QUI-044**
+  by the session that landed PR #13, with the same two corrections (§4).
 
 ---
 
@@ -137,7 +137,7 @@ EP is a configuration step. **See question 4.**
 ## 4. The quality screen: adopt, with two corrections
 
 Worth doing, and it is the one directive in the spec that this build container can run today.
-Filed as **QUI-043**.
+Filed as **QUI-044** (see §9 — PR #13 allocated the id).
 
 1. **The model id does not exist.** `sarulab-speech/UTMOS-sinc56-utmos-strong` returns 401
    from the Hub API. What is published: `sarulab-speech/UTMOSv2`, and community mirrors of
@@ -239,11 +239,34 @@ handoff says what follows from it.
 ## 8. What this session changed
 
 - This note.
-- **QUI-041** — retitled *Encoder attribution: abstention-first, BookNLP+ baseline*, claimed,
-  and re-scoped on the answers above: no joint-scoring checkpoint to chase, BookNLP+ as the
-  baseline, abstention as a requirement, and inference over dialogue windows rather than prose.
-- **QUI-040** — QNN HTP and QNN GPU named as the two targets, and the placement check written
-  down as parsing verbose node assignments or `GetProfilingOutput()`.
-- **QUI-042** — loudness target set to −16 to −18 LUFS, the room-tone bed reframed as a
-  transition cross-fade, and QUI-041 recorded as its risk gate.
-- **QUI-043** — new: automated host-side MOS screening for TTS candidates, as a screen.
+- **QUI-041** — the BookNLP+ measurement and threshold sweep, in its Worklog, plus the two
+  Requirements the measurement earned. The ticket's own re-scoping came from PR #13; see §9.
+- `spike/pipeline/predictors/booknlp_predict.py` — a `booknlp-plus` flavour, a strict loader,
+  and the casing fix the checkpoint needs.
+- `tools/fetch-attribution-models.sh` — fetches fold 2 as one 414 MB file.
+
+## 9. Collision with PR #13, and how it was resolved
+
+**Two sessions answered this specification in parallel and both wrote to the board.** PR #13
+(`quire-dialogue-attribution`) merged at 14:13 on 2026-09-11 while this branch was open. It is
+the same research reply, read independently, and its ticket text is now main's.
+
+Resolved per CLAUDE.md §2.2 — take the other side, re-apply your own on top:
+
+- **`tickets.md` was reset to main's version wholesale.** Every QUI-040/041/042 amendment in
+  this branch was dropped in favour of PR #13's, which say the same things and landed first.
+- **The QUI-043 in this branch was deleted.** PR #13 had already allocated QUI-043 to a
+  modern-prose test set and QUI-044 to MOS screening. Two tickets briefly shared an id; main's
+  wins, ids are never reused, and **QUI-044 is the better version** — it adds calibrating the
+  metric against Piper `libritts_r`, the one engine a person has actually judged.
+- **Only the measurement was re-applied**, as a QUI-041 Worklog entry.
+
+**PR #13 caught something this branch got wrong.** Its ⚠️ on QUI-041 notes that "run inference
+strictly on extracted dialogue quotes" must not be implemented literally: the speech tag lives
+in the prose *either side* of the quotation, so stripping prose would discard the 99.0% rule.
+This branch had written that directive into QUI-041's Requirements as "dialogue windows only,
+never prose blocks" — the dangerous reading. Their framing is correct and is what stands.
+
+The board rule that would have prevented this is §2.1: claim the ticket and push the claim
+before writing. Both sessions were working from the same inbound document rather than from the
+board, so neither claim was visible to the other when the work started.
