@@ -35,10 +35,14 @@ object Roster {
     const val ADJACENCY_MIN = 8
 
     /** How many pronoun sightings must agree before a gender is claimed. */
-    const val GENDER_MIN = 2
+    const val GENDER_MIN = 1
 
     /** How much the winning pronoun must lead by, as a share of that name's sightings. */
     const val GENDER_MAJORITY = 0.6
+
+    /** Co-occurrence evidence is noisier, so it is asked for more of it, and a firmer lead. */
+    const val COOCCURRENCE_MIN = 3
+    const val COOCCURRENCE_MAJORITY = 0.75
 
     data class Cast(
         val fromTags: Map<String, Int>,
@@ -58,6 +62,8 @@ object Roster {
         val tags = mutableMapOf<String, Int>()
         val adjacency = mutableMapOf<String, Int>()
         val pronouns = mutableMapOf<String, MutableMap<Gender, Int>>()
+        // Weaker evidence, kept apart on purpose — see `nearest` below and the resolve step.
+        val cooccurrence = mutableMapOf<String, MutableMap<Gender, Int>>()
         // The last name mentioned with nothing ambiguous after it, carried *across*
         // paragraphs. Anaphora routinely spans them — a paragraph names Sarah, the next
         // says "she said" — and resetting at every break was why this found nothing at
@@ -87,10 +93,10 @@ object Roster {
             val narration = Segmenter.segment(locator, text)
                 .filter { it.kind == Kind.NARRATION }
                 .joinToString(" ") { it.text }
-            pending = countPronouns(narration, pronouns, pending)
+            pending = countPronouns(narration, pronouns, cooccurrence, pending)
         }
 
-        val genders = pronouns.mapNotNull { (name, votes) ->
+        val voted = pronouns.mapNotNull { (name, votes) ->
             val total = votes.values.sum()
             val (best, count) = votes.maxByOrNull { it.value } ?: return@mapNotNull null
             // Both thresholds matter. A single sighting is noise, and a name that draws
@@ -101,6 +107,34 @@ object Roster {
                 null
             }
         }.toMap()
+
+        // **A title outranks the vote, because it is not evidence (QUI-035).** "Mrs" is not
+        // a hint about Mrs Bennet that a run of stray pronouns could outweigh; it is her sex,
+        // printed beside her name on every appearance. Counting it as one vote among many
+        // would leave exactly the characters the book is clearest about still unvoiced.
+        //
+        // It is also what two names sharing a surname need. "Mr Bennet" and "Mrs Bennet" draw
+        // the same pronouns around the same sentences, which is the case GENDER_MAJORITY was
+        // written to refuse — correctly, on pronouns alone, and needlessly once the titles
+        // are read.
+        // Consulted only where the strong rule declined, and held to a firmer majority
+        // because each vote is worth less. It can add a gender; it can never change one.
+        val guessed = cooccurrence.mapNotNull { (name, votes) ->
+            if (name in voted) return@mapNotNull null
+            val total = votes.values.sum()
+            val (best, count) = votes.maxByOrNull { it.value } ?: return@mapNotNull null
+            if (count >= COOCCURRENCE_MIN && count.toDouble() / total >= COOCCURRENCE_MAJORITY) {
+                name to best
+            } else {
+                null
+            }
+        }.toMap()
+
+        val titled = (tags.keys + adjacency.keys).mapNotNull { name ->
+            Names.titleGender(name)?.let { name to it }
+        }
+        // Precedence, weakest first: a title beats a counted pronoun, which beats a guess.
+        val genders = guessed + voted + titled
 
         return Cast(tags, adjacency - tags.keys, genders)
     }
@@ -115,12 +149,23 @@ object Roster {
     private fun countPronouns(
         text: String,
         into: MutableMap<String, MutableMap<Gender, Int>>,
+        weak: MutableMap<String, MutableMap<Gender, Int>>,
         carried: String?,
     ): String? {
         var pending = carried
         for (sentence in Names.sentences(text)) {
             val names = Names.namesIn(sentence)
             val gender = pronounGender(sentence)
+            // A sentence naming two people used to throw its pronoun away entirely, and in
+            // dialogue that is most sentences — it is why a sixth of every cast reached
+            // casting with no sex at all. It is genuinely ambiguous ("Elizabeth told Darcy
+            // that she would not" credits the wrong one), so it is counted *separately* and
+            // only ever consulted for a name the strong rule could not decide.
+            if (names.size > 1 && gender != null) {
+                nearest(sentence, names, gender)?.let { (name, g) ->
+                    weak.getOrPut(name) { mutableMapOf() }.merge(g, 1, Int::plus)
+                }
+            }
             when {
                 names.size == 1 && gender != null -> {
                     // Name and pronoun in one sentence: "Sarah put down her cup."
@@ -134,6 +179,24 @@ object Roster {
             }
         }
         return pending
+    }
+
+    /**
+     * The name a pronoun most likely stands for when several are in play: the last one
+     * mentioned before it.
+     *
+     * Wrong often enough that it is never allowed to overturn the strong rule — what makes it
+     * usable is volume. Over a whole novel a character draws their own pronoun far more often
+     * than anybody else's, so the majority survives the noise, which is the co-occurrence
+     * argument rather than a claim about any one sentence.
+     */
+    private fun nearest(sentence: String, names: List<String>, gender: Gender): Pair<String, Gender>? {
+        val at = (if (gender == Gender.FEMALE) FEMALE else MALE).find(sentence)?.range?.first ?: return null
+        val before = names.mapNotNull { name ->
+            val i = sentence.lastIndexOf(name, at)
+            if (i in 0 until at) name to i else null
+        }
+        return before.maxByOrNull { it.second }?.let { it.first to gender }
     }
 
     private val FEMALE = Regex("\\b(she|her|hers|herself)\\b", RegexOption.IGNORE_CASE)

@@ -1,5 +1,7 @@
 package quire.attribution
 
+import quire.model.characters.Gender
+
 /**
  * Finding people's names in prose, and telling a speech tag from a mention.
  *
@@ -118,6 +120,32 @@ internal object Names {
         if (!isTitled && words.size == 1 && name in NOT_NAMES) return null
         if (isTitled && words.size == 1) return null // a bare "Mr" names nobody
         return name
+    }
+
+    /**
+     * Titles that settle a character's sex outright (QUI-035).
+     *
+     * These are not evidence to be weighed against pronoun counts — "Mrs" *is* her sex, and
+     * the book prints it beside her name every time she appears. Reading it closes most of
+     * the coverage gap that had half of every cast arriving at [Roster.Cast] as `UNKNOWN`
+     * and being voiced arbitrarily: 2026-08-31's device report of The Witcher's men in
+     * women's voices was this, not a casting bug.
+     *
+     * The ranks are left out on purpose. `Dr`, `Prof`, `Captain`, `Colonel` and `Major` are
+     * all worn by women in fiction, and `St` is a title of neither sex; guessing male from
+     * them would trade the accuracy this is not allowed to cost.
+     */
+    private val FEMALE_TITLES = setOf("mrs", "ms", "miss", "lady", "aunt", "mother")
+    private val MALE_TITLES = setOf("mr", "sir", "lord", "uncle", "father")
+
+    /** The sex a name's own title gives it, or null when it carries none that decides. */
+    fun titleGender(name: String): Gender? {
+        val head = name.trim().substringBefore(' ').trimEnd('.').lowercase()
+        return when (head) {
+            in FEMALE_TITLES -> Gender.FEMALE
+            in MALE_TITLES -> Gender.MALE
+            else -> null
+        }
     }
 
     /** Sentence split, simple on purpose: this only feeds name-window heuristics. */
