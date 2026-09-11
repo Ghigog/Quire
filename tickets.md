@@ -4657,6 +4657,111 @@ curl -sSL https://huggingface.co/bodyanats/booknlp-plus-speaker-attribution/raw/
 curl -sS "https://huggingface.co/api/models/bodyanats/booknlp-plus-speaker-attribution?blobs=true"
 ```
 
+**2026-09-11 (second entry) — `inspiring-einstein`.** BookNLP+ measured, on two novels, with
+the threshold swept. **The verdict is consistent with ADR-0005 and does not overturn it**, but
+one of its reasons is now wrong and that matters for what comes next.
+
+*Two preprocessing traps, both found before any number was believed.* The checkpoint's
+embedding matrix is 28,999 rows. bert-base-cased is 28,996, and booknlp added **three**
+special tokens until 1.0.5, when `[CAP]` and a lowercasing walk arrived together — so this
+was trained on 1.0.3-era code, cased, without `[CAP]`. Running it through the installed 1.0.8
+would have built a 29,000-row model and fed a cased model lowercased text. The strict load
+catches the first; nothing catches the second but arithmetic.
+
+Then `get_batches(doLowerCase=False)` turned out to be **internally inconsistent upstream**: it
+honours the flag when building token ids but calls `get_wp_position_for_all_tokens(xb[j])`
+without it, so the position map is still built the lowercased way and indexes past the ids
+(`IndexError: index 173 is out of bounds for axis 0 with size 137`). Binding the flavour's
+casing as that method's default fixes the one caller and is a no-op for the uncased flavour.
+
+*The threshold sweep* — `AHandfulOfDust`, 2,337 quotations, alias-folded, wrong voice =
+coverage × (1 − precision):
+
+```
+threshold   coverage  precision  wrong voice
+  0.00        98.5%      65.3%      34.2%
+  0.50        84.9%      68.2%      27.0%
+  0.60        67.5%      71.7%      19.1%
+  0.70        60.5%      73.0%      16.3%
+  0.75        57.6%      73.8%      15.1%   <- the directive's cut
+  0.80        54.3%      74.7%      13.7%
+  0.85        51.1%      75.6%      12.5%
+  0.90        47.0%      77.8%      10.4%
+  0.95        41.5%      79.9%       8.3%
+  0.99        33.4%      82.5%       5.8%
+Tier 1        18.4%      89.6%       1.9%
+```
+
+**ADR-0005's "no confidence threshold recovers them" is not true of this checkpoint.**
+Precision rises monotonically with the threshold, and at 0.99 BookNLP+ answers **nearly twice
+as many quotations as Tier 1** (33.4% against 18.4%). It is no longer confidently wrong. It is
+merely, and consistently, less precise — 82.5% against 89.6% — so it does not dominate Tier 1
+and Tier 1 does not dominate it. That is a real trade, and the first one an encoder has
+offered here. At the directive's 0.75 the wrong-voice rate is 15.1%, seven times Tier 1's.
+
+*Where the accuracy actually lives*, and why the first reading of it was wrong. Split by
+`quoteType` at 0.90, against a second novel — `TheSignOfTheFour`, a `Holdouts` book with the
+lowest explicit-tag share in PDNC, chosen precisely because it is the hard case:
+
+```
+                  AHandfulOfDust            TheSignOfTheFour (held out)
+             coverage precision        coverage precision
+  Explicit      91.2%     96.2%           98.8%     98.8%
+  Anaphoric     64.2%     81.4%           50.9%     45.8%
+  Implicit      34.6%     65.5%           34.6%     37.2%
+```
+
+On the first novel alone, routing Explicit and Anaphoric to the encoder and abstaining on
+Implicit gives **21.5% coverage at 1.63% wrong voice** — more coverage than Tier 1 *and* less
+wrong voice, the first configuration measured here to beat it on both axes. **It does not
+survive the second novel.** The same configuration on `TheSignOfTheFour` is 31.0% coverage at
+**10.2% wrong voice**, because Anaphoric precision falls from 81.4% to 45.8%. Explicit alone
+gives 0.61% and 0.15% on the two books respectively — safe, and worth about what Tier 1
+already gets.
+
+**So the finding is narrow and it is the one ADR-0005 and the 2026-09-08 handoff §8 already
+expected.** Only the Explicit slice transfers. Abstention makes the encoder *safe* — it can be
+tuned to any wrong-voice rate you like — but it cannot make the untagged three quarters
+*right*, because Implicit precision tops out around 65% in domain and 37% out of it, and no
+threshold moves that. Raising the cut discards Implicit answers rather than correcting them.
+
+*What this changes for the product.* Nothing yet contradicts shipping multi-voice on tagged
+dialogue with the narrator elsewhere. What is new is that the encoder is a legitimate
+*replacement* for Tier 1 on the Explicit slice — 98.8% precision at 98.8% coverage on the hard
+novel, against Tier 1's 98.7% at 96.3% — and that a confidence threshold is now a working
+dial rather than a dead one.
+
+*What is left, in order:*
+
+1. **A measured composite, not a derived one.** Every configuration figure above is arithmetic
+   over per-type rows, and `quoteType` is a *gold label* the device will not have. The
+   implementable version routes on **Tier 1's own tag detection** — it already separates
+   "speech tag", "pronoun tag" and "no tag" — so the composite is Tier 1's classifier picking
+   which quotations the encoder is allowed to answer. That needs a candidate in the harness.
+2. **More novels.** Two is enough to kill the Anaphoric result and not enough to trust the
+   Explicit one. The Anaphoric spread, 81.4% against 45.8%, is the whole reason this entry
+   does not claim a win.
+3. **Whether fold 2 saw `AHandfulOfDust`.** The HF card publishes per-fold scores but not fold
+   membership, so this is unresolved. Our 64.4% at threshold 0 sits *below* fold 2's own
+   held-out 72.5%, so the number is not obviously flattered — but it cannot be ruled out, and
+   `TheSignOfTheFour` is the safer of the two readings.
+4. **Then the budget**: ONNX fp16 export, load time, peak RSS, wall-clock for 100k words at
+   import. None of it measured; none of it possible here. 414 MB fp32 is already over PRD §5's
+   450 MB app budget on its own, so fp16 is not optional for this candidate.
+
+*Reproduce:*
+
+```sh
+tools/fetch-pdnc.sh && tools/fetch-attribution-models.sh
+cd spike/pipeline
+gradle run --args="dump --out build/bakeoff --novels AHandfulOfDust,TheSignOfTheFour"
+python3 predictors/booknlp_predict.py build/bakeoff --flavour booknlp-plus --threshold 0.90
+gradle run --args="bakeoff --candidate booknlp-plus --answers build/bakeoff"
+# sweep without re-running the model:
+python3 predictors/booknlp_predict.py build/bakeoff --flavour booknlp-plus \
+    --rethreshold --threshold 0.99
+```
+
 ---
 
 ## QUI-042 — Bring-your-own-key cloud voices
