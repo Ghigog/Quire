@@ -10,12 +10,12 @@ quotations.
 
     tools/fetch-attribution-models.sh
     cd spike/pipeline && gradle run --args="dump --out build/bakeoff"
-    python3 predictors/booknlp_budget.py build/bakeoff --size big
+    python3 predictors/booknlp_budget.py build/bakeoff --flavour booknlp-plus
 
 **These are host numbers and none of them is an SLA** (CLAUDE.md §1.6). The build machine has
 four x86 cores and no Hexagon DSP; the Note Air5 C has two A77s, six A55s and no i8mm. What
 transfers is the disk footprint, which is a property of the file, and the *ratio* between the
-two checkpoints. What does not transfer is the wall clock, which is why it is labelled below.
+checkpoints. What does not transfer is the wall clock, which is why it is labelled below.
 
 fp16 is exported for the footprint and for the device, where the GPU and DSP consume it
 natively. onnxruntime on x86 CPU has no fp16 kernels and inserts casts around every op, so
@@ -32,7 +32,7 @@ import time
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from booknlp_predict import MODELS, bootstrap_cast, build, loader   # noqa: E402
+from booknlp_predict import FLAVOURS, bootstrap_cast, build, loader  # noqa: E402
 
 
 def peak_rss_mb():
@@ -109,7 +109,7 @@ def time_session(path, batches, threads):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dump_dir")
-    ap.add_argument("--size", choices=sorted(MODELS), default="big")
+    ap.add_argument("--flavour", choices=sorted(FLAVOURS), default="booknlp-plus")
     ap.add_argument("--novel", default="TheAgeOfInnocence",
                     help="101,261 words and 1,393 quotations — the PDNC novel nearest the "
                          "100k-word book the ticket asks about")
@@ -121,26 +121,29 @@ def main():
     import gc
 
     os.makedirs(args.out, exist_ok=True)
-    path = os.path.join(args.models, MODELS[args.size])
+    spec = FLAVOURS[args.flavour]
+    path = os.path.join(args.models, spec["file"])
     checkpoint_mb = os.path.getsize(path) / 1e6
-    print(f"{MODELS[args.size]}\n  checkpoint on disk (torch fp32)   {checkpoint_mb:8.1f} MB")
+    print(f'{args.flavour} — {spec["file"]}')
+    print(f"  checkpoint on disk (torch fp32)   {checkpoint_mb:8.1f} MB")
 
     t0 = time.perf_counter()
-    qa = loader(path)
+    qa = loader(path, args.flavour)
     torch_load_s = time.perf_counter() - t0
     model = qa.model
     params = sum(p.numel() for p in model.parameters())
 
     cast = bootstrap_cast(args.dump_dir, args.novel)
     tokens, quotes, entities, _, asked = build(args.dump_dir, args.novel, cast)
-    texts, metas, _, _, _ = qa.get_representation(quotes, entities, tokens)
-    x_batches, m_batches, _, _ = model.get_batches(texts, metas)
+    texts, metas, _, _, _ = qa.get_representation(
+        quotes, entities, tokens, doLowerCase=spec["lower"])
+    x_batches, m_batches, _, _ = model.get_batches(texts, metas, doLowerCase=spec["lower"])
     windows = len(texts)
     print(f"  parameters                       {params/1e6:8.1f} M")
     print(f"  {args.novel}: {windows} windows over {len(asked)} quotations")
 
-    fp32 = export(model, x_batches[0], m_batches[0], os.path.join(args.out, f"{args.size}.onnx"))
-    fp16 = to_fp16(fp32, os.path.join(args.out, f"{args.size}-fp16.onnx"))
+    fp32 = export(model, x_batches[0], m_batches[0], os.path.join(args.out, f"{args.flavour}.onnx"))
+    fp16 = to_fp16(fp32, os.path.join(args.out, f"{args.flavour}-fp16.onnx"))
     print(f"  ONNX fp32                        {os.path.getsize(fp32)/1e6:8.1f} MB")
     print(f"  ONNX fp16                        {os.path.getsize(fp16)/1e6:8.1f} MB")
 

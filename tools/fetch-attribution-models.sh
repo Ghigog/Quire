@@ -44,11 +44,27 @@ done
 # timed run measures the model rather than a download.
 python3 - <<'WARM'
 from transformers import BertTokenizer, BertModel
-for m in ("google/bert_uncased_L-8_H-256_A-4", "google/bert_uncased_L-12_H-768_A-12"):
+for m in ("google/bert_uncased_L-8_H-256_A-4", "google/bert_uncased_L-12_H-768_A-12",
+          "bert-base-cased"):
     BertTokenizer.from_pretrained(m, do_lower_case=False, do_basic_tokenize=False)
     BertModel.from_pretrained(m)
     print("warmed", m)
 WARM
+
+# 3. BookNLP+, QUI-041's baseline encoder (2026-09-11 directive). One 414 MB checkpoint:
+#    `bodyanats/booknlp-plus-speaker-attribution` publishes five
+#    leave-novels-out folds and we take fold 2, the one its own card names best. Apache-2.0.
+#
+#    Its base is bert-base-cased and it predates BookNLP's `[CAP]` token — predictors/
+#    booknlp_predict.py carries the detail and verifies it on load, so do not "fix" the
+#    filename to look like BookNLP's own.
+PLUS="$DEST/booknlp_plus_split_2.model"
+if [ -s "$PLUS" ]; then
+  echo "already present: $PLUS"
+else
+  curl -fL --max-time 1800 -o "$PLUS" \
+    https://huggingface.co/bodyanats/booknlp-plus-speaker-attribution/resolve/main/leave-x-out/split_2/best_model.model
+fi
 
 du -sh "$DEST" 2>/dev/null || true
 echo "HF cache: ${HF_HOME:-$HOME/.cache/huggingface}"
