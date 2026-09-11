@@ -55,8 +55,10 @@ already `In progress`.
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
+| QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
+| QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
 
-Next free ID: **QUI-043**
+Next free ID: **QUI-045**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -4419,6 +4421,20 @@ front of ears, and it takes any two candidates.
 
 ## QUI-040 — TTS on the GPU or the DSP, not the CPU
 
+> **Resolved by research, 2026-09-11 — the answer is two engines, not one.** Post-training
+> int8 on a transposed-convolution vocoder (HiFi-GAN/VITS) produces severe metallic phase
+> artifacts, so a single int8 graph is out. The shape to build is **split execution**: the
+> acoustic model (text → mel) in int8 on the Hexagon DSP via `libQnnHtp.so`, and the vocoder
+> in fp16 on the Adreno GPU via `libQnnGpu.so`. Budget for two sessions and the handoff
+> between them, not one.
+>
+> **And `Ort::GetAvailableProviders()` does not answer the question this ticket is most
+> likely to get wrong.** It confirms only that the provider was *compiled in*. To prove a
+> node actually ran off the CPU, enable `ORT_LOGGING_LEVEL_VERBOSE` or parse
+> `session.GetProfilingOutput()` and confirm placement on `QnnExecutionProvider`. Every
+> benchmark row in this ticket's Worklog must be backed by one of those, not by a throughput
+> number that looks plausible.
+
 **Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
 **PRD:** §5 · **Timebox:** 3 days
 
@@ -4491,6 +4507,35 @@ Scenario: A negative result closes the question
 ---
 
 ## QUI-041 — Encoder attribution: the 110M joint-scoring model
+
+> **Resolved by research, 2026-09-11.** Three answers, and one instruction that must not be
+> followed literally.
+>
+> **The 94.5% assumes gold candidate lists.** End to end, with cast discovery feeding it, the
+> realistic figure is **82–85%**, and **~60% on modern novels it has not seen**. That is still
+> far above anything we have, and it is not 94.5%. Plan against 82–85%.
+>
+> **No public ONNX checkpoint exists for arXiv:2608.02359.** Use
+> `bodyanats/booknlp-plus-speaker-attribution` (BERT-base, 413 MB fp32) as the baseline to
+> benchmark through the harness. Reimplementing the paper is not in this timebox.
+>
+> **Abstention is mandatory and is a product rule, not a tuning knob.** The model must never
+> be asked for a forced choice: below **P(character) < 0.75** the line goes to the narrator.
+> The reasoning is sharper than ours was — under QUI-042 a confidently wrong voice is not just
+> heard, it is *paid for*, because it was rendered by a metered cloud API.
+>
+> ⚠️ **"Run inference strictly on extracted dialogue quotes" would destroy attribution and
+> must not be implemented as written.** Our single best signal is the speech tag, and the tag
+> is not in the quote — `Names.tagName(segment.before, segment.after)` reads the prose either
+> side of it. `"Yes."` carries nothing; `"Yes," said Elizabeth` carries everything, and the
+> part that carries it is the half outside the quotation marks. Stripping prose would remove
+> the rule that scores **99.0%** and leave the encoder guessing from the words spoken.
+>
+> The intent behind it is sound and worth keeping: **do not run the transformer over the whole
+> book.** Run it over a *window centred on each quotation* — the quotation plus the prose
+> around it — which is the same ~3,000 inferences per book and the same sub-3-minute budget,
+> without discarding the evidence. This ticket implements the window, and says so here because
+> the directive as phrased would look like it was being ignored.
 
 **Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
@@ -4567,6 +4612,22 @@ Scenario: The decision is recorded either way
 ---
 
 ## QUI-042 — Bring-your-own-key cloud voices
+
+> **Approved as the V1 architecture, 2026-09-11**, in the shape this repository proposed:
+> **cloud voices for dialogue, the local engine for narration.** Dialogue is ~25% of the word
+> count and carries ~90% of the emotional weight, so the quality goes where it is heard and
+> the metered spend is a quarter of sending the whole book.
+>
+> Two acoustic requirements came back with the approval, and they are what make the seam
+> inaudible rather than merely functional:
+>
+> * **Normalise every buffer to −16 to −18 LUFS**, local and cloud alike. This is the standard
+>   mobile audiobook target and it is what stops the cast sounding louder than the narrator.
+> * **Cross-fade across the local/cloud sentence boundary with low-level comfort noise** —
+>   an active fade at the seam, *not* a continuous noise floor laid under the whole book.
+>
+> That changes this ticket's shape: it is no longer "a second backend a power user might
+> enable", it is the default path for dialogue, and the mixing is part of the deliverable.
 
 **Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §6 (V2 scope, brought forward by the 2026-09-10 memo) · **Timebox:** 5 days
@@ -4646,6 +4707,124 @@ Scenario: The reversal is recorded
   Given ADR-0010
   When I read it
   Then it states what CLAUDE.md §8 and PRD §6 said, who authorised the change, and what stayed
+```
+---
+
+## QUI-043 — A modern-prose test set we are allowed to keep
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-041
+**PRD:** §4 · **Timebox:** 2 days
+
+### User story
+As a team, I want a dialogue test set written after 1934, so that every accuracy figure we
+quote stops being a claim about Edwardian literary fiction.
+
+### Context (why)
+Confirmed by research 2026-09-11: **no open gold-standard post-1934 dialogue corpus exists**,
+and copyright is why. PDNC is 28 novels ending in 1934, weighted to literary fiction, and
+`Holdouts.External` — the slot for books unlike it — has been empty since QUI-028 opened it.
+Every out-of-domain number we owe anyone is blocked on this, and the research reply puts the
+encoder at **~82–85% in domain and ~60% on modern novels**, which is exactly the gap this
+would measure rather than estimate.
+
+### Description (what)
+A silver-standard set: ten modern EPUBs labelled off-device by a frontier model, stored as
+offsets rather than text, scoreable by the same harness as PDNC.
+
+### Requirements (how)
+- Owns: `tools/build-silver-set.sh`, `fixtures/silver/` (offsets only), and a
+  `Holdouts.External` implementation in `spike/pipeline/bakeoff/Holdouts.kt`.
+- **Store offsets and speaker labels, never prose.** CLAUDE.md §8 forbids committing book
+  text and this does not bend it: the artefact is `(book fingerprint, char offset, speaker)`,
+  useless without the reader's own copy of the book, and that is the point.
+- Labelling runs **off-device, once, by a frontier model**, and its output is checked by hand
+  before it is called a fixture. Silver means silver: record the spot-check rate in the ticket.
+- The ten books are chosen for what PDNC lacks, not for convenience: contemporary genre
+  fiction, translated work, first person, and at least one with a large cast.
+- Score it through `bakeoff --answers`, the same path as everything else.
+- Out of scope: publishing the set, and any use of it as training data.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: No book text is committed
+  Given the fixture set
+  When the repository is inspected
+  Then it holds offsets, fingerprints and speaker labels, and no prose
+
+Scenario: It measures what PDNC cannot
+  Given the ten books
+  When their composition is described
+  Then it names how each differs from PDNC — period, genre, person, translation, cast size
+
+Scenario: The labels are known to be silver, not gold
+  Given labels produced by a model
+  When the set is used
+  Then the ticket records the hand-checked sample size and the disagreement rate found
+
+Scenario: Every candidate can be scored on it
+  Given a candidate already scored on PDNC
+  When it is scored on the silver set
+  Then the harness reports the same coverage, precision and wrong-voice columns
+```
+
+---
+
+## QUI-044 — Screen voice quality without a listen
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**PRD:** §5 · **Timebox:** 1 day
+
+### User story
+As an engineer choosing between speech models, I want a quality number on the build machine,
+so that only the candidates worth hearing reach a person's ears.
+
+### Context (why)
+Our speed screening is cheap and host-side, which is why eight engines got measured; our
+quality screening is one person listening once, which is why the engine we shipped turned out
+not to be audiobook grade. That asymmetry is the reason this project over-optimised throughput
+and under-tested the thing the product is judged on.
+
+Research answered it 2026-09-11: **UTMOSv2** (`sarulab-speech/UTMOSv2`, Apache 2.0),
+reference-free MOS prediction, run host-side, with **3.5 MOS as the bar a candidate must clear
+before it is staged to hardware**.
+
+### Description (what)
+A `spike/hostbench` command that scores rendered audio and prints MOS beside the RTF numbers
+already there, so the screening table has both axes.
+
+### Requirements (how)
+- Owns: `spike/hostbench/mos.py`, a column in `spike/hostbench/README.md`'s screening table,
+  and one line in `tools/fetch-models.sh` if the checkpoint needs fetching.
+- **Score the incumbent first.** Piper `libritts_r` medium is the model a person has already
+  judged as not audiobook grade. If UTMOSv2 does not place it below a model judged better, the
+  screen does not work and that is the finding — say so rather than shipping it.
+- Score on **narration-length audio**, not single sentences: the bar is long-form listening and
+  a metric validated on short utterances may not carry. Use the passages `listen.py` renders.
+- **A MOS number never overrides a listen.** It is a filter that decides what gets heard, and
+  the ticket must say so where someone will read it before quoting a score as a result.
+- Out of scope: choosing an engine. This ticket builds the instrument.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The instrument is calibrated against a known judgement
+  Given Piper libritts_r, judged by ear as not audiobook quality
+  When UTMOSv2 scores it
+  Then its score is recorded, and stated against the 3.5 bar
+
+Scenario: It ranks rather than merely rates
+  Given two engines a person has ranked by ear
+  When both are scored
+  Then the Worklog says whether the metric put them in the same order
+
+Scenario: Long-form, not one sentence
+  Given a candidate
+  When it is screened
+  Then the audio scored is minutes of narration, and its length is recorded
+
+Scenario: The limit is written down
+  Given the README
+  When an engineer reads the screening table
+  Then it says a MOS score filters candidates and never settles a choice
 ```
 ---
 
