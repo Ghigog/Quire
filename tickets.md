@@ -5007,6 +5007,46 @@ cd spike/pipeline && gradle installDist
 build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast ~/.cache/quire/pdnc/data/*/
 ```
 
+**2026-09-11 — `quire-dialogue-attribution`.** The co-occurrence half, per Product Leadership's
+2026-09-10 memo (directive 3). **It works and it is weak**, and the memo's prediction —
+">90% of characters with high statistical confidence" — does not hold with this method.
+
+The memo's diagnosis was that "real-time sliding window rules fail". The scan is neither
+real-time nor a sliding window: `Roster.scan` already walks the whole book at import and
+carries anaphora across paragraph breaks. What it actually did was **throw away every
+sentence naming two people** (`names.size > 1 -> pending = null`), and in dialogue that is
+most sentences. That is the real gap and it is what this closes.
+
+Sentences naming several people now credit the pronoun to the nearest name preceding it, into
+a **separate channel** that is consulted only where the strong rule declined and can never
+overturn it. Kept apart because it is wrong often — "Elizabeth told Darcy that she would not"
+credits Darcy — and usable only in volume.
+
+```
+setting                 coverage  accuracy   right sex heard
+none (as shipped)          83.7%     91.4%             84.7%
+MIN=4 MAJ=0.80             84.5%     91.5%             85.1%
+MIN=3 MAJ=0.75  <- taken   85.3%     91.1%             85.1%
+MIN=3 MAJ=0.65             86.3%     91.0%             85.4%
+MIN=2 MAJ=0.70             86.9%     90.7%             85.4%
+MIN=2 MAJ=0.60             88.5%     90.5%             85.8%
+MIN=1 MAJ=0.70             89.8%     90.0%             85.9%
+```
+
+**Every row improves, and none of them improves much** — 1.2 points of right-sex-heard across
+the whole range. `MIN=3 MAJ=0.75` is taken because it is the loosest setting that costs no
+accuracy, which this ticket's acceptance criteria require. The looser rows are a product
+choice rather than an engineering one: `MIN=1 MAJ=0.70` reaches the memo's 90% coverage
+target, but at 90.0% accuracy rather than at high confidence, so it buys 0.8 points of
+right-sex-heard by making 1.4 points more of the cast confidently wrong.
+
+**What this says about the directive.** Nearest-preceding-name is the cheap approximation of a
+co-occurrence graph and it is too noisy to reach the memo's bar. Getting past ~86% needs real
+coreference — pronoun resolution that knows "she" refers to the subject rather than the last
+noun — which is a model, not a rule, and belongs with the encoder work rather than here.
+
+Reproduce: `cd spike/pipeline && build/install/quire-pipeline-spike/bin/quire-pipeline-spike cast ~/.cache/quire/pdnc/data/*/`
+
 ---
 
 ## QUI-036 — Voice foundry: generate a voice, don't pick one

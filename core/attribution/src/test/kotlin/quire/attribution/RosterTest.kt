@@ -93,6 +93,19 @@ class RosterTest {
     }
 
     @Test
+    fun `co-occurrence never overturns a counted pronoun`() {
+        // The weak channel exists to reach names the strong rule declined. It is noisy by
+        // construction — "Elizabeth told Darcy that she would not" credits Darcy — so it is
+        // only ever consulted where there is nothing better, and this fixes that in place.
+        val cast = Roster.scan(paragraphs(
+            "\"Quite so,\" said Hollis.",
+            "Hollis buttoned his coat.",
+            *Array(6) { "Marguerite turned to Hollis, and she said nothing." },
+        ))
+        assertEquals(Gender.MALE, cast.genders["Hollis"])
+    }
+
+    @Test
     fun `a name drawing both pronouns is left unknown rather than guessed`() {
         // Two people sharing a surname is the usual cause, and picking one would put a
         // character in the wrong voice for a whole book.
