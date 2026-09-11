@@ -53,7 +53,7 @@ already `In progress`.
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
-| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
+| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In progress | quire-dialogue-attribution | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
@@ -4537,7 +4537,7 @@ Scenario: A negative result closes the question
 > without discarding the evidence. This ticket implements the window, and says so here because
 > the directive as phrased would look like it was being ignored.
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
+**Status:** In progress · **Owner:** quire-dialogue-attribution · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
 
 ### User story
