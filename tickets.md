@@ -51,7 +51,7 @@ already `In progress`.
 | QUI-036 | Voice foundry: generate a voice, don't pick one | Spike | Done | — | — |
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
-| QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | In review | — | QUI-028, QUI-037 |
+| QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
@@ -4199,7 +4199,7 @@ device number.
 
 ## QUI-039 — Listening test: what the wrong-voice rate sounds like
 
-**Status:** In review · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-028, QUI-037
+**Status:** Done · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-028, QUI-037
 **PRD:** §2 Phase 2 step 3 · **Timebox:** 1 day
 
 ### User story
@@ -4370,6 +4370,50 @@ build/install/quire-pipeline-spike/bin/quire-pipeline-spike listen
 cd ../hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
 python3 listen.py ../pipeline/build/listen/script.json --wav-dir ../../build/listen
 ```
+
+**2026-09-11 — verdict, from the product owner.** A = `tier1`, B = `tier1+alternation`. Four
+findings, and the last one is the one that matters to the design.
+
+**1. The engine is the problem, not the attribution.** "The quality in general of piper is quite
+bad. It... works, but it's not audiobook quality." That is the headline and it is about ADR-0002,
+not this ticket. It is question 01 of the research brief.
+
+**2. The narrator fallback is endorsed, where the speaker is genuinely unknown.** "Having the
+narrator say lines of people who we don't know makes total sense and sounds much better than
+having another character say them accidentally." So the principle behind ADR-0005 holds.
+
+**3. Wrong-sex voices were heard, and most of what was heard was the test rig.**
+`spike/hostbench/listen.py` casts by spreading names across the speaker range with **no gender
+awareness at all** — deliberate, to hold casting constant between A and B, and documented as
+crude, but the consequence is that this listen overstated the defect. The app's own path is
+gender-aware. It is still a real defect in the app, just a smaller one, and it is QUI-035, which
+has since moved the cast heard in the right sex from 71.6% to 85.1%.
+
+**4. The conservative rendering was judged to contain *more* mistakes.** "I couldn't really tell
+them that much apart. disagreement A maybe had more mistakes, slightly." **A is Tier 1**, and on
+all ten differing lines A declined and gave them to the narrator. So the listener, hearing a
+rendering whose only difference was more narrator and fewer guesses, rated it slightly *worse*.
+
+**Point 4 contradicts the premise the attribution design is built on.** ADR-0005 prices a wrong
+voice as the expensive failure and a narrator line as nearly free, and PRD §2 Phase 2 encodes the
+same instinct in its 0.65 / 0.40 confidence gates. Held against point 2, the real rule appears to
+be narrower than assumed: **a narrator line is cheap only when the listener cannot tell who is
+speaking.** Where the speaker is obvious from the page and the app reads it in the narrator's
+voice anyway, that registers as a miss too. Declining is not free; it is cheaper.
+
+That does not overturn ADR-0005 on this evidence — n=1 listener, 10 differing lines, and the
+difference was described as slight. What it does is remove the assumption's free pass. The gates
+in PRD §2 Phase 2 were set by argument, and this says the argument was at best half right.
+
+**Recommendation unchanged in direction, weaker in confidence.** QUI-028's conclusion was to ship
+`tier1` and hand the conventions to a model as a prior rather than as an answer. Point 4 tilts
+slightly the other way — towards answering more often — but not far enough to act on from one
+listen. The honest next step is not another A/B of these two settings; it is fixing the engine,
+because the listener's first and strongest reaction was to the synthesis and not to who was
+speaking.
+
+**Ticket closed.** The harness stays: it is the only way to put a question about attribution in
+front of ears, and it takes any two candidates.
 
 ---
 
