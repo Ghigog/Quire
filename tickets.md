@@ -55,8 +55,9 @@ already `In progress`.
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
+| QUI-043 | Host-side MOS screening for TTS candidates | Quality | Todo | — | QUI-017 |
 
-Next free ID: **QUI-043**
+Next free ID: **QUI-044**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -4513,6 +4514,14 @@ window at once instead of generating token by token, so ~110M parameters at fp16
 220 MB and milliseconds of work — and it needs no int8, which on this SoC is the trap
 (QUI-040). **If it transfers, the attribution wall is gone.**
 
+**Read the 2026-09-11 Worklog entry below before budgeting against 94.5%.** That number has
+still never been reproduced or explained — `arxiv.org` is refused at the proxy and no
+checkpoint matching the claim has been found — and the one public PDNC-trained encoder that
+reports held-out-novel numbers gets **60.5%**, with a 24.9-point in-domain premium that
+plausibly accounts for the whole difference. The ticket is still worth doing; its premise is
+now an open question rather than a result. See
+[`docs/handoff/2026-09-11-engineering-spec-review.md`](docs/handoff/2026-09-11-engineering-spec-review.md) §1.
+
 ### Description (what)
 The encoder, scored on the same 36,970 PDNC quotations every other candidate was scored on, and
 then on prose PDNC does not contain, with a verdict on whether it runs inside the import budget.
@@ -4534,6 +4543,11 @@ then on prose PDNC does not contain, with a verdict on whether it runs inside th
 - Then the budget: export to ONNX fp16, and measure load time, peak RSS and wall-clock for a
   100k-word novel **at import**, not during playback — import is where attribution runs
   (`BookImport`), and it has seconds to spend rather than milliseconds.
+- **Score `bodyanats/booknlp-plus-speaker-attribution` whether or not the paper's checkpoint
+  ever arrives.** Apache-2.0, BERT-base, 413 MB fp32, trained on PDNC with a published
+  leave-novels-out evaluation. It is the best available encoder we have not measured, and it
+  is a real number in the same column as SpanBERT's 41.4% and BookNLP `small`'s 55.1% wrong
+  voice. Its five fold checkpoints are 414 MB each; take one fold, not five.
 - Out of scope: replacing Tier 1. Tier 1 is 93.2% precise and free; this fills what it declines.
 
 ### Acceptance criteria (Gherkin)
@@ -4562,6 +4576,57 @@ Scenario: The decision is recorded either way
   Given the result
   When ADR-0005 is amended
   Then it says whether the SLM keeps any attribution job at all
+```
+
+### Worklog
+
+**2026-09-11 — `inspiring-einstein`.** No code. Responding to the researchers' 2026-09-11
+Engineering Handoff Specification, which makes this ticket its Sprint 1 and restates 94.5% as
+settled. Two findings, both from published artefacts, no download taken.
+
+**1. The paper is still unreachable and the checkpoint is still unnamed.** `arxiv.org` is
+refused at the proxy (`CONNECT` 403), `export.arxiv.org` and `api.semanticscholar.org` the
+same, and `huggingface.co/api/papers/2608.02359` 404s. Hub searches for `quotation
+attribution`, `speaker attribution`, `PDNC`, `dialogism` and `quote attribution` surface no
+joint-scoring encoder. The spec names `microsoft/deberta-v3-small` as the backbone with an
+"e.g.", which is a guess and not a citation. Asked back as question 1 of the review note.
+
+**2. The best available PDNC encoder gets 60.5% on unseen novels, and the in-domain premium
+is ~25 points.** `bodyanats/booknlp-plus-speaker-attribution` (Apache-2.0, BERT-base,
+413.85 MB fp32, five-fold leave-novels-out) publishes `evaluation_results.json`:
+
+```
+fold   dev acc   test acc     gap
+  0     83.9%      62.3%     +21.6
+  1     87.1%      54.3%     +32.8
+  2     84.1%      72.5%     +11.6
+  3     85.8%      56.9%     +28.9
+  4     86.6%      56.8%     +29.8
+ mean   85.5%      60.5%     +24.9
+```
+
+Same model, same corpus, same code; the only variable is whether the test novels were in
+training. At ~full coverage 60.5% accuracy is **~40% wrong voice**, which is SpanBERT's 41.4%
+again. Three independent BERT-class encoders now give the same answer, and a within-novel
+split is the most likely explanation for a published 94.5%.
+
+Its fp32 size also confirms the spec's sizing arithmetic: ~110M parameters, ~207 MB at fp16.
+Size was never the problem.
+
+*What this leaves for the next session,* in order:
+
+1. **Score the BookNLP+ fold-2 checkpoint through `bakeoff --answers`.** It needs no answer
+   from the researchers, it is one 414 MB download, and it converts the table above into our
+   own coverage / precision / wrong-voice columns, alias-folded, split by `quoteType`. If it
+   abstains at all, the threshold sweep ADR-0005 ran on SpanBERT is the next thing to run on
+   it — that is the only mechanism by which any encoder gets near Tier 1's 2.1%.
+2. **Only then, the paper's checkpoint,** if question 1 comes back with one.
+
+*Reproducing the two numbers above:*
+
+```sh
+curl -sSL https://huggingface.co/bodyanats/booknlp-plus-speaker-attribution/raw/main/evaluation_results.json
+curl -sS "https://huggingface.co/api/models/bodyanats/booknlp-plus-speaker-attribution?blobs=true"
 ```
 
 ---
@@ -5777,3 +5842,86 @@ Scenario: The corpus is counted, not estimated
   Two regression tests cover both paths — a dense scene that must cut at narration, and an
   unbroken run that cannot. Root and `spike/pipeline` suites green.
   Reproduce: `cd spike/pipeline && gradle run --args="scenes"`.
+
+---
+
+## QUI-043 — Host-side MOS screening for TTS candidates
+
+**Status:** Todo · **Owner:** — · **Epic:** Quality · **Depends on:** QUI-017
+**PRD:** §5 · **Timebox:** 1 day
+
+### User story
+As an engineer screening speech engines, I want a candidate ranked automatically on the build
+machine before it costs a device hour, so that the obviously bad ones never reach a listening
+test.
+
+### Context (why)
+The researchers' 2026-09-11 specification, §4B. `spike/hostbench` already screens candidates
+on cost — RTF, load time, size — and killed two before they cost a build, an install and a
+listen. It has nothing to say about whether a candidate *sounds* like anything, which is the
+bar QUI-039 established and the one ADR-0002 recorded a deviation against.
+
+A reference-free MOS estimator closes that half. It is cheap, it runs in this container, and
+it is the one directive in the specification that needs nothing from the device.
+
+**Two corrections to the specification, both checked 2026-09-11.**
+
+The model id it names, `sarulab-speech/UTMOS-sinc56-utmos-strong`, does not exist — the Hub
+API returns 401. What is published is `sarulab-speech/UTMOSv2`, plus community mirrors of the
+UTMOS22 strong learner (`vokra/utmos22-strong`, `Blinorot/UTMOS-PyTorch`,
+`TigreGotico/utmos-onnx`).
+
+And its **3.5 absolute rejection threshold is a host number quoted at a product bar**, which
+CLAUDE.md §1.6 forbids. UTMOS is trained on MOS listening data for short synthesis-comparison
+clips, not long-form narration, and `spike/hostbench/README.md` already qualifies exactly this:
+ratios within a tier and sample rate transfer well, absolutes do not. So this ticket builds a
+**screen, not a gate** — it ranks candidates and kills the clearly bad, and it never approves
+anything. QUI-039 exists because the listen found what the numbers could not.
+
+### Description (what)
+A script in `spike/hostbench` that renders a fixed narration passage through each candidate,
+scores it, and adds a MOS column to the bench table — reported beside RTF rather than instead
+of it.
+
+### Requirements (how)
+- Owns: `spike/hostbench/` (the scoring script, its README row and the results table). No
+  other module.
+- **Fixed passage, fixed seed, same text for every candidate.** A MOS estimate is only
+  comparable against itself; a candidate scored on different prose is not screened, it is
+  guessed at. Use a passage from the generated fixture EPUB (`spike/indexer`), never a real
+  book — CLAUDE.md §8.
+- **Report the spread, not a single score.** Per-utterance scores over at least 10
+  utterances, with median and range. A single number hides the variance that decides whether
+  a difference is real.
+- **State Piper `libritts_r`'s score as the control on every run.** It is the engine we ship
+  and the one candidate whose quality a human has actually judged (QUI-039), so it is what
+  every other score means anything relative to.
+- **No threshold in the script.** It prints a ranking. A human reads it. If a candidate is to
+  be rejected, the Worklog says who rejected it and why.
+- Model fetched by a documented script in `/tools/` like every other model; nothing committed.
+  `HF_HUB_DISABLE_XET=1` or the download hangs (CLAUDE.md §9).
+- Out of scope: putting this in CI, and any change to what ships. Wire it into CI in a later
+  ticket once the ranking has been sanity-checked against a listen.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: A candidate is ranked against the shipped control
+  Given a TTS candidate and Piper libritts_r
+  When the screen runs
+  Then both are scored on the same passage and the result names Piper as the control
+
+Scenario: The spread is visible
+  Given a scored candidate
+  When its result is written
+  Then it reports a median and a range over at least 10 utterances, not one number
+
+Scenario: The screen does not approve anything
+  Given a candidate scoring above any threshold
+  When the script finishes
+  Then it has rejected and approved nothing, and the decision is recorded by a human
+
+Scenario: The estimate is not quoted at an SLA
+  Given a MOS figure
+  When it appears in a document
+  Then it is labelled a host-side estimate and no product bar is stated against it
+```
