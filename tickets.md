@@ -52,8 +52,11 @@ already `In progress`.
 | QUI-037 | Voice foundry: descriptor → generated voice | Audio | In review | voice-generation-foundry | QUI-032, QUI-036 |
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | In review | — | QUI-028, QUI-037 |
+| QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
+| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | Todo | — | QUI-028 |
+| QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 
-Next free ID: **QUI-040**
+Next free ID: **QUI-043**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -4368,6 +4371,238 @@ cd ../hostbench && ./fetch-models.sh vits-piper-en_US-libritts_r-medium
 python3 listen.py ../pipeline/build/listen/script.json --wav-dir ../../build/listen
 ```
 
+---
+
+## QUI-040 — TTS on the GPU or the DSP, not the CPU
+
+**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**PRD:** §5 · **Timebox:** 3 days
+
+### User story
+As a listener, I want synthesis to sound like an audiobook rather than like a speech engine, so
+that I finish the book instead of giving up on it.
+
+### Context (why)
+Product Leadership's 2026-09-10 memo, directive 1. ADR-0002 accepted Piper `libritts_r` with a
+recorded deviation: RTF 0.354 against a 0.15 budget, load 2,524 ms against 800 ms. The listen on
+2026-09-10 added the finding the numbers could not: **it is not audiobook quality**, which is the
+product's non-negotiable bar. Every engine we screened that might be better is 6–23× Piper's cost
+(`spike/hostbench/README.md`), so on the CPU there is nothing left to find.
+
+Every one of those measurements is CPU-only, and every candidate came out of `sherpa-onnx`'s
+model zoo. The Snapdragon 750G also has an **Adreno 619 GPU and a Hexagon 694 DSP**, and neither
+has ever been asked to do anything.
+
+> **Do not cite our int8 result against this.** Kokoro int8 measuring 2.46× *slower* than fp32
+> was a CPU result and the cause was the missing `i8mm`: with no fused int8 kernel the graph pays
+> dequantize/requantize around every operator. On the Hexagon HTP int8 is the native path and
+> that overhead is the thing that disappears. The finding argues *for* this ticket.
+
+### Description (what)
+A measurement of what the GPU and the DSP can actually do on the reference device, and a verdict
+on whether any engine better than Piper gets inside the RTF and TTFS budgets on one of them.
+
+### Requirements (how)
+- Owns: `spike/ttsbinding/` (the probe and its engine loader), `docs/adr/0002-tts-engine.md`
+  (an amendment, not a rewrite), and a new `spike/hostbench` row per candidate screened.
+- **Put QNN ahead of NNAPI and SNPE.** NNAPI is deprecated as of Android 15, which is what the
+  reference device runs, so targeting it is building on a sunset API. ONNX Runtime's **QNN
+  execution provider** targets Hexagon directly and is the live path for new Qualcomm work;
+  SNPE is the older SDK. Confirm this before building — it is the kind of fact that moves — and
+  if QNN will not load, say so with the error rather than falling back silently to CPU.
+- **Report what provider actually ran.** An execution provider that fails to initialise falls
+  back to CPU and reports nothing; a 0.354 RTF "on the GPU" that is really the CPU again is the
+  most likely wrong answer this ticket can produce. Log the resolved provider per session and
+  put it in the Worklog beside every number.
+- Candidates, under GPU/DSP only: Piper `libritts_r` first, as the control with a known CPU
+  number; then Matcha-TTS and StyleTTS 2, both flow-matching architectures the memo names.
+- Measure per candidate per provider: RTF, load time, peak RSS, on-disk size, and **whether it
+  sounds better than Piper** — judged by ear on the device, because that is the bar and no
+  number stands in for it.
+- Out of scope: cloud synthesis (QUI-042), and any change to what ships before this reports.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The provider that ran is named
+  Given a benchmark row
+  When it is recorded
+  Then it names the execution provider that actually initialised, not the one requested
+
+Scenario: The control is measured first
+  Given Piper libritts_r, whose CPU numbers are known
+  When it runs on the GPU or the DSP
+  Then its RTF and load time are stated against the 0.354 and 2,524 ms already recorded
+
+Scenario: A candidate is judged by ear, not only by RTF
+  Given a candidate that meets RTF 0.15 on some provider
+  When it is assessed
+  Then the Worklog says whether it sounds better than Piper on the reference device
+
+Scenario: A negative result closes the question
+  Given no provider and no candidate reaches audiobook quality inside the budgets
+  When the ADR amendment is written
+  Then it says so plainly, and says what that leaves for QUI-042
+```
+
+---
+
+## QUI-041 — Encoder attribution: the 110M joint-scoring model
+
+**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
+**PRD:** §2 Phase 1 · **Timebox:** 4 days
+
+### User story
+As a listener, I want the three quarters of dialogue that carries no speech tag to reach the
+right character, so that a conversation sounds like a conversation rather than like a narrator
+occasionally interrupted.
+
+### Context (why)
+Product Leadership's 2026-09-10 memo, directive 2. QUI-028 closed the generative route on
+measurement: 37.5% precision at 1B, 41.0% at 3B, and the 3B is 1.9 GB against a 1.2 GB working
+set. Rules reach 26.8% of quotations at 93.2% and 56.5% of quotations get no answer from any
+rule at all.
+
+The literature reports a BERT-class encoder with joint scoring at **94.5% on PDNC**, 20× faster
+than standard methods and over 1000× faster than LLM approaches
+([arXiv:2608.02359](https://arxiv.org/abs/2608.02359)). A bidirectional encoder reads the whole
+window at once instead of generating token by token, so ~110M parameters at fp16 is roughly
+220 MB and milliseconds of work — and it needs no int8, which on this SoC is the trap
+(QUI-040). **If it transfers, the attribution wall is gone.**
+
+### Description (what)
+The encoder, scored on the same 36,970 PDNC quotations every other candidate was scored on, and
+then on prose PDNC does not contain, with a verdict on whether it runs inside the import budget.
+
+### Requirements (how)
+- Owns: `spike/pipeline/predictors/` (a new predictor), and `docs/adr/0005-attribution-model.md`
+  (an amendment recording what this does to the decision).
+- **Score it through the existing harness and nothing else.** `bakeoff --candidate <name>
+  --answers DIR` already takes any outside predictor's TSV, and `dump` already writes paragraph
+  text, quotation offsets and scenes with **no gold speakers**, so a predictor cannot score
+  itself. Use both. A second scoring path is how the measured Tier 1 and the shipped one quietly
+  stop agreeing.
+- Report coverage, precision and **wrong voice** = coverage × (1 − precision), split by PDNC's
+  `quoteType`, against the table in QUI-028's Worklog. Note that those figures are
+  alias-folded; a predictor naming a character by an alias the novel uses is not wrong.
+- **Measure out-of-domain separately and treat it as the real number.** PDNC stops at 1934 and
+  is weighted to literary fiction. `Holdouts.External` is the empty slot for books unlike it;
+  filling it needs a decision, because CLAUDE.md §8 forbids committing book text.
+- Then the budget: export to ONNX fp16, and measure load time, peak RSS and wall-clock for a
+  100k-word novel **at import**, not during playback — import is where attribution runs
+  (`BookImport`), and it has seconds to spend rather than milliseconds.
+- Out of scope: replacing Tier 1. Tier 1 is 93.2% precise and free; this fills what it declines.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: Scored on the same questions as everything else
+  Given the encoder's answers
+  When they are scored
+  Then they go through bakeoff --answers over all 36,970 quotations
+  And coverage, precision and wrong voice are stated beside QUI-028's table
+
+Scenario: The published number is either reproduced or not
+  Given the paper reports 94.5% on PDNC
+  When our measurement is written up
+  Then it says what we got and, if it differs, what we think differs about the setup
+
+Scenario: Out-of-domain degradation is quantified
+  Given books unlike PDNC
+  When the encoder is scored on them
+  Then that figure is reported apart from the PDNC one and called the expected real-library number
+
+Scenario: It fits the import budget, or does not
+  Given the ONNX fp16 export
+  Then load time, peak RSS and wall-clock for a 100k-word novel are recorded against QUI-007's budget
+
+Scenario: The decision is recorded either way
+  Given the result
+  When ADR-0005 is amended
+  Then it says whether the SLM keeps any attribution job at all
+```
+
+---
+
+## QUI-042 — Bring-your-own-key cloud voices
+
+**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
+**PRD:** §6 (V2 scope, brought forward by the 2026-09-10 memo) · **Timebox:** 5 days
+
+### User story
+As a reader who cares more about voice quality than about staying offline, I want to point Quire
+at my own speech API key, so that I get studio-grade narration without waiting for a 2020 SoC to
+become capable of it.
+
+### Context (why)
+Product Leadership's 2026-09-10 memo, directive B. This reverses a standing rule, so it is worth
+stating exactly what changes and what does not.
+
+**CLAUDE.md §8 forbids adding cloud services without a ticket and an ADR, and PRD §6 puts cloud
+TTS in V2.** The memo is the authorisation; this ticket and its ADR are what §8 asks for. The
+privacy mandate is not being dropped — the offline tier remains the default and the only tier
+that needs no configuration.
+
+What makes this tractable now is that **indexing already happens locally and stays local**
+(`BookImport`). The cloud tier is a synthesis backend, so what would leave the device is the
+text of the line being spoken — not the book, not the index, not the cast. That distinction is
+the whole design and the ADR has to be explicit about it.
+
+### Description (what)
+A second synthesis backend, off by default, configured with a user's own endpoint and key, that
+the player can use in place of the local engine. Plus the ADR recording the reversal.
+
+### Requirements (how)
+- Owns: `docs/adr/0010-cloud-voices.md` (new), a synthesis-backend seam in
+  `spike/ttsbinding/TtsEngine.kt`, and the settings screen in `MainActivity.kt`.
+- **Write the ADR first and land it separately.** It must say: what leaves the device and what
+  never does; that the offline tier stays the default; what happens to a reader's key; and what
+  the failure mode is when the network is gone mid-chapter.
+- **One provider-shaped contract, not one integration per vendor.** Endpoint, key, voice
+  identifier, and an audio format. The memo names ElevenLabs, OpenAI and Sesame CSM; a custom
+  endpoint wrapper has to be as well supported as any of them, or this becomes three
+  integrations to maintain.
+- **A key is a secret and the logs are not.** Never log it, never put it in a crash report, and
+  keep it out of anything `adb logcat` can see. Store it where Android stores secrets.
+- **Falling back must be audible, not silent.** A dead network mid-chapter drops to the local
+  engine; the reader hears the voice change and that is correct, because pausing the book is
+  worse. Say so in the UI once, not per line.
+- **Latency is the real risk, not quality.** A per-line round trip against an 800 ms TTFS budget
+  needs the ring buffer reading ahead, and a cost per book the reader can see before they start.
+  Measure both.
+- Out of scope: Quire-hosted inference, any key we supply, and sending anything but the current
+  line.
+
+### Acceptance criteria (Gherkin)
+```gherkin
+Scenario: The offline tier is untouched
+  Given no key configured
+  When a book is read aloud
+  Then behaviour is byte-for-byte what it was before this ticket
+
+Scenario: What leaves the device is only the line being spoken
+  Given a configured cloud backend
+  When a chapter is synthesised
+  Then the request carries the line's text and nothing identifying the book, the reader or the cast
+
+Scenario: A key never reaches a log
+  Given a configured key
+  When the app logs, crashes, or is inspected with adb logcat
+  Then the key does not appear
+
+Scenario: Losing the network does not stop the book
+  Given playback on the cloud tier
+  When the network goes away
+  Then synthesis continues on the local engine and the reader is told once
+
+Scenario: The reader knows what it costs before starting
+  Given a book and a configured provider
+  When the reader enables the cloud tier for it
+  Then an estimated character count and cost are shown first
+
+Scenario: The reversal is recorded
+  Given ADR-0010
+  When I read it
+  Then it states what CLAUDE.md §8 and PRD §6 said, who authorised the change, and what stayed
+```
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats
