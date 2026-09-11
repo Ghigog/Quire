@@ -4,6 +4,7 @@ import java.io.File
 import quire.attribution.scenes.SceneSegmenter
 import quire.attribution.scenes.SceneSplitter
 import quire.spike.Pdnc
+import quire.spike.Tier1
 
 /**
  * The `bakeoff` command (QUI-028): score a candidate across the whole corpus, with the
@@ -84,6 +85,15 @@ object BakeoffCli {
                         """{"id":${jsonString(q.id)},"paragraph":${q.paragraph},""" +
                             """"start":${q.start},"end":${q.end},"type":${jsonString(q.type)}}"""
                     )
+                }
+            }
+            // The cast, for a predictor that has to pick a speaker from somewhere (QUI-041).
+            // This is our own model-free roster, not PDNC's character list: an outside model
+            // scored against a gold cast would be measured in a setting we cannot ship, and
+            // the cascading error from cast discovery is exactly what we need to see.
+            File(out, "${meta.folder}.cast.jsonl").printWriter().use { w ->
+                Tier1.bootstrapRoster(paragraphs.map { it.unit }).names.sorted().forEach {
+                    w.println("""{"name":${jsonString(it)}}""")
                 }
             }
             quotations += questions.size

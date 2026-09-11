@@ -26,19 +26,29 @@ AutoTokenizer.from_pretrained("bert-base-cased")
 print("warmed", m)
 PY
 
-# 2. BookNLP, the ~63% the field reports against.
+# 2. BookNLP, the ~63% the field reports against. Two checkpoints of one architecture:
+#      speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model     ~57 MB,  14M params (QUI-028)
+#      speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model  ~438 MB, 110M params (QUI-041)
 #
-#    Its own host (people.ischool.berkeley.edu) 403s from a session container and was not
-#    on the allowlist request, so this pulls the community mirror instead. That mirror is
-#    one 1.1 GB zip of every BookNLP model; only the two speaker checkpoints are wanted:
-#      speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model   ~438 MB, accuracy ceiling
-#      speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model      ~57 MB, could ship
-#    Commented out rather than deleted: 1.1 GB for two files is a bad trade, and asking for
-#    the Berkeley host on the allowlist is the cheaper fix. Uncomment if that is refused.
-#
-# curl -fL --max-time 1800 -o "$DEST/booknlp_models.zip" \
-#   https://huggingface.co/superdrew100/booknlp_models/resolve/main/booknlp_models.zip
-# unzip -j "$DEST/booknlp_models.zip" '*speaker_google_bert*' -d "$DEST"
+#    Berkeley's own host serves both, and is reachable over **https**. BookNLP's own code
+#    builds `http` URLs, which the session proxy refuses; that is what made this look blocked,
+#    and it is one character. The 1.1 GB community mirror this used to point at is no longer
+#    needed and the commented-out block that fetched it is gone.
+BOOKNLP=https://people.ischool.berkeley.edu/~dbamman/booknlp_models
+for m in speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model \
+         speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model; do
+  [ -s "$DEST/$m" ] || curl -fL --max-time 1800 -o "$DEST/$m" "$BOOKNLP/$m"
+done
+
+# Their tokenizers and encoder configs come from the Hub on first use. Warm them here, so a
+# timed run measures the model rather than a download.
+python3 - <<'WARM'
+from transformers import BertTokenizer, BertModel
+for m in ("google/bert_uncased_L-8_H-256_A-4", "google/bert_uncased_L-12_H-768_A-12"):
+    BertTokenizer.from_pretrained(m, do_lower_case=False, do_basic_tokenize=False)
+    BertModel.from_pretrained(m)
+    print("warmed", m)
+WARM
 
 du -sh "$DEST" 2>/dev/null || true
 echo "HF cache: ${HF_HOME:-$HOME/.cache/huggingface}"

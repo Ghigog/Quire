@@ -33,7 +33,14 @@ import sys
 
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")        # see grimbert_predict.py
 
-MODEL = "speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model"
+MODELS = {
+    # QUI-028's candidate: 14M parameters, 57 MB, the only one that fits PRD §5 as it stands.
+    "small": "speaker_google_bert_uncased_L-8_H-256_A-4-v1.0.1.model",
+    # QUI-041's: 110M parameters, 438 MB fp32 — the BERT-base encoder class the research
+    # answer points at. Too big to ship untouched; the point is to find out what the extra
+    # 96M parameters actually buy before deciding whether to pay for them.
+    "big": "speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model",
+}
 TOKEN = re.compile(r"\w+|[^\w\s]")
 
 
@@ -52,7 +59,8 @@ def read_jsonl(path):
         return [json.loads(line) for line in fh if line.strip()]
 
 
-def cast_of(novel_dir):
+def gold_cast(novel_dir):
+    """PDNC's own character list, aliases and all. Not a setting we can ship — see below."""
     out = {}
     with open(os.path.join(novel_dir, "character_info.csv"), encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
@@ -65,7 +73,21 @@ def cast_of(novel_dir):
     return out
 
 
-def build(dump_dir, novel, corpus):
+def bootstrap_cast(dump_dir, novel):
+    """The cast our own roster finds in the prose, with no gold anything (QUI-041).
+
+    The research answer is that the published 94.5% assumes gold candidate lists, and that
+    end to end with cast discovery in front of it the figure is 82-85%. This is the way to
+    see that gap rather than take it on trust: the same model, the same questions, the only
+    difference being where the list of possible speakers came from. Each discovered name is
+    its own entity — the roster does not claim `Elizabeth` and `Miss Bennet` are one person,
+    and pretending otherwise here would quietly hand back the gold knowledge.
+    """
+    names = [row["name"] for row in read_jsonl(os.path.join(dump_dir, f"{novel}.cast.jsonl"))]
+    return {name: (name, [name]) for name in names}
+
+
+def build(dump_dir, novel, cast):
     """Tokens, quote spans, PER entities, and the question id behind each quote."""
     paragraphs = read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
@@ -91,29 +113,35 @@ def build(dump_dir, novel, corpus):
         quotes.append((inside[0], inside[-1]))
         asked.append(q["id"])
 
-    cast = cast_of(os.path.join(corpus, "data", novel))
     lowered = [t.text.lower() for t in tokens]
+    # Longest name first, across the whole cast and not just within one character. `Lady
+    # Catherine` and `Catherine` are separate entries in a discovered roster, and whichever
+    # is tried first wins the tokens: scanning in name order let `Catherine` eat the second
+    # half of every `Lady Catherine`, so the longer name matched nowhere and the model was
+    # offered a candidate list that never contained her.
+    claims = sorted(
+        ((cid, name, [p.lower() for p in TOKEN.findall(name)])
+         for cid, (_, names) in cast.items() for name in names),
+        key=lambda c: -len(c[2]))
     entities, owner, taken = [], [], set()
-    for cid, (_, names) in cast.items():
-        for name in names:
-            parts = [p.lower() for p in TOKEN.findall(name)]
-            if not parts:
-                continue
-            for i in range(len(lowered) - len(parts) + 1):
-                if lowered[i:i + len(parts)] == parts and not (taken & set(range(i, i + len(parts)))):
-                    entities.append((i, i + len(parts) - 1, "PROP_PER", name))
-                    owner.append(cid)
-                    taken |= set(range(i, i + len(parts)))
+    for cid, name, parts in claims:
+        if not parts:
+            continue
+        for i in range(len(lowered) - len(parts) + 1):
+            if lowered[i:i + len(parts)] == parts and not (taken & set(range(i, i + len(parts)))):
+                entities.append((i, i + len(parts) - 1, "PROP_PER", name))
+                owner.append(cid)
+                taken |= set(range(i, i + len(parts)))
     order = sorted(range(len(entities)), key=lambda k: entities[k][0])
-    return tokens, quotes, [entities[k] for k in order], [owner[k] for k in order], asked, cast
+    return tokens, quotes, [entities[k] for k in order], [owner[k] for k in order], asked
 
 
-def write_answers(dump_dir, novel, threshold):
+def write_answers(out_dir, novel, threshold, note=""):
     """Apply a confidence threshold to cached scores. No model needed."""
     kept = 0
-    with open(os.path.join(dump_dir, f"{novel}.scores.tsv"), encoding="utf-8") as src, \
-            open(os.path.join(dump_dir, f"{novel}.answers.tsv"), "w", encoding="utf-8") as dst:
-        dst.write(f"# booknlp {MODEL}, threshold {threshold}\n")
+    with open(os.path.join(out_dir, f"{novel}.scores.tsv"), encoding="utf-8") as src, \
+            open(os.path.join(out_dir, f"{novel}.answers.tsv"), "w", encoding="utf-8") as dst:
+        dst.write(f"# booknlp {note}, threshold {threshold}\n")
         for line in src:
             qid, name, score = line.rstrip("\n").split("\t")
             if name and float(score) >= threshold:
@@ -124,10 +152,10 @@ def write_answers(dump_dir, novel, threshold):
     return kept
 
 
-def predict_novel(qa, dump_dir, novel, corpus, threshold):
+def predict_novel(qa, dump_dir, out_dir, novel, cast, threshold, note=""):
     import torch
 
-    tokens, quotes, entities, owner, asked, cast = build(dump_dir, novel, corpus)
+    tokens, quotes, entities, owner, asked = build(dump_dir, novel, cast)
     if not quotes or not entities:
         print(f"  {novel}: nothing to attribute ({len(quotes)} quotes, {len(entities)} mentions)")
         return 0, 0
@@ -178,14 +206,41 @@ def predict_novel(qa, dump_dir, novel, corpus, threshold):
     # Every prediction with its confidence, so a threshold sweep costs a file read rather
     # than another pass of the model. Inference is the expensive part and the threshold is
     # the parameter most worth moving — see the ticket.
-    with open(os.path.join(dump_dir, f"{novel}.scores.tsv"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(out_dir, f"{novel}.scores.tsv"), "w", encoding="utf-8") as fh:
         for qid in asked:
             name, score = answers.get(qid, ("", 0.0))
             fh.write(f"{qid}\t{name}\t{score:.4f}\n")
-    kept = write_answers(dump_dir, novel, threshold)
+    kept = write_answers(out_dir, novel, threshold, note)
     print(f"  {novel}: {len(asked)} quotations, {len(answers)} predicted, {kept} kept "
           f"at >= {threshold}")
     return len(asked), len(answers)
+
+
+def loader(path):
+    """QuotationAttribution's constructor, with one checkpoint-age fix.
+
+    The checkpoint was saved when `position_ids` was a registered buffer on BERT's
+    embeddings; current transformers computes it instead, so a strict load rejects the key.
+    Dropping it is exact — it held `arange(max_position_embeddings)` and nothing learned —
+    and it is done here rather than by patching the installed package.
+
+    Returns a `QuotationAttribution`, whose `get_representation` builds the ±50-word window
+    around each quotation. That window is the shape QUI-041 wanted and BookNLP already has
+    it: the target quotation becomes one `[QUOTE]` token and the prose either side of it —
+    where the speech tag lives — is what the model reads.
+    """
+    import torch
+    from booknlp.english.bert_qa import QuotationAttribution
+    from booknlp.english.speaker_attribution import BERTSpeakerID
+
+    base = re.sub("google_bert", "google/bert", os.path.basename(path))
+    qa = QuotationAttribution.__new__(QuotationAttribution)
+    qa.model = BERTSpeakerID(base_model=re.sub(r"\.model$", "", base))
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    state.pop("bert.embeddings.position_ids", None)
+    qa.model.load_state_dict(state)
+    qa.model.eval()
+    return qa
 
 
 def main():
@@ -194,56 +249,50 @@ def main():
     ap.add_argument("--corpus", default=os.path.expanduser("~/.cache/quire/pdnc"))
     ap.add_argument("--models", default=os.path.expanduser("~/.cache/quire/models"))
     ap.add_argument("--novels", default="")
+    ap.add_argument("--out", default="",
+                    help="where answers and scores go; defaults to the dump directory. Give "
+                         "each configuration its own, or the next run overwrites the last")
+    ap.add_argument("--size", choices=sorted(MODELS), default="small",
+                    help="small = QUI-028's 14M checkpoint; big = QUI-041's 110M one")
+    ap.add_argument("--cast", choices=("gold", "bootstrap"), default="gold",
+                    help="gold reads PDNC's character list; bootstrap reads the roster our "
+                         "own indexer found, which is the only one a device will have")
     ap.add_argument("--threshold", type=float, default=0.0,
                     help="0 keeps every answer; raise it to trade coverage for precision")
     ap.add_argument("--rethreshold", action="store_true",
                     help="re-apply --threshold to cached scores without running the model")
     args = ap.parse_args()
-
-    import torch
-    from booknlp.english.bert_qa import QuotationAttribution
-    from booknlp.english.speaker_attribution import BERTSpeakerID
-
-    class Loader(QuotationAttribution):
-        """QuotationAttribution's constructor, with one checkpoint-age fix.
-
-        The checkpoint was saved when `position_ids` was a registered buffer on BERT's
-        embeddings; current transformers computes it instead, so a strict load rejects the
-        key. Dropping it is exact — it held `arange(max_position_embeddings)` and nothing
-        learned — and it is done here rather than by patching the installed package.
-        """
-
-        def __init__(self, path):
-            base = re.sub("google_bert", "google/bert", os.path.basename(path))
-            self.model = BERTSpeakerID(base_model=re.sub(r"\.model$", "", base))
-            state = torch.load(path, map_location="cpu", weights_only=True)
-            state.pop("bert.embeddings.position_ids", None)
-            self.model.load_state_dict(state)
-            self.model.eval()
+    out_dir = args.out or args.dump_dir
+    os.makedirs(out_dir, exist_ok=True)
 
     wanted = [n.strip() for n in args.novels.split(",") if n.strip()] or sorted(
         f[: -len(".questions.jsonl")]
         for f in os.listdir(args.dump_dir) if f.endswith(".questions.jsonl"))
 
+    note = f"{args.size} {args.cast}-cast"
+
     if args.rethreshold:
         for novel in wanted:
-            kept = write_answers(args.dump_dir, novel, args.threshold)
+            kept = write_answers(out_dir, novel, args.threshold, note)
             print(f"  {novel}: {kept} kept at >= {args.threshold}")
         return
 
-    path = os.path.join(args.models, MODEL)
+    model = MODELS[args.size]
+    path = os.path.join(args.models, model)
     if not os.path.exists(path):
         sys.exit(f"missing {path} — run tools/fetch-attribution-models.sh")
-    print(f"loading {MODEL} ({os.path.getsize(path) / 1e6:.0f} MB)")
-    qa = Loader(path)
+    print(f"loading {model} ({os.path.getsize(path) / 1e6:.0f} MB), {args.cast} cast")
+    qa = loader(path)
 
     total = answered = 0
     for novel in wanted:
-        a, b = predict_novel(qa, args.dump_dir, novel, args.corpus, args.threshold)
+        cast = (bootstrap_cast(args.dump_dir, novel) if args.cast == "bootstrap"
+                else gold_cast(os.path.join(args.corpus, "data", novel)))
+        a, b = predict_novel(qa, args.dump_dir, out_dir, novel, cast, args.threshold, note)
         total += a
         answered += b
     print(f"\n{answered}/{total} answered over {len(wanted)} novels. Score with:")
-    print(f'  gradle run --args="bakeoff --candidate booknlp --answers {args.dump_dir}"')
+    print(f'  gradle run --args="bakeoff --candidate booknlp --answers {out_dir}"')
 
 
 if __name__ == "__main__":
