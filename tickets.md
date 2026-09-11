@@ -53,7 +53,7 @@ already `In progress`.
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
-| QUI-041 | Encoder attribution: abstention-first, BookNLP+ baseline | Attribution | In progress | inspiring-einstein | QUI-028 |
+| QUI-041 | Encoder attribution: abstention-first, BookNLP+ baseline | Attribution | Todo | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 | QUI-043 | Host-side MOS screening for TTS candidates | Quality | Todo | — | QUI-017 |
 
@@ -4508,7 +4508,7 @@ Scenario: A negative result closes the question
 > now a requirement rather than an option**: below threshold the quotation routes to the
 > narrator. See `docs/handoff/2026-09-11-engineering-spec-review.md` §7.
 
-**Status:** In progress · **Owner:** inspiring-einstein · **Epic:** Attribution · **Depends on:** QUI-028
+**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
 
 ### User story
