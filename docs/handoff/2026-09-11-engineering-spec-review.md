@@ -200,13 +200,50 @@ Ordered by how much they block.
 
 ---
 
-## 7. What this session changed
+## 7. Answered — the researchers' reply, same day
+
+All five came back. Recorded here because the answers change tickets, not just this note.
+
+| # | Question | Answer |
+| --- | --- | --- |
+| 1 | The checkpoint behind 94.5% | **There isn't one.** No public ONNX checkpoint exists; `deberta-v3-small` was an architecture proposal, not a link. Directed not to search further, and to use BookNLP+ as the baseline encoder |
+| 2 | Held-out or within-novel | **Our reading accepted.** 60.5% is what a reader's library gets. **Abstention is now mandatory**: below a confidence threshold the quotation routes to the narrator |
+| 3 | Import SLA | **30 minutes confirmed** as binding; the 30–60s figure is withdrawn. Run the encoder over dialogue windows only, not prose blocks |
+| 4 | QNN and Adreno | **Our reading accepted.** QNN HTP for the DSP, QNN GPU for Adreno. Verify placement by parsing `ORT_LOGGING_LEVEL_VERBOSE` node assignments or `GetProfilingOutput()`, not `GetAvailableProviders()` |
+| 5 | Loudness | **−16 to −18 LUFS.** The room-tone bed is reframed as an active cross-fade at local/cloud transitions, not a continuous noise floor |
+
+The gender note was accepted without argument: titles **and** the coreference graph, not coreference alone. QUI-035's title rule stands.
+
+The framing note was accepted and is now the board's ordering principle:
+
+> **Sprint 1 (abstention-first attribution) is the risk-mitigation gate for Sprint 3 (cloud
+> rendering).** A confident wrong voice rendered in the cloud is a paid, highly audible
+> disaster, so attribution has to be trustworthy before a paid backend is wired to it.
+
+### The one thing to carry into QUI-041
+
+A fixed softmax threshold is the mechanism being asked for, and **we have already run that
+experiment twice with a negative result.** ADR-0005: no confidence threshold recovered
+SpanBERT or BookNLP `small` — at 0.99 Tier 1 still won on coverage *and* precision
+simultaneously, because the model was confidently wrong rather than unsure.
+
+That is not a reason to skip it here. BookNLP+ is a different checkpoint — cased, BERT-base
+rather than `L-8_H-256_A-4`, trained leave-novels-out — and the harness caches per-quotation
+scores, so a sweep costs a file read rather than another pass of the model. It *is* a reason
+to sweep the whole curve and report it, rather than to measure 0.75 alone and call it done.
+If the curve fails the same way a third time, that is the finding, and §8 of the 2026-09-08
+handoff says what follows from it.
+
+---
+
+## 8. What this session changed
 
 - This note.
-- **QUI-041** — Context rewritten against the BookNLP+ evidence; the candidate added to
-  Requirements; a Worklog entry recording the numbers and the dead ends. Status stays `Todo`
-  and unowned: it is startable on the BookNLP+ candidate without an answer to question 1, and
-  its headline premise is not.
+- **QUI-041** — retitled *Encoder attribution: abstention-first, BookNLP+ baseline*, claimed,
+  and re-scoped on the answers above: no joint-scoring checkpoint to chase, BookNLP+ as the
+  baseline, abstention as a requirement, and inference over dialogue windows rather than prose.
+- **QUI-040** — QNN HTP and QNN GPU named as the two targets, and the placement check written
+  down as parsing verbose node assignments or `GetProfilingOutput()`.
+- **QUI-042** — loudness target set to −16 to −18 LUFS, the room-tone bed reframed as a
+  transition cross-fade, and QUI-041 recorded as its risk gate.
 - **QUI-043** — new: automated host-side MOS screening for TTS candidates, as a screen.
-
-Nothing in `spike/` or `core/` was touched.

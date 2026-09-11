@@ -4459,6 +4459,15 @@ on whether any engine better than Piper gets inside the RTF and TTFS budgets on 
   back to CPU and reports nothing; a 0.354 RTF "on the GPU" that is really the CPU again is the
   most likely wrong answer this ticket can produce. Log the resolved provider per session and
   put it in the Worklog beside every number.
+- **The two backends are named** (2026-09-11): **QNN HTP** (`libQnnHtp.so`) for the Hexagon
+  DSP and **QNN GPU** (`libQnnGpu.so`) for the Adreno. ONNX Runtime ships no Vulkan EP and its
+  OpenCL EP was never mainlined, so the specification's "Vulkan / OpenCL EP" is not a thing to
+  configure. WebGPU over Dawn is the only other real Adreno path and is not the first choice.
+- **`Ort::GetAvailableProviders()` does not verify offload** and must not be used as the
+  guard: it lists providers compiled into the build, not which initialised or where nodes were
+  placed, so it returns `QnnExecutionProvider` on exactly the silent CPU fallback above.
+  Confirm placement by parsing node assignments at `ORT_LOGGING_LEVEL_VERBOSE`, or by
+  inspecting `session.GetProfilingOutput()`.
 - Candidates, under GPU/DSP only: Piper `libritts_r` first, as the control with a known CPU
   number; then Matcha-TTS and StyleTTS 2, both flow-matching architectures the memo names.
 - Measure per candidate per provider: RTF, load time, peak RSS, on-disk size, and **whether it
@@ -4497,7 +4506,7 @@ Scenario: A negative result closes the question
 > There is no public checkpoint for the 110M joint-scoring paper and we are told not to look
 > for one. The baseline is `bodyanats/booknlp-plus-speaker-attribution`, and **abstention is
 > now a requirement rather than an option**: below threshold the quotation routes to the
-> narrator. See `docs/handoff/2026-09-11-engineering-spec-review.md` §8.
+> narrator. See `docs/handoff/2026-09-11-engineering-spec-review.md` §7.
 
 **Status:** In progress · **Owner:** inspiring-einstein · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
@@ -4549,11 +4558,24 @@ then on prose PDNC does not contain, with a verdict on whether it runs inside th
 - Then the budget: export to ONNX fp16, and measure load time, peak RSS and wall-clock for a
   100k-word novel **at import**, not during playback — import is where attribution runs
   (`BookImport`), and it has seconds to spend rather than milliseconds.
-- **Score `bodyanats/booknlp-plus-speaker-attribution` whether or not the paper's checkpoint
-  ever arrives.** Apache-2.0, BERT-base, 413 MB fp32, trained on PDNC with a published
-  leave-novels-out evaluation. It is the best available encoder we have not measured, and it
-  is a real number in the same column as SpanBERT's 41.4% and BookNLP `small`'s 55.1% wrong
-  voice. Its five fold checkpoints are 414 MB each; take one fold, not five.
+- **The baseline encoder is `bodyanats/booknlp-plus-speaker-attribution`** (2026-09-11
+  directive). Apache-2.0, BERT-base cased, 413.85 MB fp32, trained on PDNC with a published
+  leave-novels-out evaluation. Do not spend time searching for the joint-scoring paper's
+  binary; there isn't one. Its five fold checkpoints are 414 MB each — take fold 2, the one
+  its own card names best, and say so.
+- **Abstention is a requirement, not a tuning knob.** The engine must not force a choice.
+  Below the confidence threshold the quotation abstains and routes to the **narrator voice**,
+  which costs nothing and reads as ordinary audiobook behaviour. `booknlp_predict.py` already
+  caches a per-quotation score and re-thresholds without re-running the model; use it.
+- **Sweep the whole threshold curve, do not measure 0.75 alone.** The directive names
+  `P < 0.75` as the cut. We have run this experiment twice with a negative result — ADR-0005
+  found no threshold recovered SpanBERT or BookNLP `small`, because both were confidently
+  wrong rather than unsure. BookNLP+ is a different checkpoint and deserves the run, but the
+  deliverable is the coverage/precision curve with 0.75 marked on it, and the wrong-voice
+  figure at the knee. A single point cannot show whether the threshold is doing anything.
+- **Inference runs over dialogue windows only, never prose blocks** (2026-09-11 directive).
+  ~3,000 quotations at ~40k tokens a book rather than the whole text. QUI-007's budget is
+  confirmed at **30 minutes**, not the 30–60s the specification carried.
 - Out of scope: replacing Tier 1. Tier 1 is 93.2% precise and free; this fills what it declines.
 
 ### Acceptance criteria (Gherkin)
@@ -4683,6 +4705,17 @@ the player can use in place of the local engine. Plus the ADR recording the reve
 - **Latency is the real risk, not quality.** A per-line round trip against an 800 ms TTFS budget
   needs the ring buffer reading ahead, and a cost per book the reader can see before they start.
   Measure both.
+- **Loudness target is −16 to −18 LUFS** (2026-09-11, revised from the specification's −24,
+  which is the ATSC A/85 broadcast figure and too quiet for a tablet speaker). The same target
+  applies to both tiers, or the transition is audible as a level jump.
+- **No continuous room-tone bed.** Reframed on the same date as an **active cross-fade across
+  local/cloud transitions**: silence stays silent, and only the seam is smoothed. A continuous
+  comfort-noise floor is the opposite of the ≤ −60 dB noise floor audiobook distribution asks
+  for.
+- **QUI-041 gates this ticket.** Sprint ordering, stated 2026-09-11: abstention-first
+  attribution is the risk mitigation for cloud rendering. A confident wrong voice rendered
+  through a paid API is a worse failure than the same error locally — it is audible *and*
+  billed. Do not wire a paid backend to an attribution engine that cannot decline.
 - Out of scope: Quire-hosted inference, any key we supply, and sending anything but the current
   line.
 
