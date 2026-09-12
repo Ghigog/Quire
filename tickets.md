@@ -53,7 +53,7 @@ already `In progress`.
 | QUI-038 | Scene segmentation for scene-level attribution | Attribution | Done | — | QUI-021 |
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
-| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In progress | quire-dialogue-attribution | QUI-028 |
+| QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In review | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
@@ -4537,7 +4537,7 @@ Scenario: A negative result closes the question
 > without discarding the evidence. This ticket implements the window, and says so here because
 > the directive as phrased would look like it was being ignored.
 
-**Status:** In progress · **Owner:** quire-dialogue-attribution · **Epic:** Attribution · **Depends on:** QUI-028
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-028
 **PRD:** §2 Phase 1 · **Timebox:** 4 days
 
 ### User story
@@ -4718,6 +4718,144 @@ gradle run --args="bakeoff --candidate booknlp-plus --answers build/bakeoff"
 # sweep without re-running the model:
 python3 predictors/booknlp_predict.py build/bakeoff --flavour booknlp-plus \
     --rethreshold --threshold 0.99
+```
+
+
+**2026-09-12 — `quire-dialogue-attribution`.** The whole corpus, three checkpoints, both cast
+sources, and the composite. Landed after PR #12, whose entry above stands; this one widens it
+from two novels to 28 and adds the number the decision actually turns on.
+
+*Reconciled first.* `inspiring-einstein` worked this ticket in parallel and landed while this
+session was running. Their predictor is the better base and was kept whole — the `FLAVOURS`
+table, the strict load, the `doLowerCase` threading. This session had independently concluded
+that `bodyanats/booknlp-plus-speaker-attribution` was **unloadable** (cased base, vocab 28,999,
+published nowhere). That was wrong: the checkpoint is at `leave-x-out/split_2/best_model.model`
+and 28,999 is `bert-base-cased` plus *three* tokens, because it predates `[CAP]`. Their loader
+now verifies that on load.
+
+**A bug that silenced a fifth of every discovered cast.** Mentions were claimed in cast order,
+so `Catherine` took the second half of every `Lady Catherine` and the longer name then matched
+nowhere. Across the 28 novels, **168 of 768 discovered cast names matched at no position** —
+`Lady Catherine`, `Miss Bennet`, `Mr. Bounderby`, `John Dashwood`. Each was absent from the
+candidate list the model chooses from, so no confidence could have produced it. Longest name
+first, across the whole cast. Every bootstrap-cast figure below is post-fix.
+
+*It also showed the roster needs work, which is not this ticket's file.* `Tier1.bootstrapRoster`
+admits `Emma--`, `Emma--quite`, `Jew's`, `Archer's` — em-dash artifacts and possessives treated
+as characters. Noted for whoever owns QUI-035's area next.
+
+**Whole corpus, 36,970 quotations, alias-folded, discovered cast, no abstention:**
+
+```
+                           coverage  precision  accuracy  wrong voice
+  Tier 1                      26.4%      94.2%     24.9%       1.5%
+  BookNLP small   (14M)       93.4%      53.7%     50.2%      43.2%
+  BookNLP big    (110M)       94.0%      54.3%     51.1%      43.0%
+  BookNLP+  split_2 (110M)    93.4%      66.8%     62.4%      31.0%
+```
+
+**The published 94.5% is not reproduced and the research reply's explanation for that is
+wrong.** The reply attributed the drop to gold candidate lists and put the end-to-end figure at
+82-85%. Measured both ways on all three checkpoints, **the gold cast is worth −0.7 points**: a
+roster discovered in the prose *beats* PDNC's own character list (62.4% against 61.7%, 51.1%
+against 49.9%, 50.2% against 49.2%), because gold alias lists carry names the novel never uses
+for that character while a discovered roster carries only strings that are in the text. So the
+32-point gap to 94.5% is unexplained, and cast discovery is not where it lives. Worth sending
+back: that is the one answer from 2026-09-11 that measurement contradicts.
+
+**Capacity is not the constraint.** `booknlp-big` is `booknlp`'s 110M sibling from the same
+Berkeley release — same training, same preprocessing, eight times the parameters. It buys
+**0.9 accuracy points**. BookNLP+ reaches 62.4% at the same 110M, so the entire gain over
+`small` is training data and method, not size. What capacity buys is calibration: at P ≥ 0.75
+the 110M answers 40.0% at 81.2%, the 14M answers 62.0% at 63.9%.
+
+**The composite, measured rather than derived.** Previous "Tier 1 plus an encoder" figures —
+including the entry above — were arithmetic over a table split on PDNC's `quoteType`, a gold
+label no device has. `CompositeCandidate` (new) routes on whether Tier 1 answered, which is the
+only signal available at run time, and is scored by the same scorer as its halves:
+
+```
+  tier1+booknlp-plus   coverage  precision  wrong voice   encoder precision on the declines
+    Tier 1 alone          26.4%      94.2%        1.5%      —
+    at P >= 0.75          70.5%      73.7%       18.5%      61.4%
+    at P >= 0.90          62.2%      76.2%       14.8%      62.9%
+    at P >= 0.99          51.3%      79.7%       10.4%      64.3%
+```
+
+**64.3% is the finding.** On the quotations Tier 1 declines, the best available encoder at its
+most conservative setting is 64.3% precise — against 80.8% headline at the same threshold,
+because Tier 1 has already taken everything with a speech tag in it. The composite buys 25
+points of coverage for a sevenfold rise in wrong voice. Split by type with no abstention,
+BookNLP+ is 55.8% precise on Implicit and 48.3% on Anaphoric, and those two types are 70% of
+all dialogue; raising the threshold discards those answers rather than correcting them.
+
+**Out of domain, the encoder degrades less than ADR-0005 predicted**: BookNLP+ loses 5.6 points
+(63.8% headline → 58.2% held out) against Tier 1's 4.1. The gold cast is what degrades badly
+(−17.1), which is another reason not to measure with it. `Holdouts.External` is still empty and
+PDNC still stops at 1934, so the real-library number remains QUI-043's.
+
+**Budget — measured, and each phase in its own process.** `booknlp_budget.py` exports the whole
+scorer, encoder and joint head in one graph, because exporting the encoder alone would mean
+reimplementing the head in Kotlin with no way to tell a port bug from a model difference.
+
+```
+  BookNLP+, 108.5M parameters, TheAgeOfInnocence (101,261 words, 1,393 quotations)
+    torch checkpoint / ONNX fp32      433.9 MB / 431.7 MB
+    ONNX fp16                         216.1 MB          <- PRD §5 app budget 450 MB
+    peak RSS, fp16 inference only         931 MB        <- PRD §5 working set 1,200 MB
+    whole novel, 4 x86 threads           97.6 s (73 ms/window)
+```
+
+fp16 halves the footprint to 216 MB and needs no calibration set and no int8, which QUI-040
+found to be the trap on this SoC. **So size no longer rejects the encoder**; the wrong-voice
+rate does. The first peak-RSS reading was 4,923 MB because torch, the exporter and the fp16
+converter were all resident — the phases are separate processes now, and that figure described
+the build machine's toolchain rather than anything a reader's device would hold.
+
+The wall clock and the peak RSS are **host numbers and neither is an SLA** (CLAUDE.md §1.6).
+The footprint is a property of the file and transfers; 73 ms/window on four x86 threads does
+not. ADR-0002 §8 measured the 750G punishing this class of work about twice as hard again, so
+the device reading is the open item below.
+
+*Status `In review`, not `Done`.* All three Gherkin scenarios pass and ADR-0005 is amended. What
+is outside this repository: the budget numbers on the reference device, and a listen at these
+operating points — QUI-039's verdict says the wrong-voice metric the rejection rests on has
+never been confirmed by ears, and it tilted slightly the other way.
+
+*What is left, in order:*
+
+1. **A second listen, at 1.5% against 10.4% wrong voice.** This is now the highest-value open
+   item in attribution, because the decision above is arithmetic over a metric whose exchange
+   rate is assumed. QUI-039's harness takes any two candidates.
+2. **BookNLP+ on the Explicit slice is a real, measured win and wants its own ticket.** Whole
+   corpus: Tier 1 is 79.9% coverage at 97.7%, BookNLP+ at P ≥ 0.90 is 93.2% at 97.4%. Thirteen
+   points of coverage for 0.3 of precision, and Explicit wrong voice rises 1.8% → 2.4%. The
+   cost is 216 MB, which is the whole of the decision. This supersedes ADR-0005's `small`
+   recommendation.
+3. **The device budget.** fp16 ONNX, load time, peak RSS and wall clock on a Note Air5 C.
+4. **Whether fold 2 saw these novels.** Unchanged from the entry above: the card publishes
+   per-fold scores, not fold membership. Our 62.4% sits below fold 2's own held-out 72.5%, so
+   the figure is not obviously flattered, but it cannot be ruled out.
+5. **`Tier1.bootstrapRoster`'s junk names**, above. Not this ticket's file.
+
+*Reproduce:*
+
+```sh
+tools/fetch-pdnc.sh && tools/fetch-attribution-models.sh
+cd spike/pipeline && gradle test installDist
+gradle run --args="dump --out build/bakeoff"
+for f in booknlp booknlp-big booknlp-plus; do for c in gold bootstrap; do
+  python3 predictors/booknlp_predict.py build/bakeoff --flavour $f --cast $c \
+      --out build/answers/$f-$c
+done; done
+# one candidate, and the composite that routes on Tier 1's declines:
+gradle run --args="bakeoff --candidate booknlp-plus --answers build/answers/booknlp-plus-bootstrap"
+gradle run --args="bakeoff --candidate tier1+booknlp-plus --answers build/answers/booknlp-plus-bootstrap"
+# re-threshold without re-running the model, then re-score:
+python3 predictors/booknlp_predict.py build/bakeoff --flavour booknlp-plus \
+    --out build/answers/booknlp-plus-bootstrap --rethreshold --threshold 0.99
+# the import budget:
+python3 predictors/booknlp_budget.py build/bakeoff --flavour booknlp-plus
 ```
 
 ---
