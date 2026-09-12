@@ -57,6 +57,17 @@ FLAVOURS = {
     # would build a 29,000-row model (a strict load then fails, which is the cheap failure)
     # and, forced past that, would feed a cased model lowercased text carrying a token it has
     # never seen (the expensive one). Hence `lower=False` and three tokens.
+    # The 110M sibling of `booknlp`, from the same Berkeley release: identical training and
+    # identical preprocessing, eight times the parameters. It is the honest way to ask what
+    # encoder *capacity* buys, with everything else held still — `booknlp-plus` changes the
+    # base model, the casing and the training data all at once, so it cannot answer that.
+    "booknlp-big": dict(
+        file="speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model",
+        base="google/bert_uncased_L-12_H-768_A-12",
+        added=["[QUOTE]", "[ALTQUOTE]", "[PAR]", "[CAP]"],
+        lower=True,
+        vocab=30526,
+    ),
     "booknlp-plus": dict(
         file="booknlp_plus_split_2.model",
         base="bert-base-cased",
@@ -82,7 +93,8 @@ def read_jsonl(path):
         return [json.loads(line) for line in fh if line.strip()]
 
 
-def cast_of(novel_dir):
+def gold_cast(novel_dir):
+    """PDNC's own character list, aliases and all. Not a setting a device is ever in."""
     out = {}
     with open(os.path.join(novel_dir, "character_info.csv"), encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
@@ -95,7 +107,21 @@ def cast_of(novel_dir):
     return out
 
 
-def build(dump_dir, novel, corpus):
+def bootstrap_cast(dump_dir, novel):
+    """The cast our own roster finds in the prose, with no gold anything (QUI-041).
+
+    The research answer is that the published 94.5% assumes gold candidate lists, and that
+    end to end with cast discovery in front of it the figure is 82-85%. This is how to see
+    that gap rather than take it on trust: same model, same questions, the only difference
+    being where the list of possible speakers came from. Each discovered name is its own
+    entity — the roster does not claim `Elizabeth` and `Miss Bennet` are one person, and
+    pretending otherwise here would quietly hand the gold knowledge back.
+    """
+    names = [row["name"] for row in read_jsonl(os.path.join(dump_dir, f"{novel}.cast.jsonl"))]
+    return {name: (name, [name]) for name in names}
+
+
+def build(dump_dir, novel, cast):
     """Tokens, quote spans, PER entities, and the question id behind each quote."""
     paragraphs = read_jsonl(os.path.join(dump_dir, f"{novel}.paragraphs.jsonl"))
     questions = read_jsonl(os.path.join(dump_dir, f"{novel}.questions.jsonl"))
@@ -121,29 +147,39 @@ def build(dump_dir, novel, corpus):
         quotes.append((inside[0], inside[-1]))
         asked.append(q["id"])
 
-    cast = cast_of(os.path.join(corpus, "data", novel))
     lowered = [t.text.lower() for t in tokens]
+    # Longest name first, across the whole cast and not just within one character. A
+    # discovered roster holds `Lady Catherine` and `Catherine` as separate entries, and
+    # whichever is tried first takes the tokens: scanning in cast order let `Catherine` eat
+    # the second half of every `Lady Catherine`, so the longer name then matched nowhere and
+    # the model was offered a candidate list that never contained her.
+    claims = sorted(
+        ((cid, name, [p.lower() for p in TOKEN.findall(name)])
+         for cid, (_, names) in cast.items() for name in names),
+        key=lambda c: -len(c[2]))
     entities, owner, taken = [], [], set()
-    for cid, (_, names) in cast.items():
-        for name in names:
-            parts = [p.lower() for p in TOKEN.findall(name)]
-            if not parts:
-                continue
-            for i in range(len(lowered) - len(parts) + 1):
-                if lowered[i:i + len(parts)] == parts and not (taken & set(range(i, i + len(parts)))):
-                    entities.append((i, i + len(parts) - 1, "PROP_PER", name))
-                    owner.append(cid)
-                    taken |= set(range(i, i + len(parts)))
+    for cid, name, parts in claims:
+        if not parts:
+            continue
+        for i in range(len(lowered) - len(parts) + 1):
+            if lowered[i:i + len(parts)] == parts and not (taken & set(range(i, i + len(parts)))):
+                entities.append((i, i + len(parts) - 1, "PROP_PER", name))
+                owner.append(cid)
+                taken |= set(range(i, i + len(parts)))
     order = sorted(range(len(entities)), key=lambda k: entities[k][0])
-    return tokens, quotes, [entities[k] for k in order], [owner[k] for k in order], asked, cast
+    return tokens, quotes, [entities[k] for k in order], [owner[k] for k in order], asked
 
 
-def scores_path(dump_dir, novel, flavour):
-    """Cached scores are per flavour; answers are not, because the harness names that file."""
-    return os.path.join(dump_dir, f"{novel}.{flavour}.scores.tsv")
+def scores_path(out_dir, novel, flavour):
+    """Cached scores are per flavour; answers are not, because the harness names that file.
+
+    Which is why `--out` exists: one flavour run twice — gold cast and discovered cast —
+    writes the same `<novel>.answers.tsv` twice, and the second erases the first.
+    """
+    return os.path.join(out_dir, f"{novel}.{flavour}.scores.tsv")
 
 
-def write_answers(dump_dir, novel, threshold, flavour):
+def write_answers(out_dir, novel, threshold, flavour):
     """Apply a confidence threshold to cached scores. No model needed.
 
     Below the threshold the answer is blank, which the Kotlin scorer reads as *declined* and
@@ -151,8 +187,8 @@ def write_answers(dump_dir, novel, threshold, flavour):
     the device a blank routes the line to the narrator, which is flat rather than wrong.
     """
     kept = 0
-    with open(scores_path(dump_dir, novel, flavour), encoding="utf-8") as src, \
-            open(os.path.join(dump_dir, f"{novel}.answers.tsv"), "w", encoding="utf-8") as dst:
+    with open(scores_path(out_dir, novel, flavour), encoding="utf-8") as src, \
+            open(os.path.join(out_dir, f"{novel}.answers.tsv"), "w", encoding="utf-8") as dst:
         dst.write(f"# {flavour} {FLAVOURS[flavour]['file']}, threshold {threshold}\n")
         for line in src:
             qid, name, score = line.rstrip("\n").split("\t")
@@ -164,11 +200,11 @@ def write_answers(dump_dir, novel, threshold, flavour):
     return kept
 
 
-def predict_novel(qa, dump_dir, novel, corpus, threshold, flavour):
+def predict_novel(qa, dump_dir, out_dir, novel, cast, threshold, flavour):
     import torch
 
     lower = FLAVOURS[flavour]["lower"]
-    tokens, quotes, entities, owner, asked, cast = build(dump_dir, novel, corpus)
+    tokens, quotes, entities, owner, asked = build(dump_dir, novel, cast)
     if not quotes or not entities:
         print(f"  {novel}: nothing to attribute ({len(quotes)} quotes, {len(entities)} mentions)")
         return 0, 0
@@ -222,30 +258,22 @@ def predict_novel(qa, dump_dir, novel, corpus, threshold, flavour):
     # Every prediction with its confidence, so a threshold sweep costs a file read rather
     # than another pass of the model. Inference is the expensive part and the threshold is
     # the parameter most worth moving — see the ticket.
-    with open(scores_path(dump_dir, novel, flavour), "w", encoding="utf-8") as fh:
+    with open(scores_path(out_dir, novel, flavour), "w", encoding="utf-8") as fh:
         for qid in asked:
             name, score = answers.get(qid, ("", 0.0))
             fh.write(f"{qid}\t{name}\t{score:.4f}\n")
-    kept = write_answers(dump_dir, novel, threshold, flavour)
+    kept = write_answers(out_dir, novel, threshold, flavour)
     print(f"  {novel}: {len(asked)} quotations, {len(answers)} predicted, {kept} kept "
           f"at >= {threshold}")
     return len(asked), len(answers)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("dump_dir")
-    ap.add_argument("--corpus", default=os.path.expanduser("~/.cache/quire/pdnc"))
-    ap.add_argument("--models", default=os.path.expanduser("~/.cache/quire/models"))
-    ap.add_argument("--novels", default="")
-    ap.add_argument("--threshold", type=float, default=0.0,
-                    help="0 keeps every answer; raise it to trade coverage for precision")
-    ap.add_argument("--rethreshold", action="store_true",
-                    help="re-apply --threshold to cached scores without running the model")
-    ap.add_argument("--flavour", default="booknlp", choices=sorted(FLAVOURS),
-                    help="which checkpoint to run (default: booknlp)")
-    args = ap.parse_args()
+def loader(path, flavour):
+    """Build the checkpoint's model and load it, strictly.
 
+    Lifted out of `main` so `booknlp_budget.py` loads it through this same code: a
+    budget measured against a differently-built model measures a different model.
+    """
     import torch
     from booknlp.english.bert_qa import QuotationAttribution
     from booknlp.english.speaker_attribution import BERTSpeakerID
@@ -312,13 +340,37 @@ def main():
             self.model.get_wp_position_for_all_tokens = (
                 lambda words, doLowerCase=spec["lower"]: unbound(self.model, words, doLowerCase))
 
+    return Loader(path, flavour)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("dump_dir")
+    ap.add_argument("--corpus", default=os.path.expanduser("~/.cache/quire/pdnc"))
+    ap.add_argument("--models", default=os.path.expanduser("~/.cache/quire/models"))
+    ap.add_argument("--novels", default="")
+    ap.add_argument("--threshold", type=float, default=0.0,
+                    help="0 keeps every answer; raise it to trade coverage for precision")
+    ap.add_argument("--rethreshold", action="store_true",
+                    help="re-apply --threshold to cached scores without running the model")
+    ap.add_argument("--flavour", default="booknlp", choices=sorted(FLAVOURS),
+                    help="which checkpoint to run (default: booknlp)")
+    ap.add_argument("--cast", choices=("gold", "bootstrap"), default="gold",
+                    help="gold reads PDNC's character list; bootstrap reads the roster our "
+                         "own indexer found, which is the only one a device will have")
+    ap.add_argument("--out", default="",
+                    help="where answers and cached scores go; defaults to the dump directory")
+    args = ap.parse_args()
+    out_dir = args.out or args.dump_dir
+    os.makedirs(out_dir, exist_ok=True)
+
     wanted = [n.strip() for n in args.novels.split(",") if n.strip()] or sorted(
         f[: -len(".questions.jsonl")]
         for f in os.listdir(args.dump_dir) if f.endswith(".questions.jsonl"))
 
     if args.rethreshold:
         for novel in wanted:
-            kept = write_answers(args.dump_dir, novel, args.threshold, args.flavour)
+            kept = write_answers(out_dir, novel, args.threshold, args.flavour)
             print(f"  {novel}: {kept} kept at >= {args.threshold}")
         return
 
@@ -326,17 +378,21 @@ def main():
     path = os.path.join(args.models, model_file)
     if not os.path.exists(path):
         sys.exit(f"missing {path} — run tools/fetch-attribution-models.sh")
-    print(f"loading {model_file} ({os.path.getsize(path) / 1e6:.0f} MB) as {args.flavour}")
-    qa = Loader(path, args.flavour)
+    print(f"loading {model_file} ({os.path.getsize(path) / 1e6:.0f} MB) as {args.flavour}, "
+          f"{args.cast} cast")
+    qa = loader(path, args.flavour)
 
     total = answered = 0
     for novel in wanted:
-        a, b = predict_novel(qa, args.dump_dir, novel, args.corpus, args.threshold, args.flavour)
+        cast = (bootstrap_cast(args.dump_dir, novel) if args.cast == "bootstrap"
+                else gold_cast(os.path.join(args.corpus, "data", novel)))
+        a, b = predict_novel(qa, args.dump_dir, out_dir, novel, cast, args.threshold,
+                             args.flavour)
         total += a
         answered += b
     print(f"\n{answered}/{total} answered over {len(wanted)} novels. Score with:")
     print(f'  gradle run --args="bakeoff --candidate {args.flavour} '
-          f'--answers {args.dump_dir}"')
+          f'--answers {out_dir}"')
 
 
 if __name__ == "__main__":
