@@ -36,6 +36,16 @@ object BakeoffCli {
             id.removePrefix("alternation-chain").toIntOrNull()?.let { AlternationCandidate(maxChain = it) }
         id == "alternation-tags-only" ->
             AlternationCandidate(Tier1Candidate(pronouns = false, actionBeats = false))
+        // `a+b` composes: `a` answers, `b` takes what `a` declines. See CompositeCandidate.
+        // This is the shape the product actually ships — Tier 1 is precise and free, and the
+        // encoder exists to fill what it leaves — so it has to be measurable and not derived
+        // from a per-type table by hand.
+        '+' in id -> {
+            val parts = id.split('+', limit = 2)
+            val first = candidate(parts[0], answers)
+            val second = candidate(parts[1], answers)
+            if (first != null && second != null) CompositeCandidate(first, second) else null
+        }
         // Anything a predictor outside this JVM produced — see ExternalCandidate. The id is
         // kept as given so the report names the model rather than the mechanism.
         answers != null -> ExternalCandidate(answers, id)
