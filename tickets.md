@@ -18,7 +18,7 @@ already `In progress`.
 | QUI-028 | Encoder vs SLM for quotation attribution | Spike | Todo | — | — |
 | QUI-018 | Headless pipeline spike | Spike | Todo | — | — |
 | QUI-019 | Vertical slice: NeoReader Read Aloud in three voices | Spike | In review | — | QUI-020, QUI-021, QUI-022, QUI-024 |
-| QUI-001 | Project scaffold, build and CI | Foundations | Todo | — | — |
+| QUI-001 | Project scaffold, build and CI | Foundations | In review | — | — |
 | QUI-021 | Dialogue index schema and store | Index | In review | — | QUI-001 |
 | QUI-022 | Text normalisation and cursor matcher | Index | In review | — | QUI-021 |
 | QUI-023 | Book identification by fingerprint | Index | In review | — | QUI-021, QUI-022 |
@@ -128,7 +128,7 @@ Scenario: <name>
 > and the module-boundary checks. Those need an Android SDK, which this environment cannot
 > reach — `dl.google.com` is denied by the network egress policy.
 
-**Status:** In progress · **Owner:** session-visibility-check · **Epic:** Foundations · **Depends on:** —
+**Status:** In review · **Owner:** — · **Epic:** Foundations · **Depends on:** —
 **PRD:** §2
 
 ### User story
@@ -237,6 +237,58 @@ still get a signed-by-nobody debug APK onto the device by pushing.
    have to be written blind.
 2. **"The check appears as required on the pull request"** is a branch-protection setting.
    It needs a human in GitHub settings; nothing in this repository can assert it.
+
+**2026-09-19 — next-ticket-gwgrmw.** Item 1 landed. `dl.google.com` answered a
+`206` in this session (unlike 2026-08-27, when the note above was written), so the SDK
+installed directly and both modules were built and verified locally rather than blind:
+`./tools/install-android-sdk.sh`, then
+`cd app/companion && ../../gradlew assembleDebug` and the same for `app/ttsservice`.
+Both assemble clean; `companion-debug.apk` and `ttsservice-debug.apk` install (not yet
+run on the reference device — no hardware in this environment).
+
+*Structure.* `app/` is its own Gradle build, one level up from `app/companion` and
+`app/ttsservice`, reaching `core:*` through `includeBuild("..")` — same reasoning as
+`spike/ttsbinding`, not copied sources (CLAUDE.md §9's second habit): if the app modules
+were subprojects of the root build, `./gradlew test` would need the Android SDK just to
+*configure*, which is exactly the dependency the JVM-only root exists to avoid. Verified
+this holds: `./gradlew test checkModuleBoundaries` at the root still passes with no SDK
+on `PATH` and no `local.properties` outside `app/` (gitignored, session-specific, same as
+`spike/ttsbinding`'s). `checkModuleBoundaries` itself doesn't see `app/*` at all — they're
+a different build, which is a boundary enforced by construction rather than by the task.
+
+*What's actually in each module, and why so little.* Both are "empty but wired" in the
+sense the original ticket meant: the dependency edges architecture.md §1 draws
+(`companion` → `core:epub`, `core:attribution`, `core:index`, `core:model`; `ttsservice`
+→ `core:tts`, `core:index`, `core:model`) exist in `build.gradle.kts`, but no logic runs
+yet. `companion` has one `Activity` that paints a white screen — the "shows an empty
+screen" criterion, literally. `ttsservice` has **no components at all**, not even a stub
+`TextToSpeechService`: the abstract class needs six method overrides to compile, and
+writing them now would mean pre-empting QUI-010's synthesis design and QUI-024's
+`rangeStart` design with placeholder logic neither ticket asked for. `spike/ttsbinding`
+already proved the registration shape works (QUI-020); this module waits for the tickets
+that own what it should actually do.
+
+*Shared debug key, again.* `app/debug.keystore` is a copy of `spike/ttsbinding`'s — same
+non-secret Android default key, same reason: a per-machine `~/.android/debug.keystore`
+would make every builder's APK mutually uninstallable, which cost 78 MB of re-download
+the first time this was measured (QUI-020's worklog, 2026-08-28).
+
+*CI.* Added an `app` job to `.github/workflows/ci.yml`, structurally identical to the
+`probe` job — `android-actions/setup-android` for `platform-tools`, then `assembleDebug`
+run from each module's own directory (verified locally that this scopes correctly: from
+`app/companion`, Gradle resolves the build root at `app/` but only builds `:companion` —
+`:ttsservice` is untouched). Both APKs upload as artifacts, same pattern as the probe.
+
+*Item 2 is still not this repository's to close* — branch protection is a GitHub setting,
+not a file. Everything else in the Definition of Done that a dev container can check
+(build succeeds, module boundaries hold, model weights can't be committed) does. Status
+goes to `In review` rather than `Done` for that reason, per CLAUDE.md §2.1: the deliverable
+is complete, but a human confirming the branch-protection setting is outside this repo.
+
+Reproduce: `./tools/install-android-sdk.sh`, then
+`cd app/companion && ../../gradlew assembleDebug` and
+`cd app/ttsservice && ../../gradlew assembleDebug`; separately,
+`./gradlew test checkModuleBoundaries` at the root to confirm the JVM build is untouched.
 
 ---
 

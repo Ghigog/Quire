@@ -118,13 +118,14 @@ because it does.
 /docs/device-profile.md ← the reference device and what it forces on the design
 /docs/handoff/       ← dated notes handing a live design thread to the next session
 /core/                ← pure-Kotlin/JVM modules: model, index (testable without a device)
+/app/                 ← shipped Android modules (companion, ttsservice); own build tree, needs an SDK (QUI-001)
 /fixtures/            ← labelled test data shared across tickets (attribution golds)
 /spike/               ← timeboxed throwaway harnesses; never shipped, never depended on
 /spike/hostbench/     ← screens TTS candidates on the build machine (Python + sherpa-onnx)
 /spike/indexer/       ← builds a dialogue index, and the EPUB that matches it
 /spike/slice/         ← pure-Kotlin casting and span clipping for the vertical slice
 /spike/pipeline/      ← Tier 1 attribution, and the PDNC harness every candidate is scored by
-/spike/ttsbinding/    ← the Android TTS probe; the only module needing an SDK
+/spike/ttsbinding/    ← the Android TTS probe; also needs an SDK, same as /app/ (QUI-001)
 /tools/               ← documented fetch and build scripts for artefacts git does not hold
 ```
 
