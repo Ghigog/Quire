@@ -93,6 +93,43 @@ jobs:
           path: build/slice/*.epub
           if-no-files-found: error
 
+  app:
+    name: Companion and TTS service APKs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - uses: gradle/actions/setup-gradle@v4
+
+      # app/ is its own build tree, same reason as spike/ttsbinding (CLAUDE.md §9): if
+      # these modules lived in the root build, `./gradlew test` would need the Android SDK
+      # just to configure.
+      - name: Assemble companion
+        working-directory: app/companion
+        run: ../../gradlew assembleDebug --stacktrace
+      - name: Assemble ttsservice
+        working-directory: app/ttsservice
+        run: ../../gradlew assembleDebug --stacktrace
+
+      - name: Upload the companion APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: quire-companion-apk
+          path: app/companion/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+      - name: Upload the ttsservice APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: quire-ttsservice-apk
+          path: app/ttsservice/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
   voices:
     name: Voice probe audio
     runs-on: ubuntu-latest

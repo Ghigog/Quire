@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      QUI-001: empty shell, no components yet. Registering as a TextToSpeechService (the
+      TTS_SERVICE intent filter, onSynthesizeText, rangeStart) is QUI-010's and QUI-024's
+      job — spike/ttsbinding already prototyped the registration itself for QUI-020, and
+      this module should not pre-empt that design with a half-finished copy of it.
+    -->
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name" />
+</manifest>
