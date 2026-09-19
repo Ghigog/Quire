@@ -27,9 +27,9 @@ already `In progress`.
 | QUI-006 | On-device SLM runtime | Attribution | In review | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | In review | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In review | — | QUI-005, QUI-018 |
-| QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
+| QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | In review | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
-| QUI-011 | Automatic voice casting | Audio | In progress | practical-davinci | QUI-007, QUI-010 |
+| QUI-011 | Automatic voice casting | Audio | In review | — | QUI-007, QUI-010 |
 | QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
@@ -947,7 +947,7 @@ by design, and a novel supplies hundreds.
 
 ## QUI-009 — Tier 2/3 SLM attribution with confidence fallback
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-006, QUI-008
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-006, QUI-008
 **PRD:** §3.1
 
 ### User story
@@ -1028,7 +1028,67 @@ Scenario: Accuracy on the fixture set
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-19 — practical-davinci.** Landed the confidence-gated resolver —
+`core/attribution/slm/attribution/` (`SceneAttributor`, `SceneAnswer`/`SceneAnswerShape`,
+`SceneInference`). Entirely within `core:attribution`, no Android and no other module
+touched. Reproduce with `./gradlew :core:attribution:test`: 78 tests, 0 failures; whole
+repo `./gradlew test checkModuleBoundaries` green, 6 core modules clean.
+
+*The thresholds are the ones already in the codebase, not new ones.* `quire.model.
+Thresholds.SLM_MIN` (0.65) and `.NARRATOR_FLOOR` (0.40) were already declared in
+`core/model/Attribution.kt` — QUI-005 or an earlier ticket had already put them where the
+PRD says they belong. This ticket references them rather than redeclaring them, which the
+Requirements' "changing them requires a ticket" only makes cheaper to honour.
+
+*Alignment fails closed, tested directly.* A scene needing two answers that gets one back
+(`ask()` returns null on any size mismatch) sends every unresolved line in that scene
+through Tier 3 rather than pairing the wrong answer to the wrong quotation —
+`a misaligned reply drops the whole scene to Tier 3` proves it for two lines, not one,
+since a single-line case can't distinguish "dropped to Tier 3" from "coincidentally
+correct."
+
+*Precedence when a line has an answer.* The model naming nobody (`speaker: null`) is
+trusted over a Tier 3 guess even at high confidence — it is the model's own attribution,
+not a decline. A named speaker outside the manifest's cast is treated as a decline, the
+same "never invent a character" rule `Heuristic.known()` already applies, and falls
+through to Tier 3 rather than voicing an unindexed name. Both have a test
+(`the model naming nobody is trusted...`, `a speaker outside the cast is declined...`).
+
+*Tier 3 needs exactly two active speakers, not "at least two."* Three or more distinct
+speakers already resolved in a scene means alternation has no defined answer, so
+`SceneInference` declines rather than picking one arbitrarily — the same asymmetry Tier 1
+applies everywhere else in this codebase. Anchors on the nearest resolved line either
+side of the gap; four direct tests in `SceneInferenceTest` cover both directions and both
+decline cases.
+
+*Caching and non-blocking are structural, not incidental.* `cached(locator)` is a pure map
+lookup returning null for anything unattributed — a caller on the playback path reads it
+and falls back to the Narrator on a miss, no exception, no wait. `attribute()` is the only
+method that calls the model, and only for lines still at `Tier.NONE` after substituting
+whatever the cache already holds — a second call over the same scene makes zero further
+`SlmRuntime` calls, asserted directly against `FakeSlmRuntime.callCount`.
+
+*What is left, in order:*
+
+1. **A real `SlmRuntime` backend.** Every test here runs against `FakeSlmRuntime`, same as
+   QUI-006 and QUI-007's SLM seam. QUI-031 is what makes this real rather than a rehearsal.
+2. **The ≥85% accuracy measurement** against the labelled fixture set — meaningless until
+   1 exists; scoring a fake against its own canned replies would prove nothing.
+3. **Oversized-scene splitting.** `SceneSplitter` (QUI-038) already carries a speaker
+   across a piece boundary and flags `atTurnBoundary`; this ticket's own Requirement to
+   weight a mid-exchange carry below one crossing a real boundary is unbuilt — every test
+   here uses a scene short enough to need one call. A scene long enough to split is the
+   next thing to test against.
+4. **Wiring into the app's playback path** — `SceneAttributor` warmed ahead of playback in
+   a background executor (QUI-006's `BackgroundSlmExecutor` already exists for this), and
+   `cached()` read on the critical path. Needs QUI-001's Android modules, same as QUI-007
+   and QUI-011's remaining halves.
+5. **A ticket-text discrepancy, not a code issue.** The Requirements say "Owns:
+   `core/attribution/slm/attribution/`, `core/attribution/scene/`" (singular
+   `scene/`) — QUI-038 already built `core/attribution/scenes/` (plural). Reused the
+   existing package rather than creating a near-duplicate; flagging the mismatch rather
+   than silently picking one.
 
 ---
 
@@ -1115,7 +1175,7 @@ Scenario: Fully offline
 > manifest, and the piece nothing has built yet — reading `emb_g.weight` out of a loaded
 > sherpa-onnx session and writing an interpolated row back in, which needs QUI-010 first.
 
-**Status:** In progress · **Owner:** practical-davinci · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
 **PRD:** §4.2
 
 ### User story
