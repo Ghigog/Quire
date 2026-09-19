@@ -56,7 +56,7 @@ already `In progress`.
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In review | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
-| QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
+| QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
 
 Next free ID: **QUI-045**
 
@@ -5186,7 +5186,7 @@ Scenario: Every candidate can be scored on it
 
 ## QUI-044 — Screen voice quality without a listen
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**Status:** Done · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
 **PRD:** §5 · **Timebox:** 1 day
 
 ### User story
@@ -5241,6 +5241,56 @@ Scenario: The limit is written down
   When an engineer reads the screening table
   Then it says a MOS score filters candidates and never settles a choice
 ```
+
+### Worklog
+
+**2026-09-19 — next-ticket.** Built `spike/hostbench/mos.py` around UTMOSv2
+(`sarulab-speech/UTMOSv2`, MIT) — not on PyPI, but `pip install git+https://...` works
+(codeload.github.com and the GitHub API are blocked in this environment; the git smart-HTTP
+endpoint isn't). Weight downloads need `HF_HUB_DISABLE_XET=1`, same trap CLAUDE.md §9
+already names for `tools/fetch-models.sh`; without it `transformers.AutoModel.from_pretrained`
+hangs rather than fails. `predict()` also defaults to `device="cuda:0"` independently of
+`create_model`'s own auto-detect, so a CPU host has to pass `device="cpu"` to both.
+
+All four scenarios, run against real audio rather than synthetic fixtures:
+
+1. **Calibrated against a known judgement.** Piper `libritts_r-medium` — QUI-039's "not
+   audiobook quality" verdict — scores 2.93 on an isolated narration passage and 3.18–3.43
+   (mean 3.30) on the four QUI-039 listening-test renders themselves. Both are under the 3.5
+   bar; the instrument agrees with the ear.
+2. **Ranks, not just rates.** The only place two *engines* were ranked by ear before this
+   tool existed is ADR-0002, 2026-08-28: Piper "almost perfect" against Kitten nano's quality
+   "judged unacceptable". Scored on matched narration-length clips, UTMOSv2 gives Piper 2.93
+   against Kitten nano 2.11 — the same order.
+3. **Long-form, not one sentence.** Scored the QUI-039 renders directly (206–543 s each,
+   lengths printed by the tool) rather than a manufactured long clip. Found along the way,
+   and written into the README rather than left for someone to rediscover: UTMOSv2 crops
+   every forward pass to a 3-second SSL window plus two 1.4-second spectrogram frames
+   (`utmosv2/config/fusion_stage3.py`), so a long file buys more independent crops for
+   `--repetitions` to average, not a longer listen per pass. Two back-to-back single-pass
+   scores of the same 32 s clip landed 3.12 and 3.01; `--repetitions` (default 10 here,
+   UTMOSv2's own default is 1) is what makes the numbers above worth reading as a mean and
+   not a coin flip.
+4. **The limit is written down** in `mos.py`'s docstring and the README section, plus a
+   second honest finding volunteered rather than buried: Piper's own four QUI-039 tracks —
+   same engine throughout, only casting differs — spread 0.25 MOS points at ten repetitions
+   each. Whether that is the metric responding to casting or residual noise is left open
+   rather than guessed at.
+
+**What's left.** Only `libritts_r-medium` and Kitten nano carry a MOS number; the README's
+"Screened so far" table gained a MOS column but most rows still read "—". Scoring the rest
+(`alan-low/medium`, `vctk-medium`, `vits-vctk`, both Kokoro builds) is now a five-minute
+`fetch-models.sh && mos.py` away and was left out to keep this ticket to its own instrument,
+per "Out of scope: choosing an engine" above.
+
+Reproduce: `tools/fetch-pdnc.sh`, then in `spike/pipeline`, `gradle installDist` and
+`PDNC_HOME=/root/.cache/quire/pdnc build/install/quire-pipeline-spike/bin/quire-pipeline-spike listen`
+(only to regenerate the QUI-039 script this ticket scored, not needed to run `mos.py`
+itself), then `spike/hostbench/listen.py ../pipeline/build/listen/script.json --wav-dir
+../../build/listen` per QUI-039's own steps. Then
+`python3 -m pip install "git+https://github.com/sarulab-speech/UTMOSv2.git"` and
+`HF_HUB_DISABLE_XET=1 python3 mos.py ../../build/listen` from `spike/hostbench`.
+
 ---
 
 ## QUI-029 — Unindexed books and non-EPUB formats

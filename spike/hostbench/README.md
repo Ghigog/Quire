@@ -14,6 +14,7 @@ python3 bench.py                                    # matrix over every fetched 
 python3 bench.py --paired vctk libritts_r           # interleaved A/B for close calls
 python3 voiceprobe.py --mode accent                 # espeak variant, deterministic (QUI-033)
 python3 voiceprobe.py --mode accent --wav-dir out   # ...and keep the audio to listen to
+python3 mos.py path/to/wavs/                        # quality screen beside the speed one (QUI-044)
 ```
 
 
@@ -61,17 +62,22 @@ hint and not a result.
 ## Screened so far
 
 Median of 5–7 interleaved runs, 2 threads, `length_scale` equalised. Relative column is
-against `libritts_r-medium`, the incumbent.
+against `libritts_r-medium`, the incumbent. MOS is UTMOSv2, 10 repetitions, narration-length
+audio — see `mos.py` below; a row without one has not been screened for quality yet.
 
-| Model | Voices | Rate | Host RTF | Relative |
-| --- | --- | --- | --- | --- |
-| `vits-piper-en_GB-alan-low` | 1 | 16 kHz | 0.047 | 0.73× |
-| `vits-piper-en_GB-alan-medium` | 1 | 22.05 kHz | 0.060 | 0.93× |
-| `vits-piper-en_GB-vctk-medium` | 109 | 22.05 kHz | 0.065 | 1.00× |
-| `vits-piper-en_US-libritts_r-medium` | 904 | 22.05 kHz | 0.065 | 1.00× |
-| `vits-vctk` (non-Piper VITS) | 109 | 22.05 kHz | 0.369 | **5.7×** |
-| `kokoro-multi-lang-v1_1` (fp32) | 103 | 24 kHz | 0.607 | **9.4×** |
-| `kokoro-int8-multi-lang-v1_1` | 103 | 24 kHz | 1.493 | **23×** |
+| Model | Voices | Rate | Host RTF | Relative | MOS |
+| --- | --- | --- | --- | --- | --- |
+| `vits-piper-en_GB-alan-low` | 1 | 16 kHz | 0.047 | 0.73× | — |
+| `vits-piper-en_GB-alan-medium` | 1 | 22.05 kHz | 0.060 | 0.93× | — |
+| `vits-piper-en_GB-vctk-medium` | 109 | 22.05 kHz | 0.065 | 1.00× | — |
+| `vits-piper-en_US-libritts_r-medium` | 904 | 22.05 kHz | 0.065 | 1.00× | **2.93** FAIL |
+| `vits-vctk` (non-Piper VITS) | 109 | 22.05 kHz | 0.369 | **5.7×** | — |
+| `kokoro-multi-lang-v1_1` (fp32) | 103 | 24 kHz | 0.607 | **9.4×** | — |
+| `kokoro-int8-multi-lang-v1_1` | 103 | 24 kHz | 1.493 | **23×** | — |
+
+`kitten-nano-en-v0_1-fp16` is not a row here — ADR-0002 ruled it out on quality before this
+table's speed screen existed — but it is the calibration pair for `mos.py` below: **2.11**,
+lower than `libritts_r`'s 2.93, the same order ADR-0002's ear gave them.
 
 Two things worth taking away.
 
@@ -100,6 +106,67 @@ the Piper runs.
 - Speaker id is the midpoint of the model's range, not 0. Adjacent ids in `libritts_r` are
   neighbouring readers from one corpus and sound alike — the mistake the first device test
   made.
+
+## mos.py — the QUI-044 quality screen
+
+`bench.py` answers whether a candidate is worth a device cycle on speed. It says nothing
+about whether it is worth a human ear, and that gap is why ADR-0002 accepted an engine that
+QUI-039's listen later called **"not audiobook quality"** — the RTF screen had nothing to
+say about it either way. `mos.py` scores rendered audio with **UTMOSv2**
+(`sarulab-speech/UTMOSv2`, MIT, reference-free MOS prediction), so a candidate can fail a
+quality filter before anyone's ears are spent on it.
+
+```bash
+python3 -m pip install "git+https://github.com/sarulab-speech/UTMOSv2.git"
+HF_HUB_DISABLE_XET=1 python3 mos.py ../../build/listen   # score a QUI-039 listening set
+HF_HUB_DISABLE_XET=1 python3 mos.py path/to/wavs/        # any directory of .wav files
+```
+
+`HF_HUB_DISABLE_XET=1` matters here the same way it does in `tools/fetch-models.sh`: without
+it, `transformers`' `AutoModel.from_pretrained` hangs against the Xet CDN hosts CLAUDE.md §9
+documents as refused, rather than falling back to the plain HTTP path that works. First run
+also pulls a ~800 MB fold checkpoint and the `timm`/`transformers` backbones UTMOSv2 is built
+from — none of it committed (CLAUDE.md §6) — to `~/.cache/utmosv2`.
+
+**Calibrated against a known judgement.** Piper `libritts_r-medium` — the engine QUI-039
+judged by ear as not audiobook quality — scores **2.93** on an isolated narration passage,
+well under the 3.5 bar. The QUI-039 listening-test renders themselves (Daisy Miller, natural
+and disagreements tracks, 206–543 s each, same engine) score **3.18–3.43**, mean 3.30 — also
+under bar, but a third of a point higher than the isolated passage. That gap is bigger than
+the run-to-run noise `--repetitions` exists to average out, and it is recorded rather than
+smoothed over, because it is a second finding in its own right — see "What this cannot tell
+you" below.
+
+**It ranks, not just rates.** ADR-0002 (2026-08-28) is the one place two engines were ranked
+by ear before this tool existed: Piper `libritts_r` "almost perfect", Kitten nano's quality
+"judged unacceptable" and ruled out for the narrator. Scored on matched narration-length
+clips, UTMOSv2 puts them in the same order — Piper **2.93**, Kitten nano **2.11** — the one
+pair in this repository where the metric can be checked against a verdict rather than just
+compared against a fixed bar.
+
+**What this cannot tell you.** Two things worth being plain about, because both were found
+by running the tool rather than by reading about it.
+
+1. **A "long-form" score is not a long-form listen.** UTMOSv2 crops every forward pass to a
+   3-second SSL window plus two 1.4-second spectrogram frames, so a 542-second render and a
+   32-second one cost the model the same single glance. `--repetitions` (default 10, this
+   script's choice — UTMOSv2's own default is 1) buys more independent crops of the file,
+   not a longer one; it is the reason two back-to-back single-pass scores of the *same* 32 s
+   clip landed 3.12 and 3.01, and why the number above is a mean of ten, not one.
+2. **Piper's own four QUI-039 tracks spread 0.25 points (3.18 to 3.43) at ten repetitions
+   each, despite being the same engine end to end** — only who is cast to which line differs
+   between the `A` and `B` file in a pair, and between the natural and disagreements tracks.
+   That is a wider spread than ten repetitions collapsed the single-clip noise to in the
+   calibration above. Whether it is the metric responding to casting rather than to the
+   engine, or plain residual noise at ten repetitions rather than a hundred, is not answered
+   here; it is recorded so nobody quotes one track's number as the engine's.
+
+**A MOS score filters candidates. It never settles a choice.** It is trained on VoiceMOS
+Challenge corpora — short, single-speaker, crowd-rated clips — not on minutes of a fictional
+cast, and QUI-036/QUI-033 both found a cheap host-side proxy can look clean on paper and miss
+the thing a person actually hears. A low score disqualifies; a high score means only "worth
+a listen" — CLAUDE.md §1's rule that the host screens and an ear decides. Neither stands in
+for QUI-039's harness, which is what a shipping decision still needs.
 
 ## `voicelab.py` — inventing a voice instead of picking one (QUI-036)
 
