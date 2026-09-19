@@ -25,11 +25,11 @@ already `In progress`.
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | In review | — | QUI-001, QUI-017 |
-| QUI-007 | Upfront book scan → character manifest | Attribution | In progress | practical-davinci | QUI-005, QUI-006 |
+| QUI-007 | Upfront book scan → character manifest | Attribution | In review | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In review | — | QUI-005, QUI-018 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
-| QUI-011 | Automatic voice casting | Audio | Todo | — | QUI-007, QUI-010 |
+| QUI-011 | Automatic voice casting | Audio | In progress | practical-davinci | QUI-007, QUI-010 |
 | QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
@@ -658,7 +658,7 @@ regardless).
 > lands, since `source` already stays `AUTO`. This ticket's scan still needs to call it once
 > Tier 1's explicit set is available per character.
 
-**Status:** In progress · **Owner:** practical-davinci · **Epic:** Attribution · **Depends on:** QUI-005, QUI-006
+**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005, QUI-006
 **PRD:** §3.1
 
 ### User story
@@ -1115,7 +1115,7 @@ Scenario: Fully offline
 > manifest, and the piece nothing has built yet — reading `emb_g.weight` out of a loaded
 > sherpa-onnx session and writing an interpolated row back in, which needs QUI-010 first.
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
+**Status:** In progress · **Owner:** practical-davinci · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
 **PRD:** §4.2
 
 ### User story
@@ -1172,7 +1172,58 @@ Scenario: User overrides survive a rescan
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-19 — practical-davinci.** Landed the assignment algorithm and its persistence —
+`core/tts/casting/` (`Caster`, `VoicePool`, `Cast`, `VoiceAssignment`, `CastStore`), a new
+`core:tts` module depending on `core:model` alone. Reproduce with `./gradlew :core:tts:test`:
+11 tests, 0 failures; whole repo `./gradlew test checkModuleBoundaries` green, 6 core
+modules clean.
+
+*What this scope is, and isn't.* `checkModuleBoundaries` forbids `core:tts` from reaching
+`core:voice`, so this cannot itself call `Foundry.plan()` or read a `SpeakerProfile` — the
+same wall QUI-007's voice-design half hit. `VoicePool` is the seam: the caller hands over
+already-resolved candidate voice ids per (gender, age band), the way `VoiceDesigner` takes
+pre-filtered lines rather than reading `core:attribution` itself. `spike/slice/Casting.kt`
+gets away with calling `Foundry` directly because a spike isn't a `:core:` module and the
+boundary check skips it — not a precedent this ticket can follow.
+
+*The algorithm, briefly.* Characters are cast in line-count order (most-spoken first), each
+claiming a slot spread across its `VoicePool` candidates the way `spike/slice/Casting.kt`
+already spreads across a pitch-sorted pool. A co-presence graph (`coPresence`, one entry per
+scene) is checked before any assignment: a character never takes a voice id already given to
+someone it shares a scene with, searched outward from its preferred slot. Only when a pool
+is too small for a scene's whole cast is an id reused at all — and even then a `rate` offset
+keeps the *pair* (voiceId, rate) distinct, per the Requirements' explicit order ("differentiate
+by pitch/rate offsets before ever reusing a voice"). Tested directly: three co-present
+characters against a two-id pool get three distinct (voiceId, rate) pairs, and the two
+busiest keep `rate = 1.0` while the walk-on absorbs the offset.
+
+*Determinism and overrides,* the other two Gherkin scenarios: no randomness, no wall-clock,
+sorted iteration throughout, so the same manifest and pool always produce the same `Cast`.
+A `previous` cast's `AssignmentSource.USER` entries are copied in before the algorithm runs
+and the loop skips any character id already present — an override cannot be reconsidered,
+only replaced by a person choosing again.
+
+*`CastStore` is plain `@Serializable`*, not `ManifestCodec`'s hand-mapped, unknown-field-
+preserving style — deliberately: nothing outside this module reads or writes a cast file, so
+there is no other writer's future field to protect, and the extra machinery would be
+weight without a reason. Same atomic temp-file-then-rename as `ManifestStore`, same
+percent-encoding guard against a book id escaping the store directory, both tested.
+
+*What is left, in order:*
+
+1. **The real Android caster** — wiring this against a real manifest, a real co-presence
+   source (from `core:attribution`'s scene data, composed at the app layer since `core:tts`
+   cannot reach it), and a real `VoicePool` built from `core:voice`'s `SpeakerProfile` and
+   `QualityList`. Blocked on QUI-001's Android modules, same as QUI-007's remaining half.
+2. **The Foundry-generated blend path.** A character carrying a `Voice` descriptor with a
+   `targetF0Hz` should resolve through `core:voice`'s `Foundry.plan()` before falling back to
+   this ticket's plain pool selection — `spike/slice/Casting.kt` already shows the shape.
+   That composition belongs at the app layer, not here, and is unbuilt.
+3. **Reading and writing `emb_g.weight`** on a loaded sherpa-onnx session — the actual
+   interpolated-voice write-back QUI-036/037 stopped short of. Needs QUI-010's real engine.
+4. **The override UI** (QUI-015) that would let a reader actually set an
+   `AssignmentSource.USER` entry — `CastStore`/`Caster` support it; nothing writes one yet.
 
 ---
 

@@ -14,3 +14,6 @@ include(":core:epub")
 
 // QUI-037: descriptor -> generated voice, and the job C descriptor writer.
 include(":core:voice")
+
+// QUI-011: automatic voice casting.
+include(":core:tts")
