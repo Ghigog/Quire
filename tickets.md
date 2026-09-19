@@ -56,7 +56,7 @@ already `In progress`.
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In review | — | QUI-028 |
 | QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
-| QUI-044 | Screen voice quality without a listen | Spike | Todo | — | QUI-017 |
+| QUI-044 | Screen voice quality without a listen | Spike | In progress | next-ticket | QUI-017 |
 
 Next free ID: **QUI-045**
 
@@ -5186,7 +5186,7 @@ Scenario: Every candidate can be scored on it
 
 ## QUI-044 — Screen voice quality without a listen
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017
+**Status:** In progress · **Owner:** next-ticket · **Epic:** Spike · **Depends on:** QUI-017
 **PRD:** §5 · **Timebox:** 1 day
 
 ### User story
