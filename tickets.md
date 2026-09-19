@@ -27,9 +27,9 @@ already `In progress`.
 | QUI-006 | On-device SLM runtime | Attribution | In review | — | QUI-001, QUI-017 |
 | QUI-007 | Upfront book scan → character manifest | Attribution | In review | — | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In review | — | QUI-005, QUI-018 |
-| QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
+| QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | In progress | practical-davinci | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
-| QUI-011 | Automatic voice casting | Audio | In progress | practical-davinci | QUI-007, QUI-010 |
+| QUI-011 | Automatic voice casting | Audio | In review | — | QUI-007, QUI-010 |
 | QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
@@ -947,7 +947,7 @@ by design, and a novel supplies hundreds.
 
 ## QUI-009 — Tier 2/3 SLM attribution with confidence fallback
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-006, QUI-008
+**Status:** In progress · **Owner:** practical-davinci · **Epic:** Attribution · **Depends on:** QUI-006, QUI-008
 **PRD:** §3.1
 
 ### User story
@@ -1115,7 +1115,7 @@ Scenario: Fully offline
 > manifest, and the piece nothing has built yet — reading `emb_g.weight` out of a loaded
 > sherpa-onnx session and writing an interpolated row back in, which needs QUI-010 first.
 
-**Status:** In progress · **Owner:** practical-davinci · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-007, QUI-010
 **PRD:** §4.2
 
 ### User story
