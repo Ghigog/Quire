@@ -25,7 +25,7 @@ already `In progress`.
 | QUI-027 | Normalised-to-raw offset map | Index | Done | session-visibility-check | QUI-021, QUI-022 |
 | QUI-005 | `characters.json` schema and manifest store | Attribution | In review | — | QUI-001 |
 | QUI-006 | On-device SLM runtime | Attribution | In review | — | QUI-001, QUI-017 |
-| QUI-007 | Upfront book scan → character manifest | Attribution | Todo | — | QUI-005, QUI-006 |
+| QUI-007 | Upfront book scan → character manifest | Attribution | In progress | practical-davinci | QUI-005, QUI-006 |
 | QUI-008 | Tier 1 heuristic dialogue attribution | Attribution | In review | — | QUI-005, QUI-018 |
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | Todo | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
@@ -658,7 +658,7 @@ regardless).
 > lands, since `source` already stays `AUTO`. This ticket's scan still needs to call it once
 > Tier 1's explicit set is available per character.
 
-**Status:** Todo · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-005, QUI-006
+**Status:** In progress · **Owner:** practical-davinci · **Epic:** Attribution · **Depends on:** QUI-005, QUI-006
 **PRD:** §3.1
 
 ### User story
@@ -719,7 +719,62 @@ Scenario: The book is readable during the scan
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-19 — practical-davinci.** Landed the half of this ticket that needs neither
+QUI-001's Android modules nor a real model: `core/attribution/scan/` (`BookScan`,
+`ScannedCharacter`, `Enrichment`, `ScanState`, `CharacterExtractionShape`). Reproduce with
+`./gradlew :core:attribution:test`: 62 tests, 0 failures; whole repo `./gradlew test
+checkModuleBoundaries` also green.
+
+*Two passes, and the first alone already produces a usable manifest.* [Roster] (QUI-034)
+supplies names and genders for free — a book scans with zero model calls and still gets a
+cast, which is what "the book is readable during the scan" needs regardless of whether a
+model is resident. The SLM pass, when a `StructuredCompletion` is supplied, adds what
+Roster structurally cannot: aliases, age band, traits, and a character no speech tag or
+pronoun ever anchors to a quotation. One call per [SceneSegmenter] scene, not per line —
+QUI-032's Worklog already measured why a per-line budget is unreachable (~3,000
+quotations/novel).
+
+*Alias collapsing works against the heuristic pass, not just within the SLM's own output.*
+A scene reporting `{name: "Miss Bennet", aliases: ["Elizabeth"]}` folds onto whichever id
+Roster already anchored to a quotation — "Elizabeth" — rather than creating a second
+character, because `knownNames` is consulted on every scene's fold, not only seeded once.
+Tested directly (`an alias the model reports collapses onto the heuristic-known character`).
+
+*The walk-on discard rule applies only where it can act.* Roster's own `ADJACENCY_MIN` (8
+sightings) already discards anything the heuristic pass would have let through with fewer
+than this ticket's 3 — so the 3-mention rule here only ever matters for a character the SLM
+found and the heuristic pass never touched at all. Tested both sides of the line (2
+mentions dropped, 3 survive) with no attributed dialogue in either case, since a purely
+SLM-discovered candidate has none to check by construction — see the limitation below.
+
+*Resumable without owning any I/O.* `core:attribution` is pure Kotlin/JVM and does no
+filesystem or Android work, so "resume" is a value, not a mechanism: `scan()` takes a
+`resumeFrom: ScanState` and calls `onScene` after each scene so the caller can persist it.
+Tested by running one `BookScan` straight through and a second one interrupted after scene
+1 and resumed with a runtime that holds *only* the second scene's reply — if resume asked
+for scene 1 again it would get the wrong character back, and the test would catch it.
+
+*What is left, in order:*
+
+1. **The import-progress UI**, `app/.../library/` — blocked on QUI-001, whose Android
+   application modules are still owed and claimed by another session. Nothing to do here
+   until that lands.
+2. **A real `SlmRuntime` backend** — QUI-006's `StructuredCompletion` seam is exercised
+   here against `FakeSlmRuntime` only, same as QUI-006 itself. QUI-031 is what makes the
+   SLM pass real rather than optional.
+3. **The 30-minute budget on a 100k-word novel** — cannot be measured without 1 and 2 both
+   existing; there is nothing to time yet.
+4. **A known gap in the walk-on rule.** "Discarded unless it carries attributed dialogue"
+   is fully honoured for the heuristic pass (Roster already does this) but only
+   partially for the SLM pass: `CharacterExtractionShape` has no field for "this character
+   spoke," so an SLM-only candidate is kept or dropped purely on mention count. Extending
+   the shape with that signal is a small follow-up, not started here.
+5. **Alias merging beyond one hop.** Two scenes that each introduce a *different* alias for
+   the same person, with the shared name never in the same scene as both, will not merge —
+   `canonicalId` only matches against names already established by an earlier scene or by
+   Roster, not against each other within one fold. Not measured against real prose; PDNC
+   would answer how often this matters, the way QUI-034 answered it for cast precision.
 
 ---
 
