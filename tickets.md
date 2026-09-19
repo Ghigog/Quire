@@ -2815,7 +2815,7 @@ Scenario: Usable on e-ink
 
 ## QUI-024 — Multi-voice utterance and `rangeStart` callbacks
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-022
+**Status:** Done · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-022
 **PRD:** §2 Phase 2, §3
 
 ### User story
@@ -2879,7 +2879,41 @@ Scenario: An unmatched chunk still speaks
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-19 — next-ticket-i8tqlu.** Landed `app/ttsservice/synthesis/`: `Segmenter` turns
+one chunk plus a `MatchResult` and `Cast` into ordered `PlanSegment`s (mirrors
+`spike/slice`'s `ChunkPlan`, resolving voices from the real `Cast` instead of a spike-only
+wrapper); `UtteranceSynthesizer` calls `TtsEngine` once per segment, in order, and emits a
+single `AudioEvent` stream — one `Started`, per-word `Range`/`Audio` pairs sliced from
+`TtsChunk.boundaries`, one `Done` — that `CallbackAdapter` (the only class touching
+`android.speech.tts`) plays into a real `SynthesisCallback`. `Resampler` honours the host's
+requested rate with a character's own rate offset applied on top (`factor = hostRate *
+segment.rate`), by linear-interpolating the already-synthesised PCM and scaling boundary
+timing to match — sherpa-onnx's Piper voices have no rate knob to call instead (`RawSynthesizer`'s
+KDoc). All five Gherkin scenarios are automated tests, run as JVM unit tests inside the
+Android application module (no device or emulator): `SynthesisCallback` is a plain
+interface, so a fake implementing it needs no Robolectric shadow. Reproduce with
+`echo "sdk.dir=$ANDROID_HOME" > app/local.properties && ./gradlew -p app :ttsservice:testDebugUnitTest`:
+20 tests, 0 failures. `./gradlew test checkModuleBoundaries` and
+`./gradlew -p app :ttsservice:assembleDebug :companion:assembleDebug` stay green.
+
+*Scope drawn deliberately narrower than "ship a working engine".* Neither this ticket nor
+QUI-010 lists `AndroidManifest.xml` or a `res/xml` engine descriptor under "Owns", and
+registering an actual `TextToSpeechService` component needs two things this ticket's
+Requirements don't mention: a production, sherpa-onnx-backed `RawSynthesizer` (QUI-010's
+worklog explicitly left that for "app:ttsservice glue", not this ticket's file), and
+somewhere to get a `BookIndex`/`Cast` for whatever book is open (QUI-023/QUI-025
+territory — no "current book" concept exists in production code yet). Building all of that
+here would have pulled three more tickets' work into one PR. What ships is the tested
+orchestration a future registration ticket calls into; `app/ttsservice/synthesis/` has no
+manifest entry point yet and is not itself installable as a working engine.
+
+*Host pitch is accepted but not altered.* The Requirements prose says "honouring the
+host's rate and pitch"; only rate has a Gherkin scenario, and there is no PCM-level pitch
+control available without a phase vocoder this repo's memory budget has no room for
+(ADR-0002 is already over its RTF budget on rate-free synthesis alone). `UtteranceSynthesizer`
+takes no pitch parameter — adding an unused one would be dead code. Named here rather than
+silently dropped; a future ticket that wants real pitch shifting needs its own budget line.
 
 ---
 
