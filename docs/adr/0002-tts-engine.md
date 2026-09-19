@@ -330,4 +330,33 @@ rescue.
    compute problem and not a size one; quantizing cannot close a 2.4× gap on an SoC with
    no i8mm (`device-profile.md` §2). Reopen only if Kokoro becomes the only multi-speaker
    option left.
+
+## 10. Boundary timestamps are estimated from text position, not measured (QUI-010, 2026-09-19)
+
+The Consequences section above already flagged this and ADR-0004 left the choice open:
+`OfflineTts.generate()` returns PCM and a sample rate, nothing else. Reconfirmed against
+sherpa-onnx 1.13.8's Python binding (`pip download sherpa-onnx`, inspected directly rather
+than assumed) — its `generate()` docstring promises "audio samples and sample rate" and
+nothing more, and that binding mirrors the Kotlin API `spike/ttsbinding` and `app:ttsservice`
+call. There is no alignment output to graft PRD §4.2's word and sentence boundaries onto,
+from this engine or any Piper/VITS model in `sherpa-onnx`'s zoo.
+
+**Decision: estimate, don't align.** `core:tts`'s `BoundaryEstimator` gives each sentence a
+share of an utterance's measured duration proportional to its share of non-whitespace
+characters, then splits each sentence's share the same way across its words. A forced
+aligner would buy real per-word timing at the cost of a second resident model, in a memory
+and RTF budget §4's deviation already exceeds — not affordable for a problem estimation
+mostly solves.
+
+**What this costs.** ADR-0004 called span-position estimation "fine at sentence granularity,
+poor at word granularity", and nothing here changes that: speech does not take time
+proportional to letter count (a comma's pause, a short stressed word, an elided syllable all
+break the assumption), so a given word's boundary can be off by a syllable's worth of audio.
+Sentence boundaries are far more reliable, because per-word error mostly cancels within one.
+QUI-014's sentence-level highlighting is unaffected; a future word-level display should
+expect visible drift on longer sentences.
+
+**Revisit trigger.** A listening test (QUI-039-style) that finds word-level drift
+distracting rather than merely imprecise. Until then this is the cheap side of a decision
+already made for us by the budget.
 4. **TTFS** end to end with the engine preloaded, against 800 ms.
