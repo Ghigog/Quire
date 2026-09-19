@@ -36,12 +36,23 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
+tasks.withType<Test> { useJUnitPlatform() }
+
 dependencies {
-    // Empty but wired (CLAUDE.md §2.3): the real TextToSpeechService — matcher, ONNX
-    // synthesis, ring buffer — belongs to QUI-010 and QUI-024, not this scaffold.
+    // QUI-024: the multi-voice synthesis orchestration in `synthesis/` — matcher, casting
+    // and ONNX synthesis wired into one continuous utterance.
     implementation("quire:tts")
     implementation("quire:index")
     implementation("quire:model")
+
+    // JVM unit tests for `synthesis/`: CLAUDE.md §9's "put the logic where it can be
+    // tested" applies here too — everything but CallbackAdapter's few lines of glue is
+    // plain Kotlin and runs on the desktop without a device or an emulator.
+    testImplementation(kotlin("test"))
 }
