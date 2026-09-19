@@ -54,7 +54,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # No `packages:` input defaults to the legacy `tools` package alone, which Google
+      # dropped from the SDK repository (broke this job on every PR from 2026-09-19).
+      # `platform-tools` is what this job actually needs from the action itself — AGP
+      # fetches the platform and build-tools it wants during Assemble, the same way
+      # tools/install-android-sdk.sh does for a dev container.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
       - uses: gradle/actions/setup-gradle@v4
 
       # Neither is committed: the AAR is 38 MB of native ONNX Runtime, and the index is
