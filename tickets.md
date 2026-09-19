@@ -1148,7 +1148,7 @@ whatever the cache already holds — a second call over the same scene makes zer
 
 ## QUI-010 — ONNX TTS engine with boundary timestamps
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-001, QUI-017
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.2, §4.2
 
 ### User story
@@ -1206,7 +1206,46 @@ Scenario: Fully offline
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-19 — next-ticket-ygj19w.** Landed the interface seam CLAUDE.md §2.3 names —
+`TtsChunk`, `Boundary`/`BoundaryKind` — plus a `TtsEngine` that turns raw PCM into a chunk
+with estimated boundaries, and the `RawSynthesizer` interface it wraps. All in
+`core/tts/engine/`, pure Kotlin, depending on nothing but `core:model`'s existing
+convention (in fact not even that — no new dependency at all). Reproduce with
+`./gradlew :core:tts:test`: 12 new tests, 0 failures; `./gradlew test checkModuleBoundaries`
+stays green across all 6 core modules.
+
+*The engine choice needed no new work.* ADR-0002 (QUI-017) already accepted sherpa-onnx
+running Piper `libritts_r` medium, measured RTF 0.354 against the 0.15 budget (accepted
+deviation) and peak RSS 314 MB. Nothing here reopens that.
+
+*What did need deciding: boundary timestamps.* ADR-0004 found, and this ticket reconfirmed
+by pulling sherpa-onnx 1.13.8's Python wheel and reading `OfflineTts.generate()`'s own
+docstring, that the engine emits samples and a sample rate only — no word or sentence
+alignment, from this model or any other in the Piper/VITS family it ships. A forced aligner
+would buy exact timing at the cost of a second resident model neither the RAM nor the RTF
+budget has room for. Decision recorded as ADR-0002 §10: `BoundaryEstimator` gives each
+sentence a share of the utterance's measured duration proportional to its non-whitespace
+character count, then splits each sentence's share the same way across its words. Sentence
+boundaries are reliable; word boundaries can drift by a syllable's worth of audio on longer
+sentences, which is exactly the "fine at sentence granularity, poor at word granularity"
+tradeoff ADR-0004 already named — recorded, not hidden.
+
+*Cancellation:* `TtsEngine.synthesize` polls `cancelled` before calling the raw synthesizer
+and again after, so a flag flipped during a (real, native) generation call is honoured as
+soon as that call returns, without processing a chunk that will be thrown away. Tested with
+a fake `RawSynthesizer`.
+
+*What is left, and why it belongs to the next session.* The real, sherpa-onnx-backed
+`RawSynthesizer` — the actual `OfflineTts.generate()` call, loading a model directory the
+way `spike/ttsbinding`'s `TtsEngine.load()` already does — is Android: it needs a `Context`
+and the sherpa-onnx AAR, and there is no desktop build of that Kotlin binding to test
+against. `core:tts` is pure Kotlin/JVM by the root build's explicit design (CLAUDE.md §9),
+so that adapter is `app:ttsservice` glue, not this ticket's file (`core/tts/` only). Once
+it exists, the two Gherkin scenarios this session could not check — RTF on the actual
+synthesis path, and that cancellation truly frees native buffers mid-utterance — need a
+run on the Note Air5 C to close. `docs/adr/0002-tts-engine.md` §10 is written so that
+session doesn't have to re-derive the boundary decision, only implement against it.
 
 ---
 
