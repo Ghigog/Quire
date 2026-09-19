@@ -1148,7 +1148,7 @@ whatever the cache already holds — a second call over the same scene makes zer
 
 ## QUI-010 — ONNX TTS engine with boundary timestamps
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-001, QUI-017
+**Status:** In progress · **Owner:** next-ticket-ygj19w · **Epic:** Audio · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.2, §4.2
 
 ### User story
