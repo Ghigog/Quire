@@ -2815,7 +2815,7 @@ Scenario: Usable on e-ink
 
 ## QUI-024 — Multi-voice utterance and `rangeStart` callbacks
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010, QUI-022
+**Status:** In progress · **Owner:** next-ticket-i8tqlu · **Epic:** Audio · **Depends on:** QUI-010, QUI-022
 **PRD:** §2 Phase 2, §3
 
 ### User story
