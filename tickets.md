@@ -30,7 +30,7 @@ already `In progress`.
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | In review | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
 | QUI-011 | Automatic voice casting | Audio | In review | — | QUI-007, QUI-010 |
-| QUI-012 | Rolling ring buffer keyed by segment | Audio | Todo | — | QUI-010, QUI-022 |
+| QUI-012 | Rolling ring buffer keyed by segment | Audio | In progress | next-ticket-15x6p4 | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
 | QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
@@ -1380,7 +1380,7 @@ percent-encoding guard against a book id escaping the store directory, both test
 
 ## QUI-012 — Rolling dynamic ring buffer
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
+**Status:** In progress · **Owner:** next-ticket-15x6p4 · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §3.2
 
 ### User story
