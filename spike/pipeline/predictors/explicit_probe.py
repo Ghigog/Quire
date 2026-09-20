@@ -32,6 +32,10 @@ So the same sampled quotations are asked three ways, changing one thing at a tim
   batch  one call per scene piece for the whole array — what `slm_predict.py` does today
   batch-plain  the same one call for the whole array, over unmarked text, each target
          addressed by its opening words in the question instead of by an in-text marker
+  batch-forced  `batch-plain` again, with "?" removed from the grammar so the array cannot
+         decline. `batch-plain` answered 9/40 and declined the rest; this asks what those
+         31 look like once the model has to name somebody instead of a fifth deciding
+         whether the array is workable at all.
   scene  one call, the same scene text and the same cast, asking about one marked quotation
   para   one call, only the paragraph the quotation sits in, one marked quotation
   plain  the same paragraph with **no `[Qn: ...]` marker at all**, the quotation quoted back
@@ -70,7 +74,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import slm_predict as sp
 
-CONDITIONS = ("batch", "batch-plain", "scene", "scene-plain", "para", "plain")
+CONDITIONS = ("batch", "batch-plain", "batch-forced", "scene", "scene-plain", "para", "plain")
 # `raw` is the model's literal answer, kept beside the resolved one because they fail
 # differently and the difference is the next item on this ticket's list: an empty `raw` is a
 # piece dropped on alignment, `"?"` is the free out the prompt offers and the model takes ~90%
@@ -137,7 +141,7 @@ def openers(paragraphs, targets, width=48):
     return out
 
 
-def ask(llm, cast, text, count, max_tokens, quote=None, quotes=None):
+def ask(llm, cast, text, count, max_tokens, quote=None, quotes=None, decline=True):
     """One grammar-constrained call. Returns the parsed list of `count` names, or None.
 
     `quote` switches to the unmarked form: the passage as the novel wrote it and the words
@@ -145,9 +149,15 @@ def ask(llm, cast, text, count, max_tokens, quote=None, quotes=None):
     shipped shape with the marking taken out. Everything else — system prompt, grammar,
     temperature — is held identical, so the only difference measured is the marking.
 
+    `decline=False` drops "?" from the grammar (`batch-forced`): the array can no longer take
+    the free out, so whatever it does with the 31 of 40 that `batch-plain` declined is now
+    visible instead of hidden behind a "?".
+
     The system prompt is deliberately *not* adjusted for the unmarked forms, even though it
-    still describes quotations "numbered Q1, Q2". Rewriting it would change two things at
-    once, and leaving it stale can only understate the unmarked cells, never flatter them.
+    still describes quotations "numbered Q1, Q2", and not for `decline=False` either, even
+    though it still offers "?" as an option the grammar no longer admits. Rewriting it would
+    change two things at once, and leaving it stale can only understate these cells, never
+    flatter them.
     """
     from llama_cpp import LlamaGrammar
     if quotes is not None:
@@ -173,7 +183,7 @@ def ask(llm, cast, text, count, max_tokens, quote=None, quotes=None):
             f"Answer with a JSON array of {count} names."
         )
     try:
-        grammar = LlamaGrammar.from_string(sp.grammar_for(cast, count), verbose=False)
+        grammar = LlamaGrammar.from_string(sp.grammar_for(cast, count, decline=decline), verbose=False)
     except Exception:                                    # noqa: BLE001 — a call, not the run
         grammar = None
     out = llm.create_chat_completion(
@@ -340,17 +350,18 @@ def probe_novel(llm, dump_dir, novel, corpus, sample, max_tokens, seed, only=CON
         # The scene's cast, held constant across all three conditions — see the module doc.
         scene_names = sp.scene_cast(text, cast, [])
 
-        # Both array conditions ask about every quotation in the piece, as the shipped form
-        # does, and record only the sampled ones — so they stay paired with each other and
-        # with the single-question cells.
-        for condition in ("batch", "batch-plain"):
+        # All three array conditions ask about every quotation in the piece, as the shipped
+        # form does, and record only the sampled ones — so they stay paired with each other
+        # and with the single-question cells.
+        for condition in ("batch", "batch-plain", "batch-forced"):
             if condition not in only or all((q["id"], condition) in done for q in here):
                 continue
             if condition == "batch":
                 named = ask(llm, scene_names, text, len(inside), max_tokens)
             else:
                 named = ask(llm, scene_names, one_unmarked(paragraphs, piece), len(inside),
-                            max_tokens, quotes=openers(paragraphs, inside))
+                            max_tokens, quotes=openers(paragraphs, inside),
+                            decline=(condition != "batch-forced"))
             calls += 1
             for q, name in zip(inside, named or [None] * len(inside)):
                 if q["id"] in chosen and (q["id"], condition) not in done:
