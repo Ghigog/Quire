@@ -2778,7 +2778,7 @@ the companion-app half of the override (`app/companion/`), which needs QUI-025. 
 
 ## QUI-025 — Companion app import and indexing flow
 
-**Status:** Todo · **Owner:** — · **Epic:** Companion · **Depends on:** QUI-007, QUI-021
+**Status:** In progress · **Owner:** next-ticket-dy0t5j · **Epic:** Companion · **Depends on:** QUI-007, QUI-021
 **PRD:** §2 Phase 1, §5 V1.0
 
 ### User story
