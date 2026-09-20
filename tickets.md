@@ -5511,7 +5511,7 @@ Scenario: Quire does not nag
 
 ## QUI-030 — Whole-sentence synthesis with fragment serving
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-012, QUI-027
+**Status:** In progress · **Owner:** next-ticket-zzdv66 · **Epic:** Audio · **Depends on:** QUI-012, QUI-027
 **PRD:** §3.2
 
 ### User story
