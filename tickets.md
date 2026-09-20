@@ -2052,7 +2052,7 @@ original bake-off is now QUI-031.
 
 ## QUI-018 — Headless end-to-end pipeline spike
 
-**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017 (partial)
+**Status:** In progress · **Owner:** remaining-tickets-summary-x4g20h · **Epic:** Spike · **Depends on:** QUI-017 (partial)
 **PRD:** §3 · **Timebox:** 4 days
 
 > Started ahead of QUI-017 on the Tier 1 half only, which needs no model and therefore no
