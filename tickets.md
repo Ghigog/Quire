@@ -494,7 +494,7 @@ Scenario: Persistence does not stall rendering
 
 ## QUI-005 — `characters.json` schema and manifest store
 
-**Status:** In review · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
+**Status:** Done · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-001, QUI-017
 **PRD:** §3.1
 
 ### User story
@@ -584,6 +584,10 @@ rather than `Done` because its declared dependency QUI-001 does not exist, so th
 has never been exercised by a real consumer — the first of QUI-007, QUI-008 or QUI-011 to
 land is what will actually prove the shape is right. It is deliberately frozen now anyway,
 which is the point of a seam (CLAUDE.md §2.3).
+
+**2026-09-20 — review-process-value.** QUI-007, QUI-008 and QUI-011 have all since landed
+and consume this schema, which was the only thing blocking `Done`. Marked `Done`, no code
+change.
 
 ---
 
@@ -6382,7 +6386,7 @@ Reproduce: `cd spike/pipeline && build/install/quire-pipeline-spike/bin/quire-pi
 
 ## QUI-036 — Voice foundry: generate a voice, don't pick one
 
-**Status:** In review · **Epic:** Spike · **Owner:** session-visibility-check · **Depends on:** —
+**Status:** Done · **Epic:** Spike · **Owner:** — · **Depends on:** —
 
 ### User story
 
@@ -6470,6 +6474,9 @@ readers are poor, and picking parents by F0 alone will sometimes pick one. `fixt
 libritts_r-f0.tsv` ranks voices by pitch and says nothing about quality. QUI-011 needs a
 quality signal as well as a pitch one before it chooses parents — a note has been left on
 that ticket.
+
+**2026-09-20 — review-process-value.** All three acceptance scenarios confirmed by ear on
+the reference device, decision made (ADR-0009 stands), work merged. Marked `Done`.
 
 ---
 
