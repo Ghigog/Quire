@@ -1,6 +1,10 @@
 plugins {
     id("com.android.application") version "8.7.3"
     id("org.jetbrains.kotlin.android") version "2.2.20"
+    // ImportCheckpoint (QUI-025): the resumption format is companion-owned, so it is the
+    // only thing here that needs this plugin — see core:model's build file for why the
+    // shared characters.json format is hand-mapped instead.
+    kotlin("plugin.serialization") version "2.2.20"
 }
 
 android {
@@ -36,14 +40,27 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
+tasks.withType<Test> { useJUnitPlatform() }
+
 dependencies {
-    // Empty but wired (CLAUDE.md §2.3): the companion app's real job — import, the SLM
-    // scan, writing the index — belongs to QUI-025 and QUI-007. This ticket only owes the
-    // dependency edges architecture.md §1 describes.
+    // QUI-025: the import pipeline in `pipeline/` — scan, Tier 1/2/3 attribution, casting
+    // and index assembly wired into one resumable run.
     implementation("quire:epub")
     implementation("quire:attribution")
     implementation("quire:index")
     implementation("quire:model")
+    implementation("quire:voice")
+    // kotlinx-serialization-json itself comes transitively from quire:model (an `api`
+    // dependency there) — ImportCheckpoint's own @Serializable just needs the plugin above.
+
+    // JVM unit tests for `pipeline/`: plain Kotlin, no Android and no device needed
+    // (CLAUDE.md §9) — everything but the Service and MainActivity glue runs here.
+    testImplementation(kotlin("test"))
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
 }
