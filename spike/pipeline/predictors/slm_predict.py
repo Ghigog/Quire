@@ -126,8 +126,11 @@ def mark_quotations(paragraphs, questions, piece):
     return "\n\n".join(lines), inside
 
 
-def grammar_for(cast, count):
-    """A GBNF grammar admitting exactly `count` names, each one from `cast` or "?".
+def grammar_for(cast, count, decline=True):
+    """A GBNF grammar admitting exactly `count` names, each one from `cast` (plus "?" unless
+    `decline` is False — QUI-028's 2026-09-10 finding that the array declines 31/40 times
+    where the same question asked singly never does, so the next experiment is what the array
+    does when that door is closed rather than left open).
 
     **Asking a 1B model for JSON and hoping is not a measurement.** Unconstrained, this model
     ignores "reply with a JSON array" and returns an object mapping names to quotation text —
@@ -143,7 +146,8 @@ def grammar_for(cast, count):
     def literal(text):
         return '"\\"' + text.replace("\\", "\\\\").replace('"', '\\"') + '\\""'
 
-    alternatives = " | ".join(literal(name) for name in cast + ["?"])
+    names = cast + (["?"] if decline else [])
+    alternatives = " | ".join(literal(name) for name in names)
     return (
         'root ::= "[" ' + " \",\" ".join(["item"] * count) + ' "]"\n'
         "item ::= " + alternatives + "\n"

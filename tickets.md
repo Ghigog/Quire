@@ -3377,13 +3377,15 @@ mid-clause would have been voiced wrongly.
 
 ## QUI-028 — Encoder vs SLM for quotation attribution
 
-> **Released 2026-09-10 by `quire-dialogue-attribution`** (PR #8, merged). Nobody owns this;
-> what it still needs is listed under *What is left* below. Took over from
-> `quire-explicit-subscore` (PR #7, merged). The encoder half is closed (ADR-0005). The
-> Explicit sub-score was answered and was a harness fault: marking a quotation `[Qn: ...]`
-> in the text costs 50 points of Explicit precision, and unmarked the same 1B model reaches
-> 90.6% among offered speakers (2026-09-09 Worklog). **No SLM headline follows yet** — the
-> fix needs an addressing scheme for N targets in one call that is not in-text marking.
+> **Released 2026-09-20 by `next-ticket-sdeu2r`.** Nobody owns this; what it still needs is
+> listed under *What is left* below. Took over from `quire-dialogue-attribution` (PR #8,
+> merged). The encoder half is closed (ADR-0005). **The array format, not only the marker or
+> its free-out, is where the SLM's competence is lost:** removing `"?"` from the batched
+> grammar (`batch-forced`) does not recover `scene-plain`'s 82.5% ceiling on the same
+> unmarked text — precision falls to 25.0% and wrong voice to 75.0% (2026-09-20 Worklog).
+> **No SLM headline follows yet** — an addressing scheme that gets the array itself near the
+> per-quotation ceiling is still unfound, and a bigger model against today's array is not
+> the fair test it would have been yesterday.
 >
 > **Every PDNC precision figure in this ticket dated before 2026-09-10 is ~8 points low.**
 > Fault 6: scoring compared speaker *strings* and never read PDNC's own alias table, so
@@ -3393,14 +3395,18 @@ mid-clause would have been voiced wrongly.
 **Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
-### What is left (2026-09-10)
+### What is left (2026-09-20)
 
 The encoder half is closed by ADR-0005 and the rule half is measured. Three things in the
-Requirements above are still unanswered, and none of them belongs to a session that only has
-a build container:
+Requirements above are still unanswered; the first is exactly the kind of accuracy work a
+build container can do (2026-09-20 found this out by doing it), the other two need the Boox:
 
-- **No SLM headline.** The batched prompt needs an addressing scheme for N targets in one
-  call that is not in-text marking; `51.5%` / `3.0%` remain the marked-prompt numbers.
+- **No SLM headline.** Marking cost 50 points (2026-09-09); the free-out cost the array
+  most of its coverage, and closing it costs precision instead (2026-09-20) — `batch-forced`
+  measures 25.0%, worse than declining. An addressing scheme that gets the *array* itself
+  near `scene-plain`'s 82.5% per-quotation ceiling is still unfound. `51.5%` / `3.0%` remain
+  the numbers for the original marked, batched prompt; they are not what today's finding
+  replaces, since today's prompt is a different, still-unresolved shape.
 - **No device measurements at all.** Wall-clock for a 100k-word novel, peak RSS, on-disk
   size and sustained power are five of this ticket's acceptance criteria and every one of
   them needs the Note Air5 C. Nothing measured here is a device number.
@@ -4610,6 +4616,63 @@ $B bakeoff --candidate alternation-anygap   # and what dropping the delay clause
 Whole-corpus run: about 7 seconds per candidate on the build container. No SLA from PRD §5
 is measured here — this is scoring quality on the build machine, and nothing in it is a
 device number.
+
+**2026-09-20 — `next-ticket-sdeu2r`.** Ran the experiment the 2026-09-10 entry named as the
+gate: remove `"?"` from the array's grammar and see whether `batch-plain` was hiding
+competence behind the free out, or whether the array itself is where it is lost.
+
+`batch-forced` — `batch-plain`'s call (unmarked scene text, each target addressed by its
+opening words) with `"?"` dropped from `grammar_for`'s alternatives, so the model must name
+somebody. Same novel, same seed, same 40 Explicit quotations `batch-plain` was measured on:
+
+| condition | coverage | precision | `"?"` |
+| --- | ---: | ---: | ---: |
+| `batch` — marked, addressed by marker number | 12.5% | 80.0% (n=5) | 35/40 |
+| `batch-plain` — unmarked, addressed by opening words | 22.5% | 66.7% (n=9) | 31/40 |
+| `batch-forced` — `batch-plain`, `"?"` removed | **100.0%** | **25.0%** (n=40) | 0/40 |
+| `scene-plain` — same unmarked text, one question per call | 100% | 82.5% | 0/40 |
+
+**Forcing the array to answer does not rescue it — it drowns it.** Precision fell to 25.0%,
+below `batch-plain`'s own (thin, n=9) 66.7%, and nowhere near `scene-plain`'s 82.5% ceiling
+on the identical unmarked text asked one at a time. `wrong voice = coverage x (1 -
+precision)` (ADR-0005) puts this at **75.0%** — worse than declining ever was. The 31
+quotations `batch-plain` took the free out on were not 31 right answers hiding behind a
+`"?"`; removing the door does not put the model back in the room with the answer, it just
+makes it guess.
+
+**This closes the "next experiment" the ticket asked for, and closes it negatively.** The
+2026-09-09/10 entries isolated two faults — the in-text marker (worth ~50 points) and the
+array's own free-out habit — and the standing plan was "fix the addressing, drop the `?`,
+then test bigger models against the *fixed* prompt." There is no fixed prompt to test a
+bigger model against: the array format itself, not only the marker or the escape hatch, is
+where the 82.5%-vs-32.5% gap actually lives. Per-quotation calls reach the ceiling; the
+batched array a 30-minute scan needs does not, at any grammar setting tried so far.
+
+**What this does not settle.** One novel, one 1B model, n=40 (~8-point standard error).
+Whether a larger model's array-mode precision degrades the same way is still open — this
+result only says `"?"` was not the reason `batch-plain` looked thin. Qwen 2.5 1.5B/3B
+against `batch-forced`, and whether restructuring the addressing (e.g. asking for one name
+per line in a loop that stays inside a single generation, rather than a strict JSON array)
+changes anything, are both untried and are what "an addressing scheme for N targets in one
+call" should mean next — this session tried removing the escape hatch, not changing the
+scheme itself.
+
+**Releasing.** No device work, no `Holdouts.External` work, done this session — this is
+the same file, no image or model change, and nothing here needed the Boox. Status back to
+`Todo`, owner cleared, so whoever picks this up next is not blocked on a claim.
+
+**Reproduce:**
+
+```bash
+tools/fetch-pdnc.sh
+cd spike/pipeline && gradle installDist
+export HF_HUB_DISABLE_XET=1
+python3 -m pip install llama-cpp-python huggingface_hub
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike dump --out build/bakeoff \
+    --novels AHandfulOfDust --corpus ~/.cache/quire/pdnc
+python3 predictors/explicit_probe.py build/bakeoff --novels AHandfulOfDust \
+    --sample 40 --conditions batch-forced   # ~15 min, 40 calls at ~20-25s each
+```
 
 ---
 
@@ -6032,7 +6095,7 @@ Status set to `In review`: this is a schema/model change with no consumer yet
 
 ## QUI-033 — Accent: listening test and per-character variants
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-032
+**Status:** Done · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-032
 **PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md) · **Timebox:** 2 days
 
 ### User story
