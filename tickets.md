@@ -5511,7 +5511,7 @@ Scenario: Quire does not nag
 
 ## QUI-030 — Whole-sentence synthesis with fragment serving
 
-**Status:** In progress · **Owner:** next-ticket-zzdv66 · **Epic:** Audio · **Depends on:** QUI-012, QUI-027
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-012, QUI-027
 **PRD:** §3.2
 
 ### User story
@@ -5579,7 +5579,42 @@ Scenario: The cache does not grow without bound
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-20 — `next-ticket-zzdv66`.** Landed the cache and the fragment-serving path.
+
+- `core/tts/sentence/SentenceCache.kt`: `SentenceCache`, keyed by `IndexEntry.seq`, builds
+  every voice span of a whole entry once via `TtsEngine` and caches each span's `TtsChunk`;
+  `CachedSentence.fragment(start, end)` slices the cached spans to a raw sub-range and
+  rebases word boundaries to 0, returning null (a miss, never a hole) the moment any
+  overlapping span never finished synthesising. `evictBefore(seq)` drops entries behind the
+  cursor. Pure Kotlin/JVM, depends only on `core:model` and `core:tts`'s own engine/casting
+  types — `checkModuleBoundaries` stays green.
+- `app/ttsservice/synthesis/UtteranceSynthesizer.kt`: takes an optional `SentenceCache?`.
+  When given one and a chunk matches exactly one `IndexEntry`, it looks the chunk up as a
+  literal substring of that entry's raw text (turned out simpler than routing through
+  QUI-027's offset map — see `docs/architecture.md` §4 for why), serves the cached fragment,
+  and evicts everything behind the match's earliest touched `seq`. Anything the cache can't
+  serve — a chunk glued across entries, a literal-search miss, a span whose synthesis
+  failed — falls straight through to the pre-existing `Segmenter`-driven per-chunk path
+  unchanged, so every existing test in this file still passes untouched.
+- Docs: `docs/architecture.md` §4's "Fragments break prosody" section and the module graph
+  updated to record what actually landed, in place of the plan it described before.
+
+**What's left, and why it isn't done here:** the ticket's "measure the memory cost" and the
+Gherkin's own eviction-under-play scenario are covered by unit tests (below), but nobody has
+listened to the seam on the reference device or measured cache RSS growth against the
+1.2 GB budget — that needs QUI-025's companion app and the Note Air5 C, neither in this
+container. This is this ticket's own acceptance criteria, unverified on hardware, so
+`In review` rather than `Done` per §2.1.
+
+**Test commands:**
+```
+./gradlew :core:tts:test        # SentenceCacheTest — 7 tests
+cd app/ttsservice && ../../gradlew testDebugUnitTest   # SentenceFragmentSynthesisTest — 5 tests, plus all pre-existing synthesis tests unchanged
+cd app/ttsservice && ../../gradlew assembleDebug       # confirms the Android build still compiles
+./gradlew test checkModuleBoundaries   # full JVM suite + module graph, from repo root
+```
+All green as of this Worklog entry.
 
 ---
 

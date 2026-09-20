@@ -53,7 +53,7 @@ app:ttsservice  TextToSpeechService, matcher, synthesis            → holds ONN
 core:epub       EPUB → ordered Segment stream
 core:attribution  Tier 1 heuristics, Tier 2/3 SLM, book scan       (companion only)
 core:index      dialogue_index.db — schema, writer, reader, matcher, cursor
-core:tts        ONNX engine, voice casting, ring buffer            (service only)
+core:tts        ONNX engine, voice casting, ring buffer, sentence cache (service only)
 core:model      shared types, no behaviour
 ```
 
@@ -194,11 +194,27 @@ The fix is only available to us because we hold the index and the cursor:
 arrives, the matcher already knows which entry it belongs to and therefore knows the whole
 sentence. Synthesise that entry once, cache the audio, and serve the arriving clause from
 the part of it that clause covers; the following clauses are then cache hits with correct
-prosody. This needs the normalised-to-raw offset map (QUI-027) to know where in the audio
-each clause starts.
+prosody.
 
 A reader app cannot do this — it has no index. Neither can a plain TTS engine — it has no
 idea what comes next. It is a direct payoff of the design.
+
+**QUI-030 landed this as `core/tts/sentence/SentenceCache`, pure Kotlin/JVM.** Keyed by
+`IndexEntry.seq`, it synthesises every voice span of the whole entry once (`Cast`-resolved,
+same as `Segmenter`) and caches each span's `TtsChunk`. `CachedSentence.fragment(start, end)`
+slices the cached spans down to a raw sub-range and rebases their word boundaries to 0,
+returning null the moment any overlapping span never finished synthesising so the caller
+falls back to synthesising that fragment alone rather than serve a hole. `evictBefore(seq)`
+drops everything behind the cursor.
+
+The bridge from an arriving host chunk to a raw range inside the entry turned out not to
+need the normalised-to-raw offset map (QUI-027) after all: `UtteranceSynthesizer` (in
+`app:ttsservice`, which already depends on `core:index`) looks the chunk up as a literal
+substring of `IndexEntry.text` directly, since the chunk *is* the same source text the
+index was built from. That sidesteps `OffsetMap`'s normalisation-aware quote handling
+entirely — it exists to place spans in the index, not to relocate a chunk already placed —
+and a chunk the matcher glued across several entries, or one a literal search cannot find,
+still falls straight through to the pre-QUI-030 per-chunk path.
 
 ### Highlighting
 
