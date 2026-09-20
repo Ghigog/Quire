@@ -3390,7 +3390,7 @@ mid-clause would have been voiced wrongly.
 > naming Charlotte Lucas "Miss Lucas" — which the novel does — counted as a wrong voice.
 > Tier 1's explicit-tag precision is **99.0%**, not 89.9%. See the 2026-09-10 Worklog.
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** —
+**Status:** In progress · **Owner:** next-ticket-sdeu2r · **Epic:** Spike · **Depends on:** —
 **PRD:** §2 Phase 1, §4 · **Timebox:** 3 days
 
 ### What is left (2026-09-10)
@@ -6032,7 +6032,7 @@ Status set to `In review`: this is a schema/model change with no consumer yet
 
 ## QUI-033 — Accent: listening test and per-character variants
 
-**Status:** Todo · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-032
+**Status:** Done · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-032
 **PRD:** §4.2 · **ADR:** [0007](docs/adr/0007-voice-is-a-description.md) · **Timebox:** 2 days
 
 ### User story
