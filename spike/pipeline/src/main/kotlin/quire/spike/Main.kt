@@ -5,6 +5,7 @@ import quire.attribution.Roster
 import quire.epub.EpubText
 import quire.spike.bakeoff.BakeoffCli
 import quire.spike.listen.ListenScript
+import quire.spike.synth.SynthesisScript
 import kotlin.system.exitProcess
 
 private const val USAGE = """
@@ -22,6 +23,9 @@ quire-pipeline-spike (QUI-018)
                               add --junk to list the invented characters
   export <book.epub> <out.tsv>  attribute a real book and write the segments for
                               spike/indexer to turn into a dialogue index
+  synthesize <book.epub> <chapterIndex> [--out FILE]
+                              write a chapter's Tier 1 attribution as a script, then:
+                              python3 render.py FILE  — QUI-018's "chapter becomes audio"
   bakeoff [--corpus DIR]      score a candidate across the whole corpus, with the
           [--candidate ID]    out-of-domain holdouts reported apart from the headline
           [--per-novel] [--mistakes] [--novels A,B]
@@ -54,6 +58,9 @@ fun main(args: Array<String>) {
     // The bake-off commands take valued flags and a corpus root rather than a list of
     // files, so they are dispatched before the file-existence check below.
     if (args[0] in setOf("bakeoff", "holdouts", "novels", "dump", "scenes", "conformance", "listen")) { bakeoff(args); return }
+    // Takes a chapter index rather than a second file, so it does not fit the generic
+    // file-list parsing below.
+    if (args[0] == "synthesize") { synthesizeCli(args); return }
     val flags = args.drop(1).filter { it.startsWith("--") }
     Tier1.useActionBeats = "--no-beats" !in flags
     val files = args.drop(1).filterNot { it.startsWith("--") }.map(::File)
@@ -233,6 +240,37 @@ private fun export(book: File, out: File) {
     // Plain println, so a literal percent sign rather than the %% a format string needs.
     println("Tier 1 only. QUI-028 measured it at 84.9% precision on PDNC — but it answers")
     println("just 26.8% of dialogue, so most spans here are blank and some are wrong.")
+}
+
+private fun synthesizeCli(args: Array<String>) {
+    val positional = args.drop(1).filterNot { it.startsWith("--") }
+    val flags = parseFlags(args.drop(1))
+    val book = positional.getOrNull(0)?.let(::File)
+    val chapter = positional.getOrNull(1)?.toIntOrNull()
+    if (book == null || !book.exists() || chapter == null) {
+        System.err.println("usage: synthesize <book.epub> <chapterIndex> [--out FILE]")
+        exitProcess(2)
+    }
+    val out = File(flags["out"]?.ifEmpty { null } ?: "build/synthesize/script.json")
+    synthesize(book, chapter, out)
+}
+
+/**
+ * Write a chapter's Tier 1 attribution as a script `render.py` can turn into a wav file.
+ *
+ * A blank cast is not an error — it means Tier 1 found nobody to name in this chapter, and
+ * architecture.md's rule holds: everything falls to the narrator rather than blocking.
+ */
+private fun synthesize(book: File, chapter: Int, out: File) {
+    val units = EpubText.paragraphs(book)
+    val script = SynthesisScript.build(book.nameWithoutExtension, units, chapter)
+    SynthesisScript.write(script, out)
+
+    val spoken = script.pieces.count { it.speaker != null }
+    println("chapter $chapter: ${script.pieces.size} pieces, $spoken spoken by ${script.cast.size} characters")
+    println("cast: ${script.cast.joinToString(", ").ifEmpty { "(none — everything falls to the narrator)" }}")
+    println("\nwrote ${out.path}")
+    println("Render it: cd spike/pipeline && python3 render.py ${out.absolutePath}")
 }
 
 /**
