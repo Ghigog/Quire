@@ -7,4 +7,16 @@
     <string name="empty_library">No books yet — import an EPUB to get started.</string>
     <string name="status_ready">ready</string>
     <string name="status_importing">importing — %1$s (%2$d%%)</string>
+
+    <!-- QUI-042: bring-your-own-key cloud voices settings screen. -->
+    <string name="cloud_voice_button">Cloud voice…</string>
+    <string name="cloud_voice_title">Cloud voice</string>
+    <string name="cloud_voice_explainer">Off by default. Point Quire at your own text-to-speech endpoint and key to use it for dialogue; narration always stays on the local engine. Only the line being spoken is ever sent.</string>
+    <string name="cloud_voice_enable">Use cloud voice for dialogue</string>
+    <string name="cloud_voice_endpoint_hint">Endpoint URL</string>
+    <string name="cloud_voice_key_hint">API key</string>
+    <string name="cloud_voice_id_hint">Voice ID</string>
+    <string name="cloud_voice_price_hint">Price per 1,000 characters (your provider\'s rate)</string>
+    <string name="cloud_voice_save">Save</string>
+    <string name="cloud_voice_estimate">Estimated for this book: %1$d characters, %2$s</string>
 </resources>

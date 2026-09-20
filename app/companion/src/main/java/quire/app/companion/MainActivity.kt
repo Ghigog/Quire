@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import quire.app.companion.pipeline.ImportProgress
 import quire.app.companion.pipeline.ImportStage
+import quire.app.companion.voice.CloudVoiceSettingsActivity
 import quire.model.characters.ManifestStore
 
 /**
@@ -53,6 +54,9 @@ class MainActivity : Activity() {
 
         bookList = findViewById(R.id.book_list)
         findViewById<Button>(R.id.import_button).setOnClickListener { pickBook() }
+        findViewById<Button>(R.id.cloud_voice_settings_button).setOnClickListener {
+            startActivity(Intent(this, CloudVoiceSettingsActivity::class.java))
+        }
 
         bindService(Intent(this, ImportService::class.java), connection, Context.BIND_AUTO_CREATE)
         resumeInterruptedImports()
@@ -126,6 +130,19 @@ class MainActivity : Activity() {
             setPadding(0, 16, 0, 16)
             addView(textRow(title).apply { textSize = 18f })
             addView(textRow(subtitle))
+            if (ready) {
+                addView(
+                    Button(this@MainActivity).apply {
+                        text = getString(R.string.cloud_voice_button)
+                        setOnClickListener {
+                            startActivity(
+                                Intent(this@MainActivity, CloudVoiceSettingsActivity::class.java)
+                                    .putExtra(CloudVoiceSettingsActivity.EXTRA_BOOK_ID, bookId),
+                            )
+                        }
+                    },
+                )
+            }
         }
     }
 
