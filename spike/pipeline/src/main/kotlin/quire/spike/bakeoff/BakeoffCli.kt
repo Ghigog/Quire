@@ -36,6 +36,7 @@ object BakeoffCli {
             id.removePrefix("alternation-chain").toIntOrNull()?.let { AlternationCandidate(maxChain = it) }
         id == "alternation-tags-only" ->
             AlternationCandidate(Tier1Candidate(pronouns = false, actionBeats = false))
+        id == "alternation-solo" -> AlternationCandidate(soloBootstrap = true)
         // `a+b` composes: `a` answers, `b` takes what `a` declines. See CompositeCandidate.
         // This is the shape the product actually ships — Tier 1 is precise and free, and the
         // encoder exists to fill what it leaves — so it has to be measurable and not derived

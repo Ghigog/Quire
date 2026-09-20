@@ -68,6 +68,12 @@ object Conversation {
         var countedParagraph: String? = null
         var gap = 0
 
+        // One un-nameable turn licensed since the only speaker this exchange has ever named
+        // (`last`, with `other` still unset): 0 before it happens, 1 after. A second one in a
+        // row means the shape this is checking for — known, gap, known again — no longer
+        // holds, so it does not tighten to a chain of guesses the way real alternation does.
+        var soloPending = 0
+
         fun saw(speaker: String) {
             if (speaker != last) {
                 other = last
@@ -75,6 +81,7 @@ object Conversation {
             }
             recent.addLast(speaker)
             while (recent.size > WINDOW) recent.removeFirst()
+            soloPending = 0
         }
 
         for ((i, result) in results.withIndex()) {
@@ -86,7 +93,7 @@ object Conversation {
                 if (paragraph != lastDialogueParagraph && paragraph != countedParagraph) {
                     countedParagraph = paragraph
                     gap++
-                    if (gap > maxGap) { last = null; other = null; recent.clear() }
+                    if (gap > maxGap) { last = null; other = null; recent.clear(); soloPending = 0 }
                 }
                 continue
             }
@@ -135,6 +142,27 @@ object Conversation {
                     evidence = "alternation after $last",
                 )
                 saw(partner)
+                continue
+            }
+
+            // Nobody to alternate to: the interlocutor has never been named, so there is no
+            // second seat to swap into. But a return to the one seat that *is* filled does not
+            // need one — "known, one un-nameable turn, known again" is licensed on its own,
+            // measured separately from a guess at who the interlocutor is (QUI-028 Worklog,
+            // `alternation-solo`: 71.7% precision on PDNC, in line with plain alternation's
+            // 71.6%). This still never names the turn in between.
+            if (partner == null && seen.size == 1 && last != null) {
+                if (soloPending == 0) {
+                    soloPending = 1
+                } else {
+                    out[i] = result.copy(
+                        speakerId = last,
+                        confidence = ALTERNATION,
+                        tier = Tier.SCENE,
+                        evidence = "revert to $last",
+                    )
+                    saw(last!!)
+                }
             }
         }
         return out
