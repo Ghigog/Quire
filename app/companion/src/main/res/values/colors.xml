@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CLAUDE.md §7: pure black/white only in monochrome mode, never a grey that dithers. -->
+    <color name="ink_black">#FF000000</color>
+    <color name="paper_white">#FFFFFFFF</color>
+</resources>

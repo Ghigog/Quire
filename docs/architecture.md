@@ -274,10 +274,11 @@ See [`device-profile.md`](device-profile.md) §2.
 ## 6. Data at rest
 
 ```
+books/<bookId>.characters.json   the cast and their traits, plus voice descriptors (QUI-005 schema)
 books/<bookId>/
-  characters.json      the cast and their traits (QUI-005 schema)
-  cast.json            character → voice, plus user overrides
-  dialogue_index.db    SQLite: ordered segments, normalised text, hash, speaker, confidence
+  book.epub           the staged import, kept only until the import that needs it finishes
+  index.db            SQLite: ordered segments, normalised text, hash, speaker, confidence
+checkpoints/<bookId>.checkpoint.json   QUI-025's resume point — deleted once the import finishes
 cache/audio/           .wav per paragraph, keyed by seq, cleared on startup and after
                        playback (QUI-012)
 ```
@@ -285,6 +286,17 @@ cache/audio/           .wav per paragraph, keyed by seq, cleared on startup and 
 `dialogue_index.db` is written once by the companion app and opened **read-only** by the
 TTS service. One writer, one reader, no locking problem. The book's own text is not
 copied into the service's world beyond the index.
+
+**The import itself is resumable at scene granularity (QUI-025).** `app:companion`'s
+`ImportPipeline` runs the cast scan and the Tier 2/3 attribution pass scene by scene,
+reporting a checkpoint after each one; `ImportService` persists it to
+`checkpoints/<bookId>.checkpoint.json` the same way `characters.json` is written —
+temp file, then rename, so a checkpoint the process dies mid-write never corrupts the one
+before it. A relaunch that finds a book's staged `book.epub` but no `index.db` resumes
+from that checkpoint instead of re-running the whole book, and never re-asks the SLM about
+a scene it already answered. `dialogue_index.db` itself is published the same atomic way,
+once, after every scene is in — never incrementally — so the acceptance rule above
+("one writer, no locking problem") also means the service never sees a half-built index.
 
 Everything is local. Book content and generated audio never leave the device (CLAUDE.md §8).
 

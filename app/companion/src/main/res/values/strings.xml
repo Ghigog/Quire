@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Quire</string>
+    <string name="import_channel_name">Book import</string>
+    <string name="importing_notification">Importing…</string>
+    <string name="import_button">Import a book</string>
+    <string name="empty_library">No books yet — import an EPUB to get started.</string>
+    <string name="status_ready">ready</string>
+    <string name="status_importing">importing — %1$s (%2$d%%)</string>
 </resources>

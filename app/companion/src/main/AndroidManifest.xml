@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- QUI-025: ImportService runs the whole import in the foreground so it survives the
+         app being backgrounded (PRD §2 Phase 1). "dataSync" is the closest platform type to
+         what this does — reading a file, writing a manifest and an index — none of the
+         media/location/camera types fit. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
-        android:label="@string/app_name">
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Companion">
 
-        <!-- QUI-001: empty shell. Import, the SLM scan and progress UI land in QUI-025. -->
+        <!-- QUI-025: import, the scan/attribution/casting pipeline and the progress UI. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -15,5 +24,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".ImportService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

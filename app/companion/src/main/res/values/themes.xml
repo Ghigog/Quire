@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      QUI-025 / CLAUDE.md §7: e-ink rules. Pure black-on-white — no theme-supplied greys —
+      and every transition animation turned off, since a partial refresh on e-ink ghosts.
+      Built on the platform theme rather than Material/AppCompat: this app has no other use
+      for either library, and CLAUDE.md §6 asks a dependency to earn its footprint cost.
+    -->
+    <style name="Theme.Companion" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper_white</item>
+        <item name="android:textColor">@color/ink_black</item>
+        <item name="android:colorBackground">@color/paper_white</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowContentTransitions">false</item>
+    </style>
+</resources>

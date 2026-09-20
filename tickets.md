@@ -2778,7 +2778,7 @@ the companion-app half of the override (`app/companion/`), which needs QUI-025. 
 
 ## QUI-025 — Companion app import and indexing flow
 
-**Status:** Todo · **Owner:** — · **Epic:** Companion · **Depends on:** QUI-007, QUI-021
+**Status:** In review · **Owner:** next-ticket-dy0t5j · **Epic:** Companion · **Depends on:** QUI-007, QUI-021
 **PRD:** §2 Phase 1, §5 V1.0
 
 ### User story
@@ -2837,7 +2837,68 @@ Scenario: Usable on e-ink
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-20 — `next-ticket-dy0t5j`.** Landed the pipeline, the resumability seam and a first
+UI, all in `app/companion/`.
+
+- `pipeline/ImportPipeline.kt`: the whole import as one pure-Kotlin, JVM-testable class —
+  `BookScan` (QUI-007) for the cast, `Heuristic` + `Conversation` for Tier 1 and free
+  turn-taking, `SceneAttributor` per scene for Tier 2/3 when an SLM is resident, a new
+  `VoiceCasting` (wraps `VoiceDesigner`/ADR-0006/0007) to give each character with 3+
+  explicit-tag lines a voice descriptor, and a new `IndexEntryAssembly` (ported from
+  `spike/ttsbinding`'s `BookImport`, which stays a throwaway harness per CLAUDE.md §3) to
+  fold attributed segments onto sentences.
+- **Resumable at scene granularity, which subsumes the ticket's "chapter granularity" —**
+  `SceneSegmenter` already cuts a scene at every chapter boundary, so resuming mid-scene
+  never resumes coarser than mid-chapter. Two independent cursors (`ImportCheckpoint`):
+  `BookScan`'s own scene state for the cast pass, and a second one for Tier 2/3 that carries
+  the finished `IndexEntry` list forward so a resume never re-asks the model about a scene
+  it already paid for. Persisted the same way `characters.json` already is — temp file,
+  then rename (`CheckpointStore`) — and deleted the moment an import finishes, which is how
+  `ImportService` tells an interrupted import apart from one that never started. `entries`
+  in the manifest come from **companion-owned mirror types**, not `@Serializable` on the
+  `core:model`/`core:attribution` types themselves — see `ImportCheckpoint.kt`'s doc comment
+  for why.
+- `pipeline/IndexPublisher.kt` builds `index.db` at a temp path and renames it into place,
+  generic over the `Sql` implementation so the same code runs against `AndroidSql` on-device
+  and `JdbcSql` in a test.
+- `ImportService.kt` (foreground service, `dataSync` type) is the Android glue: copies the
+  picked EPUB into the book's own directory (not `cacheDir` — it has to survive a kill so a
+  resume has something to resume from), drives `ImportPipeline`, writes the manifest via the
+  existing `ManifestStore`, publishes the index, then deletes the staged EPUB and the
+  checkpoint. `MainActivity.kt` is a single screen: SAF picker, a book list rebuilt whole on
+  every refresh (no partial mutation — CLAUDE.md §7), and a bound-service listener for live
+  stage/fraction while the activity is open. `res/values/themes.xml` is pure black-on-white
+  on the platform theme, animations off, no AppCompat/Material dependency added to buy it.
+- **No SLM is wired in.** QUI-031 has not measured or picked a runtime, so
+  `ImportService.slmRuntime()` returns null — Tier 1, turn-taking and casting all work
+  today; Tier 2/3 and trait enrichment activate with no other change once QUI-031 lands one.
+- `docs/architecture.md` §6 corrected to match what `ManifestStore` actually writes
+  (`books/<bookId>.characters.json`, flat — not nested under a per-book directory as the
+  diagram previously showed) and extended with the checkpoint file and the atomic-publish
+  paragraph above.
+
+**What's left, and why it isn't `Done` here:** the ticket's own SLA — a 100k-word novel in
+≤30 minutes **on the reference device** — is unmeasured; there is no Note Air5 C in this
+container (same gap QUI-030's Worklog recorded). A synthetic 100k-word book run through
+`ImportPipeline` with no SLM resident took **457 ms on this host** — CLAUDE.md §1.6 is
+explicit that a host number is never quoted at an SLA, so this is offered only as evidence
+the heuristic-only path is not the bottleneck, not as the measurement the ticket asks for.
+The SLM-resident path (the one actually expected to threaten the 30-minute budget) is
+entirely unmeasured since no runtime is wired in yet. The monochrome-mode acceptance
+scenario also needs an actual look at the rendered screen (CLAUDE.md §7), which needs a
+device or at least an emulator, neither available here. `In review` rather than `Done`
+per §2.1.
+
+**Test commands:**
+```
+cd app/companion && ../../gradlew testDebugUnitTest   # 17 tests: ImportPipeline, IndexEntryAssembly,
+                                                        # VoiceCasting, CheckpointStore, IndexPublisher
+cd app/companion && ../../gradlew assembleDebug        # confirms MainActivity/ImportService/manifest compile
+./gradlew test checkModuleBoundaries                   # full JVM suite + module graph, from repo root
+```
+All green as of this Worklog entry (Android SDK installed via `tools/install-android-sdk.sh`,
+`dl.google.com` reachable this session).
 
 ---
 
