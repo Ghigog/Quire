@@ -2052,7 +2052,7 @@ original bake-off is now QUI-031.
 
 ## QUI-018 — Headless end-to-end pipeline spike
 
-**Status:** In progress · **Owner:** remaining-tickets-summary-x4g20h · **Epic:** Spike · **Depends on:** QUI-017 (partial)
+**Status:** In progress · **Owner:** — · **Epic:** Spike · **Depends on:** QUI-017 (partial)
 **PRD:** §3 · **Timebox:** 4 days
 
 > Started ahead of QUI-017 on the Tier 1 half only, which needs no model and therefore no
@@ -2205,6 +2205,38 @@ precision. Both are fixable; neither changes the direction.
 
 *What is left.* Tier 2/3 (blocked on ADR-0001). No wav yet; that needs ADR-0002. Confidence
 calibration. The ticket stays `In progress`.
+
+**2026-09-20 — remaining-tickets-summary-x4g20h.** ADR-0002 has since landed (Piper
+`libritts_r` accepted), so "no wav yet" no longer needs a decision, only wiring. Landed the
+`synthesize` command: `SynthesisScript` (new, tested) runs Tier 1 over one chapter of a real
+EPUB and writes a script — text, speaker, tier, confidence — in the same split QUI-039's
+`ListenScript` already uses (CLAUDE.md §9): the JVM decides who speaks, `render.py` only
+turns that into sound. Verified end to end against a throwaway 3-paragraph EPUB (not
+committed — CLAUDE.md §8): `synthesize` correctly named Sarah and Thomas from their speech
+tags, left the rest to the narrator, and `render.py` produced a real 7.4 s wav with three
+audibly distinct voices (`Sarah=100, Thomas=490, narrator=40`). Reproduce:
+
+```bash
+cd spike/pipeline && ../../gradlew test installDist
+build/install/quire-pipeline-spike/bin/quire-pipeline-spike synthesize <book.epub> <chapter>
+python3 -m pip install sherpa-onnx numpy
+../hostbench/fetch-models.sh vits-piper-en_US-libritts_r-medium
+python3 render.py build/synthesize/script.json
+```
+
+*Two corrections to "what is left" above.* First, "A chapter becomes audio" is now met —
+narrator-only chapters are the documented fallback (architecture.md §3), not a gap, and a
+`SynthesisScriptTest` case covers exactly that. Second, **confidence calibration is not this
+ticket's file to touch**: `EXPLICIT_TAG`/`ACTION_BEAT` live in `core:attribution`'s
+`Heuristic` now (QUI-008 moved them there), which is outside `spike/pipeline/` and
+`fixtures/attribution/` — this ticket's declared files (CLAUDE.md §2.2). Recalibrating them
+is QUI-008's to do, not a leftover of this one.
+
+*What is actually left.* Only Tier 2/3, still blocked on ADR-0001 (Proposed, itself blocked
+on QUI-031's device measurement — unresolved, unchanged by anything here). Everything else
+QUI-018 asked for that does not need a model is now done: transcript (`epub`/`export`),
+scoring with an evidence breakdown (`score`), the fixture set, and now the wav. Releasing
+the claim — nothing left in this ticket's scope is workable from a build container alone.
 
 ---
 
