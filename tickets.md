@@ -54,7 +54,7 @@ already `In progress`.
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In review | — | QUI-028 |
-| QUI-042 | Bring-your-own-key cloud voices | Audio | Todo | — | QUI-010 |
+| QUI-042 | Bring-your-own-key cloud voices | Audio | In progress | next-ticket-yuhurr | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
 
@@ -5292,7 +5292,7 @@ python3 predictors/booknlp_budget.py build/bakeoff --flavour booknlp-plus
 > That changes this ticket's shape: it is no longer "a second backend a power user might
 > enable", it is the default path for dialogue, and the mixing is part of the deliverable.
 
-**Status:** Todo · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
+**Status:** In progress · **Owner:** next-ticket-yuhurr · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §6 (V2 scope, brought forward by the 2026-09-10 memo) · **Timebox:** 5 days
 
 ### User story
