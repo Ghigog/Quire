@@ -223,6 +223,22 @@ the host which range is being spoken, and Tier 1 hosts use it to highlight. Quir
 ranges from the TTS boundary timestamps. Accuracy depends on the host; PRD V3.0's
 built-in reader exists to make it guaranteed rather than best-effort.
 
+### A second `RawSynthesizer`, for dialogue only (QUI-042, ADR-0010)
+
+`TtsEngine` was already built around a `RawSynthesizer` seam so its cancellation, chunk
+assembly and boundary estimation could be tested against a fake before `app:ttsservice`
+supplied the real one. That seam turned out to fit a second backend without changing
+`TtsEngine` at all: `core/tts/engine/CloudSynthesizer` implements `RawSynthesizer` against
+a reader-configured HTTP endpoint instead of a loaded model, only ever sending the current
+line's text and the configured voice id. `FallbackSynthesizer` wraps it in front of the
+local engine so a dead network drops to local audio rather than silence, announcing the
+switch once per chapter rather than once per line. `LoudnessNormalizer` and
+`SeamCrossfader` bring cloud and local buffers to the same level and smooth the seam where
+they meet. All four are pure Kotlin/JVM, tested without a device or a network call. The
+settings screen and the encrypted key store that configure them are companion-app-only for
+now (`app/companion/.../voice/`); wiring the configured backend into `app:ttsservice`'s
+live session is a small follow-up once QUI-020 lands the service itself.
+
 ---
 
 ## 5. Throughput is still the hard constraint

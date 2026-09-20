@@ -54,7 +54,7 @@ already `In progress`.
 | QUI-039 | Listening test: what the wrong-voice rate sounds like | Spike | Done | — | QUI-028, QUI-037 |
 | QUI-040 | TTS on the GPU or the DSP, not the CPU | Spike | Todo | — | QUI-017 |
 | QUI-041 | Encoder attribution: the 110M joint-scoring model | Attribution | In review | — | QUI-028 |
-| QUI-042 | Bring-your-own-key cloud voices | Audio | In progress | next-ticket-yuhurr | QUI-010 |
+| QUI-042 | Bring-your-own-key cloud voices | Audio | In review | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
 
@@ -5292,7 +5292,7 @@ python3 predictors/booknlp_budget.py build/bakeoff --flavour booknlp-plus
 > That changes this ticket's shape: it is no longer "a second backend a power user might
 > enable", it is the default path for dialogue, and the mixing is part of the deliverable.
 
-**Status:** In progress · **Owner:** next-ticket-yuhurr · **Epic:** Audio · **Depends on:** QUI-010
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §6 (V2 scope, brought forward by the 2026-09-10 memo) · **Timebox:** 5 days
 
 ### User story
@@ -5371,6 +5371,68 @@ Scenario: The reversal is recorded
   When I read it
   Then it states what CLAUDE.md §8 and PRD §6 said, who authorised the change, and what stayed
 ```
+
+### Worklog
+
+**2026-09-20 — next-ticket-yuhurr.** ADR-0010 landed, plus the backend seam and its
+acoustic requirements, all pure Kotlin/JVM and unit-tested; the settings surface in
+`app:companion`; and a `docs/architecture.md` §4 note. Reproduce:
+
+```bash
+./gradlew :core:tts:test          # CloudSynthesizer/FallbackSynthesizer/LoudnessNormalizer/
+                                   # SeamCrossfader/CloudCostEstimator — 24 new cases, all green
+cd app && ../gradlew :companion:assembleDebug :companion:testDebugUnitTest
+```
+
+**Corrected file list, stated up front rather than left implicit.** The ticket's own
+Requirements name `spike/ttsbinding/TtsEngine.kt` as the seam to extend. That file is
+QUI-017's throwaway sherpa-onnx probe (CLAUDE.md §3: spike code is never depended on); the
+real seam QUI-010 actually shipped is `core/tts/engine/RawSynthesizer`, an interface
+`TtsEngine` wraps specifically so a second backend could be added without touching
+`TtsEngine` itself (its own doc comment says as much). `CloudSynthesizer` implements that
+interface instead. Nothing in `spike/ttsbinding/` changed. `MainActivity.kt` similarly
+resolved to `app/companion/` — the only shipped app with a settings-capable screen right
+now — rather than `spike/ttsbinding`'s probe activity.
+
+**What is done.** `CloudSynthesizer` (provider-shaped contract: endpoint/key/voiceId,
+WAV/PCM16 response only — MP3/Opus needs a decoder dependency this ticket doesn't add) and
+`FallbackSynthesizer` (announces the drop to local audio once per chapter, via
+`resetFallbackNotice()`, not per line) satisfy the fallback and provider-contract scenarios.
+`LoudnessNormalizer` (RMS-to-target-dBFS — an explicit approximation of LUFS, no
+K-weighting or gating) and `SeamCrossfader` (fade + comfort noise, seam-only) satisfy the
+acoustic requirements. `CloudCostEstimator` plus `DialogueCostEstimate` (companion-side,
+estimates characters from the manifest's per-character `lineCount` × an assumed 60
+chars/line, since counting exactly would mean reading the whole index just for this)
+satisfy the cost-visibility scenario. The key never reaches a log: `CloudSynthesizer` has
+no logging dependency at all, and `CloudVoiceSettingsStore` reads/writes it only through
+`EncryptedSharedPreferences` (`androidx.security:security-crypto:1.1.0-alpha06`, ~150 KB
+against the 450 MB budget — the only new dependency, and this build tree's first AndroidX
+one, hence the new `app/gradle.properties`). The settings screen
+(`CloudVoiceSettingsActivity`, reachable from `MainActivity`'s new button and from each
+ready book's row) satisfies "offline is the default" (nothing is enabled until a reader
+fills in all four fields) and "cost is shown first" for a book with a manifest.
+
+**What is not verified, and why.** No real provider — ElevenLabs, OpenAI, Sesame CSM, or
+even a toy HTTP server — was exercised end to end; this environment holds no API key for
+any of them and building one felt like testing the fake rather than the seam. Per-line
+latency against the 800 ms TTFS budget is unmeasured for the same reason, compounded by
+having no device to measure the *local* side of that budget on either. The live bind into
+`app:ttsservice`'s `TextToSpeechService` doesn't exist to wire into yet — QUI-020 (`Todo`
+on the board, `In progress` in its own section, owned by another session) hasn't landed a
+service class on `main`. None of this blocks review: everything QUI-042 owns compiles,
+its tests pass, and the gap is entirely "needs a real key and a real device," not "needs
+more code here."
+
+**Left for whoever picks this up next, or for a device/API-key session:** wire
+`CloudSynthesizer`/`FallbackSynthesizer` into `app:ttsservice` once QUI-020 exists; measure
+real per-line latency against 800 ms TTFS with an actual provider; and listen to a
+normalized+cross-faded local/cloud boundary on the Note Air5 C to confirm the RMS
+approximation of LUFS doesn't audibly mismatch the real thing.
+
+Status set to `In review`: the deliverable is complete and tested to the limit of what a
+build container can verify: what remains needs a provider account and the reference
+device, both outside this session (CLAUDE.md §2.1).
+
 ---
 
 ## QUI-043 — A modern-prose test set we are allowed to keep
