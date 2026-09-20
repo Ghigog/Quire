@@ -57,8 +57,9 @@ already `In progress`.
 | QUI-042 | Bring-your-own-key cloud voices | Audio | In review | — | QUI-010 |
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
+| QUI-045 | Revert to a lone tagged speaker without guessing the partner | Attribution | Done | — | QUI-008 |
 
-Next free ID: **QUI-045**
+Next free ID: **QUI-046**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -6836,3 +6837,116 @@ Scenario: The corpus is counted, not estimated
   Two regression tests cover both paths — a dense scene that must cut at narration, and an
   unbroken run that cannot. Root and `spike/pipeline` suites green.
   Reproduce: `cd spike/pipeline && gradle run --args="scenes"`.
+
+---
+
+## QUI-045 — Revert to a lone tagged speaker without guessing the partner
+
+**Status:** Done · **Owner:** — · **Epic:** Attribution · **Depends on:** QUI-008
+
+### User story
+
+As a listener, I want a character's voice to come back when the exchange returns to them,
+even if their conversation partner is never given their own speech tag, so that a real
+two-hander does not go flat the moment the author stops naming names.
+
+### Context (why)
+
+Found on device (dylan.growcoot@ioet.com, reading Witcher 1 in the QUI-019 slice): Nivellen
+gets a tag once, his listener never does, and Nivellen's own next line comes back narrated
+instead of in his voice. Traced to `Conversation.resolve`: its alternation only fires once
+*two* named speakers are on record (`seen.size == 2 -> other`), or the whole book's cast is
+exactly two people (`cast.size == 2`, which no real novel with more than two named
+characters ever satisfies). Neither holds when one side of a two-hander is simply never
+tagged, which QUI-028's Worklog (2026-09-10) had already flagged as open: "a scene with
+three people present but only two tagged... is a knowledge-asymmetry problem, which is
+QUI-009's" — and separately found that alternation's *even* steps (returning to a speaker
+already on record) run ~10 points more precise than the *odd* steps (guessing who the
+partner is), because an even step "survives being wrong about who the partner is." Nobody
+had built the narrower rule that only takes the even step.
+
+### Description (what)
+
+`Conversation.resolve` now recognises "known speaker, one un-nameable turn, known speaker
+again" as licensed on its own — without the interlocutor ever being tagged, and without
+ever guessing who they are. The un-nameable turn in the middle is left exactly as
+unattributed as before; only the return is assigned, and only for exactly one un-nameable
+turn's gap. A second un-nameable turn in a row, a third speaker being tagged, or a scene
+break all fall through to existing behaviour unchanged.
+
+### Requirements (how)
+
+- Owns: `core/attribution/src/main/kotlin/quire/attribution/Conversation.kt`,
+  `core/attribution/src/test/kotlin/quire/attribution/ConversationTest.kt`,
+  `spike/pipeline/src/main/kotlin/quire/spike/bakeoff/AlternationCandidate.kt`,
+  `spike/pipeline/src/main/kotlin/quire/spike/bakeoff/BakeoffCli.kt` (new `alternation-solo`
+  candidate id, for measuring this rule in isolation before it touched production code).
+- Measure before shipping, same discipline as QUI-028: a new `AlternationCandidate`
+  parameter (`soloBootstrap`), bench against the full PDNC corpus via
+  `bakeoff --candidate alternation-solo`, port to `core:attribution` only once the number
+  held up.
+- Never assign a name to the un-nameable turn itself — only to a turn that returns to a
+  speaker already on record. Guessing the partner's identity is explicitly out of scope
+  (that is the odd-step problem QUI-028 measured and declined).
+- Out of scope: identifying who the untagged partner actually is (QUI-009's, per QUI-028's
+  Worklog), and any change to `AlternationCandidate`'s default (`requirePair`/etc. unchanged;
+  the new behaviour is opt-in via `soloBootstrap`, off by default).
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: A return to the only named speaker is recognised in a larger cast
+  Given a scene where only one of two speakers has ever been tagged
+  When that speaker's line recurs after exactly one un-nameable turn
+  Then the recurring line is attributed to the tagged speaker
+  And the un-nameable turn in between is not attributed to anyone
+
+Scenario: Two un-nameable turns do not each get a guess
+  Given a scene where only one speaker has ever been tagged
+  When a second consecutive turn cannot be attributed either
+  Then the rule keeps alternating the tagged speaker back in on every other turn
+  And it never assigns a name to an un-nameable turn itself
+
+Scenario: A real second tag still wins
+  Given a scene where a second speaker then receives their own tag
+  When alternation runs from there
+  Then the established two-speaker rule answers it, not this fallback
+```
+
+### Worklog
+
+**2026-09-20 — review-process-value.** Measured, then shipped.
+
+*Measured first.* Added `AlternationCandidate(soloBootstrap = true)` (`alternation-solo`) in
+`spike/pipeline` and ran it against the full 28-novel PDNC corpus (36,970 quotations) beside
+the already-shipped `alternation`:
+
+```
+                    coverage  precision  wrong voice
+alternation           34.3%      87.5%        4.29%   (already in production)
+alternation-solo      38.4%      86.4%        5.22%   (this rule added on top)
+```
+
+The new rule's own row, isolated in the by-evidence breakdown — `revert to sole speaker`,
+1,726 fires — scored **71.7% precision**, against the already-shipped `alternation` (x1)
+step's 71.6% on the same corpus. Statistically the same rule in different clothes: both are
+"return to a speaker already on record," one bootstrapped from two tags and one from one.
+Ported to `Conversation.kt` on that basis.
+
+*Ported.* `Conversation.resolve` gained a `soloPending` counter alongside the existing
+`last`/`other`/`recent` state: one un-nameable turn since the sole named speaker sets it,
+the next un-nameable turn reverts to that speaker and clears it, and any real tag (`saw`)
+resets it immediately. No new parameters on the public `resolve()` signature — this is
+folded into the existing rule's own logic, not a flag.
+
+*Tests.* Two new `ConversationTest` cases plus one confirming a real second tag still hands
+off to the ordinary two-speaker path unchanged. `./gradlew :core:attribution:test`: 14
+tests, 0 failures. `./gradlew test checkModuleBoundaries`: whole repo green, 6 core modules
+clean.
+
+*Rebuilt and re-sent.* `spike/ttsbinding`'s probe APK carries this — same debug key, so it
+installs as an update over the build sent for QUI-019 testing.
+
+*What is left.* The un-nameable turn itself is still never voiced — that is still QUI-009's,
+correctly, per QUI-028's Worklog: identifying who the untagged partner actually is needs
+scene presence or a model, not this rule. This ticket only ever claimed the return.

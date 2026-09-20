@@ -120,6 +120,26 @@ class AlternationCandidate(
      * is guessing. It is a cap on the chain, not on the exchange: a tag resets it.
      */
     private val maxChain: Int = 0,
+    /**
+     * Revert to a lone tagged speaker after exactly one un-nameable turn, without ever
+     * naming the turn in between.
+     *
+     * [requirePair] exists because naming *the partner* on a guess is where the wrong-voice
+     * rate lives — the 2026-09-10 Worklog found the odd steps of a chain (guessing who holds
+     * the floor) run ~10 points worse than the even steps (returning to a speaker already on
+     * record), because an even step "survives being wrong about who the partner is". That
+     * finding is about the *shape* of the guess, not about needing two tags first: a scene
+     * with exactly one person ever tagged still lets the even step be checked, it just never
+     * lets [requirePair] see a second seat to alternate from.
+     *
+     * This does only that narrower thing. One tagged speaker, one immediately adjoining turn
+     * nobody can name (left exactly as unattributed as [requirePair] leaves it — this never
+     * guesses who they are), then one more adjoining turn: call the second one the first
+     * speaker again. Three consecutive turns, no gap tolerated even under [requireAdjacent] =
+     * false, and a third distinct tag or a scene break drops it same as everything else here.
+     * Unmeasured before this candidate; that is what `alternation-solo` is for.
+     */
+    private val soloBootstrap: Boolean = false,
 ) : Candidate {
 
     override val id = "${base.id}+alternation" +
@@ -127,7 +147,8 @@ class AlternationCandidate(
         (if (!requireAdjacent) "-anygap" else "") +
         (if (!continuedSpeech) "-nocontinued" else "") +
         (if (strongSeatsOnly) "-strongseats" else "") +
-        (if (maxChain > 0) "-chain$maxChain" else "")
+        (if (maxChain > 0) "-chain$maxChain" else "") +
+        (if (soloBootstrap) "-solo" else "")
 
     override val description = buildString {
         append(base.description)
@@ -157,12 +178,22 @@ class AlternationCandidate(
         var scene = -1
         var lastTurnAt = NEVER
 
+        // [soloBootstrap] only: the one speaker a scene has ever named, the paragraph they
+        // were last confirmed at, and — once set — the paragraph of the single turn nobody
+        // could name in between. Independent of `floor`, which never reaches two seats here.
+        var soloKnown: String? = null
+        var soloKnownAt = NEVER
+        var soloGapAt = NEVER
+
         for ((paragraph, inThisTurn) in turns) {
             val here = sceneOf[paragraph] ?: -1
             if (here != scene) {
                 scene = here
                 floor.reset()
                 lastTurnAt = NEVER
+                soloKnown = null
+                soloKnownAt = NEVER
+                soloGapAt = NEVER
             }
             // The turn before this one, whether or not anybody could attribute it: a turn nobody
             // claimed still happened, and pretending it did not is how a chain skips a speaker.
@@ -197,6 +228,13 @@ class AlternationCandidate(
                 // [Floor.took] leaves the other seat alone when the same speaker speaks again,
                 // which is also what a continuation needs: the floor never passed.
                 floor.took(tagged, paragraph)
+                if (soloBootstrap) {
+                    // A real pair now exists — defer to the validated two-seat mechanism for
+                    // every later turn in this scene, same as a fresh tag always would.
+                    soloKnown = if (floor.paired) null else tagged
+                    soloKnownAt = paragraph
+                    soloGapAt = NEVER
+                }
                 continue
             }
 
@@ -222,6 +260,24 @@ class AlternationCandidate(
             // Convention 2: the floor passes to the other party.
             val other = floor.pass(paragraph)
             if (other == null) {
+                if (soloBootstrap && !floor.paired && soloKnown != null) {
+                    when {
+                        // The turn right after the only speaker this scene has named: leave it
+                        // exactly as unattributed as requirePair would — this never guesses who
+                        // it is — but remember a turn passed, so a return can still be checked.
+                        soloGapAt == NEVER && paragraph - soloKnownAt == 1 -> soloGapAt = paragraph
+                        // The turn right after that one: two back from the only name on record,
+                        // with nothing else named in between. Call it them again.
+                        soloGapAt != NEVER && paragraph - soloGapAt == 1 -> {
+                            for (q in inThisTurn) answers[q.id] = Answer(soloKnown!!, "revert to sole speaker")
+                            soloKnownAt = paragraph
+                            soloGapAt = NEVER
+                        }
+                        // The gap grew past one turn, or this turn does not adjoin it — the
+                        // three-turn shape this checks for no longer holds.
+                        else -> soloKnown = null
+                    }
+                }
                 // **Every decline has to forget who was speaking.** This turn belonged to
                 // somebody; carrying the previous speaker past it would have the next tag
                 // establish a pair with a speaker who is one turn stale, and then alternate
@@ -257,6 +313,9 @@ class AlternationCandidate(
 
         /** Most recent first, at most two: the floor holder and the other party. */
         private var seats = listOf<Seat>()
+
+        /** Two seats filled: the validated alternation mechanism can run from here. */
+        val paired: Boolean get() = seats.size == 2
 
         /** False once a turn went unattributed: somebody spoke and we do not know who. */
         private var floorKnown = false

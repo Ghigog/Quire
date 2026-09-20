@@ -41,6 +41,54 @@ class ConversationTest {
     }
 
     @Test
+    fun `a return to the only named speaker is recognised even when the cast is not a duet`() {
+        // A larger book's cast, so `cast.size == 2` cannot bootstrap a guess at who the
+        // second party is — Nivellen is tagged, his listener never is, exactly the shape
+        // dylan.growcoot@ioet.com found reading Witcher 1 on device.
+        val results = run(
+            manifest("Nivellen" to Gender.MALE, "Geralt" to Gender.MALE, "Vereena" to Gender.FEMALE),
+            "\"You want to know why,\" said Nivellen.",
+            "\"I want to know everything.\"",
+            "\"Then listen.\"",
+        ).filter { it.kind == Kind.DIALOGUE }
+
+        assertEquals(listOf("Nivellen", null, "Nivellen"), results.map { it.speakerId })
+        assertEquals(Tier.SCENE, results.last().tier)
+        assertEquals("revert to Nivellen", results.last().evidence)
+    }
+
+    @Test
+    fun `the revert keeps alternating for as long as nobody else is named`() {
+        val results = run(
+            manifest("Nivellen" to Gender.MALE, "Geralt" to Gender.MALE, "Vereena" to Gender.FEMALE),
+            "\"You want to know why,\" said Nivellen.",
+            "\"I want to know everything.\"",
+            "\"Then listen.\"",
+            "\"I'm listening.\"",
+            "\"It began years ago.\"",
+        ).filter { it.kind == Kind.DIALOGUE }
+
+        // Nivellen's listener is never once named, so this never claims to know who they
+        // are — every other turn simply reverts to the one name on record.
+        assertEquals(listOf("Nivellen", null, "Nivellen", null, "Nivellen"), results.map { it.speakerId })
+    }
+
+    @Test
+    fun `a real second tag hands off to ordinary alternation instead`() {
+        val results = run(
+            manifest("Nivellen" to Gender.MALE, "Geralt" to Gender.MALE, "Vereena" to Gender.FEMALE),
+            "\"You want to know why,\" said Nivellen.",
+            "\"I want to know everything,\" said Geralt.",
+            "\"Then listen.\"",
+        ).filter { it.kind == Kind.DIALOGUE }
+
+        // Once Geralt is actually named, this is a real established pair — the normal
+        // `seen.size == 2` alternation answers it, not the solo-revert fallback.
+        assertEquals(listOf("Nivellen", "Geralt", "Nivellen"), results.map { it.speakerId })
+        assertEquals("alternation after Geralt", results.last().evidence)
+    }
+
+    @Test
     fun `a beat of narration does not end the exchange`() {
         val results = run(
             manifest("Ellen" to Gender.FEMALE, "Robert" to Gender.MALE),
