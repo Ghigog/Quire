@@ -59,6 +59,13 @@ dependencies {
     // kotlinx-serialization-json itself comes transitively from quire:model (an `api`
     // dependency there) — ImportCheckpoint's own @Serializable just needs the plugin above.
 
+    // QUI-042: CloudCostEstimator and the RawSynthesizer seam a cloud backend plugs into.
+    implementation("quire:tts")
+    // EncryptedSharedPreferences is where a reader's cloud-voice API key is stored
+    // (ADR-0010: "a key is a secret and the logs are not") — ~150 KB against the 450 MB
+    // footprint, and the only dependency this ticket adds.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // JVM unit tests for `pipeline/`: plain Kotlin, no Android and no device needed
     // (CLAUDE.md §9) — everything but the Service and MainActivity glue runs here.
     testImplementation(kotlin("test"))

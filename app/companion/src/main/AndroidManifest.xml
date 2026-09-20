@@ -25,6 +25,12 @@
             </intent-filter>
         </activity>
 
+        <!-- QUI-042: bring-your-own-key cloud voice configuration. -->
+        <activity
+            android:name=".voice.CloudVoiceSettingsActivity"
+            android:exported="false"
+            android:label="@string/cloud_voice_title" />
+
         <service
             android:name=".ImportService"
             android:exported="false"
