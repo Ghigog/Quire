@@ -30,7 +30,7 @@ already `In progress`.
 | QUI-009 | Tier 2/3 SLM attribution with confidence fallback | Attribution | In review | — | QUI-006, QUI-008 |
 | QUI-010 | ONNX TTS engine with boundary timestamps | Audio | Todo | — | QUI-001, QUI-017 |
 | QUI-011 | Automatic voice casting | Audio | In review | — | QUI-007, QUI-010 |
-| QUI-012 | Rolling ring buffer keyed by segment | Audio | In progress | next-ticket-15x6p4 | QUI-010, QUI-022 |
+| QUI-012 | Rolling ring buffer keyed by segment | Audio | In review | — | QUI-010, QUI-022 |
 | QUI-024 | Multi-voice utterance and `rangeStart` callbacks | Audio | Todo | — | QUI-010, QUI-022 |
 | QUI-030 | Whole-sentence synthesis with fragment serving | Audio | Todo | — | QUI-012, QUI-027 |
 | QUI-025 | Companion app import and indexing flow | Companion | Todo | — | QUI-007, QUI-021 |
@@ -1380,7 +1380,7 @@ percent-encoding guard against a book id escaping the store directory, both test
 
 ## QUI-012 — Rolling dynamic ring buffer
 
-**Status:** In progress · **Owner:** next-ticket-15x6p4 · **Epic:** Audio · **Depends on:** QUI-010
+**Status:** In review · **Owner:** — · **Epic:** Audio · **Depends on:** QUI-010
 **PRD:** §3.2
 
 ### User story
@@ -1443,7 +1443,37 @@ Scenario: Crash leaves no orphaned cache
 ```
 
 ### Worklog
-- _(empty)_
+
+**2026-09-20 — next-ticket-15x6p4.** Landed `core/tts/buffer/`, pure Kotlin/JVM per
+CLAUDE.md §9: `Paragraph`/`ParagraphSource` and `ParagraphSynthesizer` are the seam (a
+single- or multi-voice synthesiser, QUI-024's, plugs in on the production side without
+this module knowing which); `WavFile` writes a `TtsChunk`'s PCM to a 16-bit `.wav`;
+`RollingBuffer` is the state machine — `seed`/`advance`/`seek`/`setDepthAhead`, one
+background worker, one synthesis in flight at a time, ascending from the current index so
+the paragraph about to play is never queued behind ones further ahead. Cancellation on
+`seek` works by checking on completion whether a background job's index is still inside
+the window, rather than interrupting the worker thread — an in-flight job whose target
+falls outside the (possibly new) window on completion is discarded without being written
+to disk. `depthAhead` clamps to 1..3 (current+1..current+3). The cache directory is wiped
+in the constructor, unconditionally, so a killed process never leaves a `.wav` behind.
+9 JVM tests in `RollingBufferTest`, one per Gherkin scenario plus end-of-book and
+serialised-inference checks — no device or emulator needed, all fakes.
+Reproduce: `./gradlew :core:tts:test`, 9 tests, 0 failures. `./gradlew test
+checkModuleBoundaries` stays green (34 tasks, all core/spike JVM suites).
+
+*TTFS is not measured here.* The Requirements ask for "under 800 ms from pressing Play ...
+recorded in the Worklog", but that number depends on real ONNX synthesis latency
+(sherpa-onnx via `app:ttsservice`, not yet wired to this buffer) running on the reference
+device — a build container has neither. `RollingBuffer.awaitReady` exists so whoever wires
+this to a real `TtsEngine`/`RawSynthesizer` and the Note Air5 C can measure it directly
+without new API. Left `In review` rather than `Done` per CLAUDE.md §2.1, and the device
+number belongs in this Worklog before this ticket can close.
+
+What's left for a future ticket: wiring a real `ParagraphSource` (the dialogue index /
+reading cursor, QUI-021) and a real `ParagraphSynthesizer` (QUI-024's orchestration, or a
+single-voice `TtsEngine` call) into a driver that calls `advance()`/`seek()` from actual
+playback and transport events (QUI-013) — this ticket only owns the buffer itself, per its
+declared file list.
 
 ---
 

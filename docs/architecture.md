@@ -170,6 +170,16 @@ The host owns the transport, and that changes the buffer's job.
 - **One model instance, serialised inference.** Concurrency here buys nothing at RTF 0.15
   and doubles peak memory.
 
+**QUI-012 landed the buffer as `core/tts/buffer/RollingBuffer`, pure Kotlin/JVM.** It
+takes a `ParagraphSource` (the index/cursor) and a `ParagraphSynthesizer` (one call per
+paragraph, single- or multi-voice — QUI-024 supplies the real one) and keeps the window
+`seq..seq+depthAhead` filled, one synthesis in flight at a time, ascending from `seq` so
+the paragraph about to play is never queued behind ones further ahead. `advance()` slides
+the window without disturbing paragraphs already fetched into it; `seek()` is the only
+operation that discards in-flight work, by checking on completion whether the index a
+background job was working on is still inside the window rather than by interrupting the
+worker thread. `depthAhead` adapts down to `seq+1` under memory pressure, never lower.
+
 ### Fragments break prosody, and the index is the fix
 
 Measured on device: because the host splits at commas, each clause arrives as its own
@@ -252,7 +262,8 @@ books/<bookId>/
   characters.json      the cast and their traits (QUI-005 schema)
   cast.json            character → voice, plus user overrides
   dialogue_index.db    SQLite: ordered segments, normalised text, hash, speaker, confidence
-cache/audio/           ephemeral PCM keyed by seq, cleared on startup and after playback
+cache/audio/           .wav per paragraph, keyed by seq, cleared on startup and after
+                       playback (QUI-012)
 ```
 
 `dialogue_index.db` is written once by the companion app and opened **read-only** by the
