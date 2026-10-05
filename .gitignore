@@ -7,6 +7,8 @@ __pycache__/
 *.pyc
 spike/ttsbinding/libs/
 spike/hostbench/models/
+# QUI-046: the sherpa-onnx JVM API and its native libs, fetched by tools/fetch-sherpa-jvm.sh.
+desktop/libs/
 spike/ttsbinding/src/main/assets/
 
 # QUI-001 — things that must never reach the repository (CLAUDE.md §6, §8).

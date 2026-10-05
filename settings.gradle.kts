@@ -17,3 +17,7 @@ include(":core:voice")
 
 // QUI-011: automatic voice casting.
 include(":core:tts")
+
+// QUI-046: the desktop app — the whole pipeline end to end on a laptop, so a book can be
+// read aloud in voices without an Android build, an install or a device.
+include(":desktop")
