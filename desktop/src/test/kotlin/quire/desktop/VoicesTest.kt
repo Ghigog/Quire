@@ -63,6 +63,49 @@ class VoicesTest {
     }
 
     @Test
+    fun `a full name and its short form are one voice, not two`() {
+        // Found on The Sign of the Four: the scan yields both, and voice them separately.
+        val voices = Voices(profile).assign(
+            manifest(
+                "Sherlock Holmes" to Gender.MALE,
+                "Holmes" to Gender.MALE,
+                "Watson" to Gender.MALE,
+            ),
+        )
+
+        assertEquals(
+            voices.getValue("Sherlock Holmes"),
+            voices.getValue("Holmes"),
+            "the same man was cast twice",
+        )
+        assertTrue(voices.getValue("Watson") != voices.getValue("Holmes"))
+    }
+
+    @Test
+    fun `a name that merely ends in another name is left alone`() {
+        // `Sherman` ends with `herman`; `s|herman` is not a word start, so they stay apart.
+        val voices = Voices(profile).assign(
+            manifest("Sherman" to Gender.MALE, "Herman" to Gender.MALE),
+        )
+
+        assertTrue(
+            voices.getValue("Sherman") != voices.getValue("Herman"),
+            "two different men were collapsed into one voice",
+        )
+    }
+
+    @Test
+    fun `a merged group takes a gender from whichever member knows one`() {
+        // The scan gives `Jonathan Small` a full name and no gender, and `Small` a gender.
+        val voices = Voices(profile).assign(
+            manifest("Jonathan Small" to Gender.MALE, "Small" to Gender.UNKNOWN),
+        )
+
+        assertEquals(voices.getValue("Jonathan Small"), voices.getValue("Small"))
+        assertTrue(voices.getValue("Small") in setOf(0, 1), "did not land in the male pool")
+    }
+
+    @Test
     fun `the narrator does not take a name that is already cast`() {
         // The narrator reads every line nobody claimed, which is where a listener most needs
         // to tell voices apart — so it must not collide with a character when it need not.

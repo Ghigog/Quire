@@ -34,33 +34,74 @@ class Voices(
     fun assign(manifest: CharacterManifest): Map<String, Int> {
         val taken = mutableSetOf<Int>()
         val voices = LinkedHashMap<String, Int>()
-        for (character in manifest.characters) {
-            val speaker = speakerFor(character, taken)
-            voices[character.id] = speaker
+        for (group in samePeople(manifest.characters)) {
+            val speaker = speakerFor(group, taken)
             taken += speaker
+            for (character in group) voices[character.id] = speaker
         }
         voices[NARRATOR] = narratorSpeaker(taken)
         return voices
     }
 
     /**
-     * [character]'s speaker, preferring the foundry's and falling back to the nearest free
-     * one in their gender.
+     * Characters who are one person, so they get one voice.
+     *
+     * The scan does not always collapse a full name and its short form: reading *The Sign of
+     * the Four* yields both `Sherlock Holmes` and `Holmes`, both `Athelney Jones` and
+     * `Jones`, and gives each its own manifest entry. Casting them separately is exactly the
+     * failure PRD §3.1 exists to prevent — the same man speaking in two voices is heard
+     * immediately, and it is the same character being wrong twice.
+     *
+     * A name that **nest at a word boundary** inside a longer one is treated as the same
+     * person. The boundary matters: `Sherman` ends with `herman`, but `s|herman` is not a
+     * word start, so the two stay separate. Merging is also the safer error where the text
+     * is genuinely ambiguous — one voice that is sometimes right beats two that are each
+     * sometimes wrong.
+     */
+    private fun samePeople(characters: List<Character>): List<List<Character>> {
+        val remaining = characters.sortedByDescending { it.displayName.length }.toMutableList()
+        val groups = mutableListOf<List<Character>>()
+        while (remaining.isNotEmpty()) {
+            val head = remaining.removeAt(0)
+            val key = head.displayName.lowercase()
+            val nested = remaining.filter { isNameInside(it.displayName, key) }
+            remaining.removeAll(nested)
+            groups += listOf(head) + nested
+        }
+        return groups
+    }
+
+    /** Is [name] the tail of [container], starting at a word boundary? */
+    private fun isNameInside(name: String, container: String): Boolean {
+        val tail = name.lowercase()
+        if (tail.isEmpty() || tail.length >= container.length) return false
+        if (!container.endsWith(tail)) return false
+        val before = container[container.length - tail.length - 1]
+        return !before.isLetterOrDigit()
+    }
+
+    /**
+     * The group's speaker, preferring the foundry's descriptor and falling back to the
+     * nearest free speaker in the group's gender.
      *
      * **Two characters must not share a voice while the model has a spare.** 904 speakers
      * is not a budget to spend, and a book where two people sound identical is worse than
      * one where a minor character is pitched further from their descriptor than ideal —
      * telling voices apart is the entire feature.
      */
-    private fun speakerFor(character: Character, taken: Set<Int>): Int {
-        val preferred = character.voice
-            ?.let { Foundry.plan(it, character.gender, profile, quality).parentA }
+    private fun speakerFor(group: List<Character>, taken: Set<Int>): Int {
+        val gender = group.map { it.gender }
+            .firstOrNull { it == Gender.MALE || it == Gender.FEMALE }
+            ?: group.first().gender
+
+        val preferred = group.firstNotNullOfOrNull { it.voice }
+            ?.let { Foundry.plan(it, gender, profile, quality).parentA }
             ?.takeIf { it !in taken }
         if (preferred != null) return preferred
 
-        return nearestFree(character.gender, taken)
+        return nearestFree(gender, taken)
             ?: preferred
-            ?: pool(character.gender)
+            ?: pool(gender)
             ?: pool(Gender.MALE)
             ?: pool(Gender.FEMALE)
             ?: 0
