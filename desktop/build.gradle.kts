@@ -12,6 +12,17 @@ plugins {
     application
 }
 
+/**
+ * The engine, if it has been fetched.
+ *
+ * Not committed (CLAUDE.md §9): ~8 MB of native library, reproducible from a `/tools`
+ * script. That means a fresh clone does not have it, and this module cannot compile without
+ * it — so its presence decides whether the module takes part in the build at all.
+ */
+val engineApi = fileTree("libs") { include("*sherpa-onnx-v*.jar") }
+val engineNative = fileTree("libs") { include("*native-lib*.jar") }
+val haveEngine = engineApi.files.isNotEmpty()
+
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:epub"))
@@ -21,10 +32,12 @@ dependencies {
     implementation(project(":core:index"))
 
     // The sherpa-onnx JVM API and its natives for the host OS, fetched by
-    // tools/fetch-sherpa-jvm.sh. Not committed (CLAUDE.md §9). runtimeOnly for the natives:
-    // nothing here compiles against them, sherpa's own loader binds them at first use.
-    implementation(fileTree("libs") { include("*sherpa-onnx-v*.jar") })
-    runtimeOnly(fileTree("libs") { include("*native-lib*.jar") })
+    // tools/fetch-sherpa-jvm.sh. runtimeOnly for the natives: nothing here compiles against
+    // them, sherpa's own loader binds them at first use.
+    if (haveEngine) {
+        implementation(engineApi)
+        runtimeOnly(engineNative)
+    }
 }
 
 application {
@@ -32,23 +45,22 @@ application {
     mainClass.set("quire.desktop.MainKt")
 }
 
-/**
- * Fail early with the fix, rather than at the first `OfflineTts` call with an
- * `UnsatisfiedLinkError` that names a library nobody recognises.
- */
-val checkEngineJars by tasks.registering {
-    group = "verification"
-    description = "Fails with instructions if the sherpa-onnx JVM jars have not been fetched."
-    doLast {
-        val libs = file("libs")
-        val fetched = libs.listFiles()?.map { it.name }.orEmpty()
-        if (fetched.none { it.matches(Regex("sherpa-onnx-v.*\\.jar")) }) {
-            throw GradleException(
-                "sherpa-onnx JVM jars are missing from desktop/libs.\n" +
-                    "Run: tools/fetch-sherpa-jvm.sh",
-            )
-        }
+if (!haveEngine) {
+    logger.lifecycle(
+        """
+
+        :desktop is not built — no sherpa-onnx JVM jars in desktop/libs.
+        The module cannot compile without the engine, so it steps out of the build rather
+        than breaking `./gradlew test` for everyone who has not fetched it. Everything
+        else still runs.
+
+        To build and test it:  tools/fetch-sherpa-jvm.sh
+        To use it:             tools/fetch-sherpa-jvm.sh && tools/fetch-tts-model.sh
+
+        """.trimIndent(),
+    )
+    tasks.configureEach {
+        if (name != "clean") enabled = false
     }
 }
 
-tasks.named("compileKotlin") { dependsOn(checkEngineJars) }
