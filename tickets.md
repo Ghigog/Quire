@@ -58,7 +58,7 @@ already `In progress`.
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
 | QUI-045 | Revert to a lone tagged speaker without guessing the partner | Attribution | Done | — | QUI-008 |
-| QUI-046 | The desktop app: a book, read aloud, on this machine | Companion | In review | cline/5d0c0 | QUI-025 |
+| QUI-046 | The desktop app: a book, read aloud, on this machine | Companion | In review | — | QUI-025 |
 
 Next free ID: **QUI-047**
 
