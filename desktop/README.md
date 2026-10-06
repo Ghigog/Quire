@@ -52,6 +52,11 @@ Every step but the last two is a `core:*` module, unchanged and un-copied (CLAUD
 `Voices` and `RenderPlan` live here because they are the two decisions no existing module
 owned: which of the engine's 904 speakers reads a character, and what order the audio goes in.
 
+Two details are this module's own and worth knowing about: **turn-taking runs per chapter**,
+not across the whole book — a chapter is a scene boundary, and carrying the floor over one
+gives the next chapter's first untagged line to whoever spoke last in the previous one — and
+**names that nest are one voice**, so `Holmes` and `Sherlock Holmes` are not cast twice.
+
 ## Known limits
 
 - **No SLM is bound**, exactly as `app:companion` ships today (`ImportService.slmRuntime()`

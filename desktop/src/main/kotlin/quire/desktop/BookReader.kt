@@ -43,12 +43,44 @@ class BookReader {
             generatedAt = System.currentTimeMillis(),
         )
         val tier1 = Heuristic(manifest).attributeAll(paragraphs.map { it.locator to it.text })
-        val withTurns = Conversation.resolve(tier1, cast = manifest.characters.map { it.id })
+        val withTurns = turnTakingByChapter(
+            tier1 = tier1,
+            chapterOfParagraph = paragraphs.associate { it.locator to it.chapterIndex },
+            cast = manifest.characters.map { it.id },
+        )
 
         return Read(manifest, paragraphs, withTurns)
     }
 
     companion object {
+
+        /**
+         * Turn-taking runs **within each chapter**, never across the whole book.
+         *
+         * ADR-0006 makes turn-taking a property of the scene, not of the line — "who spoke
+         * last, who was addressed, who has been silent since they entered". A chapter is the
+         * coarsest scene boundary a book gives us, and the rule's own reset is weaker than a
+         * chapter: [Conversation.MAX_GAP_PARAGRAPHS] is two paragraphs of narration, so a
+         * chapter opening with a heading and one line of prose carries straight over.
+         *
+         * That is not hypothetical. In *The Sign of the Four*, Chapter II opens
+         * `"I have come to you, Mr. Holmes," she said`, and Holmes was the last speaker
+         * tagged in Chapter I — so the whole-book pass gave one of Miss Morstan's lines to
+         * Holmes. A wrong voice is the failure PRD §3.1 prices highest, and a chapter
+         * boundary is the cheapest place to stop making it.
+         *
+         * The cast still comes from the whole book, and Tier 1 still runs over all of it:
+         * a name is only stable if attribution has seen every chapter a character appears
+         * in. Only the *exchange state* — the floor, the pair, the pending revert — resets.
+         */
+        internal fun turnTakingByChapter(
+            tier1: List<AttributionResult>,
+            chapterOfParagraph: Map<String, Int>,
+            cast: List<String>,
+        ): List<AttributionResult> = tier1
+            .groupBy { chapterOfParagraph[paragraphOf(it.locator)] ?: -1 }
+            .values
+            .flatMap { Conversation.resolve(it, cast = cast) }
 
         /**
          * [read]'s segments for one chapter, or all of them.

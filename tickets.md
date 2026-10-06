@@ -7064,4 +7064,46 @@ sherpa-onnx binding exposes. So a designed voice degrades to `parentA` — the n
 **measured** speakers. The voice is real and per-character; it is not yet the interpolated
 one, and that is still QUI-010's.
 
+**2026-10-05 (later) — two bugs, both found by pointing it at real books, not the fixture.**
+
+Neither was visible on the 26-line slice. Both are now regression tests.
+
+*One person, two voices.* Reading *The Sign of the Four*, the cast scan returned both
+`Sherlock Holmes` and `Holmes`, both `Athelney Jones` and `Jones`, both `Mr. Thaddeus
+Sholto` and `Sholto` — and casting them separately gave each man two voices. `Voices` now
+groups names that nest at a word boundary before assigning speakers, taking a group's gender
+from whichever member knows one. The boundary is load-bearing: `Sherman` ends with `herman`,
+and collapsing those two would be inventing a person. On that book, 13 manifest entries now
+map to 9 distinct voices.
+
+*The floor carried across a chapter break.* Chapter II opens `"I have come to you, Mr.
+Holmes," she said` — Miss Morstan's line — and the whole-book turn-taking pass gave it to
+Holmes, because Holmes was the last speaker tagged in Chapter I and
+`Conversation.MAX_GAP_PARAGRAPHS` is 2, which a chapter heading plus one line of prose does
+not exceed. Turn-taking now runs within each chapter (`BookReader.turnTakingByChapter`).
+ADR-0006 already frames turn-taking as a property of the scene rather than the line, and a
+chapter is the coarsest scene boundary a book offers; the cast and Tier 1 still run over the
+whole book, because a name is only stable if attribution has seen every chapter it appears
+in. Only the exchange state resets.
+
+**The trade, measured.** This costs coverage, and the size is worth recording:
+
+| Book | dialogue resolved, whole-book | per chapter |
+| --- | ---: | ---: |
+| *The Sign of the Four* | 572/899 (64%) | 542/899 (60%) |
+| *Emma* | 107/167 (64%) | 103/167 (62%) |
+
+Two to four points, against a wrong voice at every one of a book's chapter openings — which
+is the failure PRD §3.1 prices highest and the one a listener actually notices. Chapter II of
+*The Sign of the Four* goes from "100%" (inflated by carrying Holmes into a scene he was not
+in, and wrong on at least one line) to an honest 72%.
+
+That trade is a judgement, not a measurement, and it is reversible: it is one call in
+`BookReader.read`. **What would settle it** is `spike/pipeline`'s harness run over PDNC's
+gold labels with the two settings, which is the same shape as QUI-028's alternation work and
+has not been done. QUI-039's listening test is the other half, and its one listener rated
+the *more-resolved* rendering slightly better — which, if it holds, argues this trade is
+cheaper than the numbers above suggest.
+
+
 
