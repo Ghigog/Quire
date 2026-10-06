@@ -35,6 +35,13 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      # QUI-046: the desktop module compiles against sherpa-onnx, which is fetched rather
+      # than committed (CLAUDE.md §9). Without it :desktop steps out of the build and this
+      # job would go green having never compiled it — the same shape as the trap §9 warns
+      # about for the Android sources, where a green `gradle test` says nothing about
+      # whether that code builds. Fetch it, so green means green.
+      - name: Fetch the sherpa-onnx JVM jars
+        run: ./tools/fetch-sherpa-jvm.sh
       - name: Test
         run: ./gradlew test checkModuleBoundaries --stacktrace
       - name: Publish test results

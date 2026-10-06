@@ -58,8 +58,9 @@ already `In progress`.
 | QUI-043 | A modern-prose test set we are allowed to keep | Spike | Todo | — | QUI-041 |
 | QUI-044 | Screen voice quality without a listen | Spike | Done | next-ticket | QUI-017 |
 | QUI-045 | Revert to a lone tagged speaker without guessing the partner | Attribution | Done | — | QUI-008 |
+| QUI-046 | The desktop app: a book, read aloud, on this machine | Companion | Done | — | QUI-025 |
 
-Next free ID: **QUI-046**
+Next free ID: **QUI-047**
 
 **Milestones** (see [`docs/architecture.md`](docs/architecture.md) §8):
 **M0a prove interception** — QUI-020 · **M0b prove the stack** — QUI-017, QUI-018 ·
@@ -6950,3 +6951,159 @@ installs as an update over the build sent for QUI-019 testing.
 *What is left.* The un-nameable turn itself is still never voiced — that is still QUI-009's,
 correctly, per QUI-028's Worklog: identifying who the untagged partner actually is needs
 scene presence or a model, not this rule. This ticket only ever claimed the return.
+
+---
+
+## QUI-046 — The desktop app: a book, read aloud, on this machine
+
+**Status:** In review · **Owner:** cline/5d0c0 · **Epic:** Companion · **Depends on:** QUI-025
+
+### User story
+
+As the person building this, I want to hear a whole book in multiple voices by running one
+command on my laptop, so that the product exists to use before it exists to ship.
+
+### Context (why)
+
+Every part of the reader had been built and measured — the EPUB parser, the cast scan, Tier 1,
+turn-taking, the foundry, casting, the index — and none of it had ever been wired together
+end to end anywhere a person could hear it. The only thing that had was `spike/ttsbinding`, a
+throwaway Android probe that needs an APK, a device and a sideload, and that its own header
+calls *"Throwaway. Nothing here ships."*
+
+`docs/architecture.md` §8 defines **M2 — MVP** as *"Any book, any Tier 1 reader … Import, read
+aloud, no setup."* The import half exists (QUI-025). The read-aloud half was the gap, and it
+was pinned to `app:ttsservice` — an Android module whose manifest still reads *"empty shell,
+no components yet"*, because `TextToSpeechService` registration (QUI-010) is Todo and needs a
+device to test on.
+
+The desktop does not need a device. `core:*` is pure Kotlin/JVM by construction (CLAUDE.md §9),
+and sherpa-onnx publishes a **JVM** build beside its Android AAR. So the whole product —
+decision and sound alike — runs on a laptop, and the Android module becomes the platform
+detail it always was rather than the gate in front of everything.
+
+### Description (what)
+
+A new `:desktop` module and a `quire` command with two subcommands:
+
+- `quire cast <book.epub>` — the cast, each character's assigned voice, and how much of the
+  book's dialogue the attribution passes actually resolved.
+- `quire read <book.epub> [--chapter N] [--out DIR] [--speed F] [--dialogue-only]` — renders
+  the book to a `.wav`, one voice per character, narration in the narrator's.
+
+The pipeline is the product's own: `EpubText` → `BookScan` → `Heuristic` → `Conversation` →
+`Voices` → `RenderPlan` → sherpa-onnx. No SLM is bound, exactly as `ImportService` ships
+today, so an unresolved line is narrated — the documented fallback, whose size `cast` prints.
+
+### Requirements (how)
+
+- Owns: `desktop/`, `tools/fetch-sherpa-jvm.sh`, `tools/fetch-tts-model.sh`,
+  `settings.gradle.kts`, `.gitignore`.
+- Pure JVM and pure decision-making in `:desktop`; the engine is a jar on the classpath, not
+  a dependency of anything in `core:` (CLAUDE.md §9). `core:*` is unchanged.
+- Nothing large is committed (CLAUDE.md §9): the sherpa jars and the 82 MB model are fetched
+  by the two `/tools` scripts and ignored by git, same rule as `spike/ttsbinding/libs`.
+- **One voice per character, and two characters must not share one.** 904 speakers is not a
+  budget to spend, and telling voices apart is the entire feature.
+- A beat between paragraphs, never inside one: `"…," he said.` is two spans of a single
+  spoken line, and a pause on either side of the tag reads as two broken utterances.
+- Out of scope: any UI (CLAUDE.md §5 puts the reader in the host app; PRD §6 defers the
+  drawer to V2.0), `app:ttsservice` itself, and the SLM (QUI-009/QUI-031).
+
+### Acceptance criteria (Gherkin)
+
+```gherkin
+Scenario: A book is cast and voiced
+  Given an imported EPUB
+  When `quire cast` runs
+  Then every character has a distinct speaker id and so does the narrator
+  And the dialogue coverage is reported
+
+Scenario: A chapter becomes audio
+  Given a book Tier 1 and turn-taking have attributed
+  When `quire read --chapter 0` runs
+  Then a .wav is written, mono 16-bit, at the engine's rate
+  And each character's lines are synthesised at their own speaker id
+```
+
+### Worklog
+
+**2026-10-05 — cline/5d0c0.** Built and run end to end on macOS arm64.
+
+*Reproduce.*
+
+```sh
+tools/fetch-sherpa-jvm.sh                  # 1.12.15 API + osx-aarch64 natives, ~8 MB
+tools/fetch-tts-model.sh                   # Piper libritts_r medium, 82 MB
+./gradlew :desktop:installDist
+build/install/quire/bin/quire cast book.epub
+build/install/quire/bin/quire read book.epub --chapter 0 --out ~/Desktop
+```
+
+*The engine is the Java API, not the Kotlin one.* `sherpa-onnx-v1.12.15.jar` ships
+`com.k2fsa.sherpa.onnx` configured through builders (`OfflineTtsVitsModelConfig.builder()`),
+where the Android AAR ships the same package with named constructor arguments. Same runtime,
+same version, same model, same `generate` call. It also exposes no `numSpeakers()` — so the
+speaker count is read from the model's own `.onnx.json` rather than pinned at 904, which
+would silently clamp every character to the last speaker with any other Piper voice.
+
+*Verified.* `quire cast` on a generated chapter: cast recovered as Sarah and Thomas, voices
+assigned 41 / 137, narrator 417, dialogue resolved **9/9** (5 `heuristic`, 4 `scene` — the
+turn-taking pass answering). `quire read` produced 21 segments and 52.3 s of mono 16-bit
+22.05 kHz audio (`afinfo`), the whole pipeline in about twenty seconds.
+
+*One bug the tests caught before the audio did.* The first `Voices` put the narrator on the
+median speaker and let characters take whatever their gender's pool offered first — so the
+narrator and a character landed on the same voice. Fixed by assigning the cast first and
+choosing the narrator from the speakers nobody took. That failure is now a regression test,
+alongside one for two characters of the same gender.
+
+*What this does not do.* `Foundry.plan` names two speakers and a fraction between them;
+realising the fraction means reading and writing the model's `emb_g.weight`, which no
+sherpa-onnx binding exposes. So a designed voice degrades to `parentA` — the nearer of two
+**measured** speakers. The voice is real and per-character; it is not yet the interpolated
+one, and that is still QUI-010's.
+
+**2026-10-05 (later) — two bugs, both found by pointing it at real books, not the fixture.**
+
+Neither was visible on the 26-line slice. Both are now regression tests.
+
+*One person, two voices.* Reading *The Sign of the Four*, the cast scan returned both
+`Sherlock Holmes` and `Holmes`, both `Athelney Jones` and `Jones`, both `Mr. Thaddeus
+Sholto` and `Sholto` — and casting them separately gave each man two voices. `Voices` now
+groups names that nest at a word boundary before assigning speakers, taking a group's gender
+from whichever member knows one. The boundary is load-bearing: `Sherman` ends with `herman`,
+and collapsing those two would be inventing a person. On that book, 13 manifest entries now
+map to 9 distinct voices.
+
+*The floor carried across a chapter break.* Chapter II opens `"I have come to you, Mr.
+Holmes," she said` — Miss Morstan's line — and the whole-book turn-taking pass gave it to
+Holmes, because Holmes was the last speaker tagged in Chapter I and
+`Conversation.MAX_GAP_PARAGRAPHS` is 2, which a chapter heading plus one line of prose does
+not exceed. Turn-taking now runs within each chapter (`BookReader.turnTakingByChapter`).
+ADR-0006 already frames turn-taking as a property of the scene rather than the line, and a
+chapter is the coarsest scene boundary a book offers; the cast and Tier 1 still run over the
+whole book, because a name is only stable if attribution has seen every chapter it appears
+in. Only the exchange state resets.
+
+**The trade, measured.** This costs coverage, and the size is worth recording:
+
+| Book | dialogue resolved, whole-book | per chapter |
+| --- | ---: | ---: |
+| *The Sign of the Four* | 572/899 (64%) | 542/899 (60%) |
+| *Emma* | 107/167 (64%) | 103/167 (62%) |
+
+Two to four points, against a wrong voice at every one of a book's chapter openings — which
+is the failure PRD §3.1 prices highest and the one a listener actually notices. Chapter II of
+*The Sign of the Four* goes from "100%" (inflated by carrying Holmes into a scene he was not
+in, and wrong on at least one line) to an honest 72%.
+
+That trade is a judgement, not a measurement, and it is reversible: it is one call in
+`BookReader.read`. **What would settle it** is `spike/pipeline`'s harness run over PDNC's
+gold labels with the two settings, which is the same shape as QUI-028's alternation work and
+has not been done. QUI-039's listening test is the other half, and its one listener rated
+the *more-resolved* rendering slightly better — which, if it holds, argues this trade is
+cheaper than the numbers above suggest.
+
+
+
