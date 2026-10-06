@@ -44,9 +44,13 @@ $Q read mybook.epub --chapter 0 --play    # ...and open it in your default playe
 open the `.wav` — pass `--play`, or play it yourself:
 
 ```sh
-afplay ~/Desktop/mybook-ch0.wav     # macOS, in the terminal, Ctrl-C to stop
-open    ~/Desktop/mybook-ch0.wav    # macOS, in your default player
+afplay ~/Desktop/mybook-ch0.wav     # macOS, plays it right there, Ctrl-C to stop
+open    ~/Desktop/mybook-ch0.wav    # macOS, would need you to press play in Music
 ```
+
+`--play` uses `afplay`, not `open`: macOS hands a WAV to Music.app, which lands on its Home
+screen and plays nothing. `--play` starts the player and returns, because a chapter is
+minutes and a book is hours — stop it with `killall afplay`.
 
 `read` writes a mono 16-bit WAV named after the book, at the engine's own rate (22.05 kHz
 for `libritts_r`). `--dialogue-only` renders just the spoken lines, which is the quickest

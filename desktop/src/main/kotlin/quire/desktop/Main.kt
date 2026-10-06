@@ -128,24 +128,52 @@ private fun read(flags: Flags) {
     // This program makes a file; it does not play one. Without this the honest answer to
     // "am I supposed to hear something?" is "not until you open the wav", so make it one
     // flag away rather than a thing to work out.
-    if (flags.has("play")) openInPlayer(out)
+    if (flags.has("play")) play(out)
 }
 
+/** macOS's own audio player. `Desktop.open` is not a substitute — see [play]. */
+private const val AFPLAY = "/usr/bin/afplay"
+
 /**
- * Hand the finished file to whatever plays audio on this machine.
+ * Play the finished file.
  *
- * Best effort and never fatal: the file is written either way, and a headless or
- * locked-down machine losing a convenience must not look like a failed render.
+ * **Not `Desktop.open`.** On macOS that hands an audio file to Music.app, which opens to its
+ * Home screen and plays nothing — measured, and precisely the "I hear nothing" this flag
+ * exists to prevent. `/usr/bin/afplay` plays a file directly, and is part of macOS.
+ *
+ * Started rather than waited on: a chapter is minutes and a book is hours, and blocking the
+ * shell for either is worse than the alternative. Stop it with `killall afplay`.
  */
-private fun openInPlayer(file: File) {
+private fun play(file: File) {
+    val afplay = File(AFPLAY)
+    if (afplay.canExecute()) {
+        val started = runCatching {
+            // Output goes to /dev/null rather than being inherited. An inherited stdout is a
+            // copy of *this* process's, so anything piping our output — `| grep`, a script,
+            // `tee` — waits for afplay to finish before it sees end-of-file, and the command
+            // looks hung for the length of the chapter.
+            ProcessBuilder(afplay.path, file.absolutePath)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+        }
+        if (started.isSuccess) {
+            println("Playing ${file.name} — stop it with: killall afplay")
+            return
+        }
+        println("Could not start afplay (${started.exceptionOrNull()?.message}); opening the file instead.")
+    }
+    openInDefaultApp(file)
+}
+
+/** Everywhere that is not macOS: hand it to whatever the desktop does with an audio file. */
+private fun openInDefaultApp(file: File) {
     runCatching {
         if (!java.awt.Desktop.isDesktopSupported()) return@runCatching
         val desktop = java.awt.Desktop.getDesktop()
-        if (!desktop.isSupported(java.awt.Desktop.Action.OPEN)) return@runCatching
-        desktop.open(file)
-        println("Opened ${file.name} in your default player.")
+        if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) desktop.open(file)
     }.onFailure {
-        println("Could not open a player (${it.message}) — open it yourself: ${file.path}")
+        println("Could not open a player (${it.message}) — the file is at ${file.path}")
     }
 }
 
