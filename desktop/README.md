@@ -37,6 +37,15 @@ $Q cast mybook.epub                       # who is in it, their voices, how much
 $Q read mybook.epub --list                # which chapters exist
 $Q read mybook.epub --chapter 0 --out ~/Desktop
 $Q read mybook.epub --out ~/Desktop       # the whole book
+$Q read mybook.epub --chapter 0 --play    # ...and open it in your default player
+```
+
+**`read` writes a file; it does not play one.** There is no window and no audio until you
+open the `.wav` — pass `--play`, or play it yourself:
+
+```sh
+afplay ~/Desktop/mybook-ch0.wav     # macOS, in the terminal, Ctrl-C to stop
+open    ~/Desktop/mybook-ch0.wav    # macOS, in your default player
 ```
 
 `read` writes a mono 16-bit WAV named after the book, at the engine's own rate (22.05 kHz

@@ -52,6 +52,7 @@ private fun usage() {
         Options (read):
           --chapter N        Only chapter N (0-based; --list shows them)
           --out DIR          Where the .wav goes (default: build/audio)
+          --play             Open the finished .wav in your default player
           --speed F          Speaking rate; 1.0 is the model's own pace
           --dialogue-only    Skip narration, to audition the voices alone
           --threads N        Decoder threads (default 2)
@@ -123,6 +124,29 @@ private fun read(flags: Flags) {
     WavFile.write(out, samples, engine.sampleRate)
     val seconds = samples.size.toLong() / engine.sampleRate
     println("Wrote ${out.path} — ${plan.size} segments, ${seconds / 60}m ${seconds % 60}s")
+
+    // This program makes a file; it does not play one. Without this the honest answer to
+    // "am I supposed to hear something?" is "not until you open the wav", so make it one
+    // flag away rather than a thing to work out.
+    if (flags.has("play")) openInPlayer(out)
+}
+
+/**
+ * Hand the finished file to whatever plays audio on this machine.
+ *
+ * Best effort and never fatal: the file is written either way, and a headless or
+ * locked-down machine losing a convenience must not look like a failed render.
+ */
+private fun openInPlayer(file: File) {
+    runCatching {
+        if (!java.awt.Desktop.isDesktopSupported()) return@runCatching
+        val desktop = java.awt.Desktop.getDesktop()
+        if (!desktop.isSupported(java.awt.Desktop.Action.OPEN)) return@runCatching
+        desktop.open(file)
+        println("Opened ${file.name} in your default player.")
+    }.onFailure {
+        println("Could not open a player (${it.message}) — open it yourself: ${file.path}")
+    }
 }
 
 /**
