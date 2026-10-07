@@ -37,17 +37,22 @@ seams*, and mean the sections below.
 
 - Branch: `claude/<ticket-id>-<kebab-slug>`. A branch handed to you by the web or desktop app
   keeps its name and is not duplicated — note the ticket in your first commit instead.
-- **Claim first, in [`tickets.md`](tickets.md):** `Status: In progress`, `Owner: <your branch
-  slug>`, pushed before any code. Never a model name — every session runs the same model, so
-  it cannot tell two owners apart.
-- On finish set `Done` / `In review` / `Blocked` / `Todo` and clear `Owner` to `—`.
+- **Claim first, on the board *and* in [`tickets.md`](tickets.md):** `Status: In progress`,
+  `Owner: <your branch slug>`, pushed before any code. The board is authoritative for a
+  ticket's status and owner — a ticket that has already moved or closed there is not yours to
+  take, whatever `tickets.md` still says — and `tickets.md` mirrors it beside the ticket body
+  and its Worklog. Never a model name — every session runs the same model, so it cannot tell
+  two owners apart.
+- On finish set `Done` / `In review` / `Blocked` / `Todo` and clear `Owner` to `—` **on the
+  board first**, then mirror it in `tickets.md`.
   **`In review` is the honest state** when the deliverable is done but something outside the
   repo must confirm it: a device measurement, a listen, a human read.
 
 ### 2.2 Avoiding collisions
 
-- Check the board before starting, and never edit a file outside your ticket's declared file
-  list. Need a change in someone else's area? Open a ticket and link it as a dependency.
+- Check the board before starting — its status wins over `tickets.md` — and never edit a file
+  outside your ticket's declared file list. Need a change in someone else's area? Open a
+  ticket and link it as a dependency.
 - `tickets.md`, `AGENTS.md`, dependency manifests and DI/wiring are shared and high-contention:
   append at the end, don't reflow or reorder.
 - Rebase before pushing (`git fetch origin main && git rebase origin/main`); never force-push a
@@ -101,6 +106,12 @@ checkable by a test, a measurement, or an explicit manual procedure.
 
 IDs are `QUI-###`, allocated sequentially and never reused. Statuses are `Todo` →
 `In progress` → `In review` → `Done`, plus `Blocked`, which must name the blocking ticket.
+
+A ticket's **status and owner live on the board**, which is authoritative for both; the
+`tickets.md` header mirrors them so the bodies and their history read correctly on their own.
+Where the two disagree, a ticket is at the board's status and that is the one you act on —
+never start or continue one that has moved or closed on the board. The ticket's story,
+requirements, acceptance criteria and Worklog stay in `tickets.md`.
 
 ## 5. Definition of done
 
