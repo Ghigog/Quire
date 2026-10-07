@@ -1,15 +1,25 @@
 # Quire — Tickets
 
-The single source of truth for work in flight. See [`CLAUDE.md`](CLAUDE.md) §2 for how
-multiple agents share this file, and §4 for the ticket rules.
+**The board is the source of truth for a ticket's status and owner; this file is the detail
+mirror.** Ticket bodies, requirements and Worklogs live here, and the board's cards point at
+them — but when the two disagree about whether a ticket is open, claimed or closed, **the
+board wins**, and the board's status is the one you act on. See [`CLAUDE.md`](CLAUDE.md) §2
+for how multiple agents share this file, and §4 for the ticket rules.
 
-**Before you start work:** find your ticket below, set `Status: In progress` and
-`Owner: <your agent label>`, and push that change *first*. Never take a ticket that is
-already `In progress`.
+**Before you start work:** check the board first — a ticket that has moved or closed there is
+not yours to take — then find your ticket below and claim it in *both* places: set
+`Status: In progress` and `Owner: <your agent label>` on the board and in the ticket's header,
+and push that change *first*. Never take a ticket that is already `In progress` on the board.
+
+**On finish:** set `Done` / `In review` / `Blocked` / `Todo` and clear the owner on the board
+first, then mirror that here in the same PR as the ticket's Worklog entry.
 
 ---
 
 ## Board
+
+Mirror of the board's cards. Where a status or an owner differs from the board, the board is
+the one to act on.
 
 | ID | Title | Epic | Status | Owner | Depends on |
 | --- | --- | --- | --- | --- | --- |
